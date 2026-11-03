@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -21,16 +22,25 @@ type HealthEvent struct {
 	Detail     string
 }
 
-// MonitorOptions configures the host health loop.
+// MonitorOptions configures the health loop.
 type MonitorOptions struct {
-	Interval        time.Duration // default 30s (docs/model-routing.md, brief section 6)
+	Interval time.Duration // the loop's tick and a host's check interval: default 30s (docs/model-routing.md, brief section 6)
+	// CloudInterval is how often a cloud provider (direct or aggregator) is checked: one model listing request with the
+	// person's key, never a prompt. Default 15 minutes; a 429 answer's Retry-After pushes the next check further out.
+	CloudInterval time.Duration
+	// CatalogEvery is how often a cloud provider's catalog and prices are read again (a full Probe; prices the person set
+	// are kept), plus a random wait of up to CatalogJitter so providers are not all read at once. Defaults 24h and 2h
+	// (decision D4).
+	CatalogEvery    time.Duration
+	CatalogJitter   time.Duration
 	DownAfter       int           // consecutive failures before "down" (default 2); the first failure is "degraded"
 	SlowAfter       time.Duration // a live host slower than this is "degraded" (default 5s)
 	Ledger          *QuotaLedger  // optional: Status reports quota exhaustion
 	SubscriberQueue int           // per-subscriber channel size (default 64)
 }
 
-// Monitor runs the health loop for host providers, hands out host concurrency slots and reports provider status.
+// Monitor runs the health loop for every enabled provider (hosts every Interval, cloud providers every CloudInterval, their
+// catalogs once a day), hands out host concurrency slots and reports provider status.
 type Monitor struct {
 	reg    *Registry
 	pr     *Prober
@@ -39,8 +49,12 @@ type Monitor struct {
 	mu     sync.Mutex
 	hosts  map[string]*hostState
 	subs   map[chan HealthEvent]struct{}
+	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+	extra  sync.WaitGroup // Refresh calls in flight; Stop waits for them
+	now    func() time.Time
+	jitter func(max time.Duration) time.Duration
 }
 
 type hostState struct {
@@ -50,6 +64,8 @@ type hostState struct {
 	latency   time.Duration
 	lastErr   string
 	failures  int
+	next      time.Time // the loop checks the provider again from this time on (zero: at the next pass)
+	catalog   time.Time // a cloud provider's catalog is read again from this time on (zero: not worked out yet)
 	inUse     int
 	freed     chan struct{} // closed and replaced whenever a slot is released or the limit may have changed
 }
@@ -68,7 +84,31 @@ func NewMonitor(reg *Registry, pr *Prober, bus events.Bus, o MonitorOptions) *Mo
 	if o.SubscriberQueue <= 0 {
 		o.SubscriberQueue = 64
 	}
-	return &Monitor{reg: reg, pr: pr, bus: bus, o: o, hosts: map[string]*hostState{}, subs: map[chan HealthEvent]struct{}{}}
+	if o.CloudInterval <= 0 {
+		o.CloudInterval = 15 * time.Minute
+	}
+	if o.CatalogEvery <= 0 {
+		o.CatalogEvery = 24 * time.Hour
+	}
+	if o.CatalogJitter <= 0 {
+		o.CatalogJitter = 2 * time.Hour
+	}
+	return &Monitor{reg: reg, pr: pr, bus: bus, o: o, hosts: map[string]*hostState{}, subs: map[chan HealthEvent]struct{}{},
+		now: func() time.Time { return time.Now().UTC() },
+		jitter: func(max time.Duration) time.Duration {
+			if max <= 0 {
+				return 0
+			}
+			return rand.N(max)
+		}}
+}
+
+// interval is how long the loop waits between two checks of p.
+func (m *Monitor) interval(p Provider) time.Duration {
+	if p.Kind == KindHost {
+		return m.o.Interval
+	}
+	return m.o.CloudInterval
 }
 
 func (m *Monitor) state(id string) *hostState {
@@ -88,6 +128,7 @@ func (m *Monitor) Start(ctx context.Context) {
 		return
 	}
 	ctx, m.cancel = context.WithCancel(ctx)
+	m.ctx = ctx
 	m.done = make(chan struct{})
 	m.mu.Unlock()
 	safe.Go("providers.Monitor.Start", func() {
@@ -116,28 +157,99 @@ func (m *Monitor) Stop() {
 		cancel()
 		<-done
 	}
+	m.extra.Wait()
 }
 
-// CheckAll checks every enabled host provider once, concurrently.
+// Refresh reads one provider in full now, in the background (a Probe: its listing, its catalog and prices, its status), as
+// after the person saved a new provider. It does nothing while the loop is not running.
+func (m *Monitor) Refresh(id string) {
+	m.mu.Lock()
+	ctx := m.ctx
+	if m.cancel == nil || ctx == nil {
+		m.mu.Unlock()
+		return
+	}
+	m.extra.Add(1)
+	m.mu.Unlock()
+	safe.Go("providers.Monitor.Refresh", func() {
+		defer m.extra.Done()
+		p, err := m.reg.Get(ctx, id)
+		if err != nil || !p.Enabled {
+			return
+		}
+		m.refresh(ctx, p)
+	})
+}
+
+// CheckAll checks every enabled provider that is due, concurrently: a host every Interval, a cloud provider every
+// CloudInterval (later when it answered 429 with Retry-After). A cloud provider whose catalog is a day old is read in full
+// instead (Probe), which also says whether it is up.
 func (m *Monitor) CheckAll(ctx context.Context) {
 	ps, err := m.reg.List(ctx)
 	if err != nil {
 		return
 	}
+	now := m.now()
 	var wg sync.WaitGroup
 	for _, p := range ps {
-		if p.Kind != KindHost || !p.Enabled {
+		if !p.Enabled {
+			continue
+		}
+		m.mu.Lock()
+		due := !now.Before(m.state(p.ID).next)
+		m.mu.Unlock()
+		if !due {
 			continue
 		}
 		wg.Add(1)
 		safe.Go("providers.Monitor.CheckAll", func() {
 			func(p Provider) {
 				defer wg.Done()
+				if p.Kind != KindHost && m.catalogDue(ctx, p, now) {
+					m.refresh(ctx, p)
+					return
+				}
 				m.check(ctx, p)
 			}(p)
 		})
 	}
 	wg.Wait()
+}
+
+// catalogDue says whether a cloud provider's catalog should be read again: it has none yet, or it is CatalogEvery (plus
+// the jitter) old.
+func (m *Monitor) catalogDue(ctx context.Context, p Provider, now time.Time) bool {
+	m.mu.Lock()
+	at := m.state(p.ID).catalog
+	m.mu.Unlock()
+	if at.IsZero() {
+		fetched, err := m.reg.CatalogFetchedAt(ctx, p.ID)
+		if err != nil {
+			return false
+		}
+		if !fetched.IsZero() {
+			at = fetched.Add(m.o.CatalogEvery + m.jitter(m.o.CatalogJitter))
+		} else {
+			at = now
+		}
+		m.mu.Lock()
+		m.state(p.ID).catalog = at
+		m.mu.Unlock()
+	}
+	return !now.Before(at)
+}
+
+// refresh reads the provider in full (Probe: listing, catalog, prices the person set kept, provider.catalog_refreshed) and
+// records the outcome as a check.
+func (m *Monitor) refresh(ctx context.Context, p Provider) HealthEvent {
+	res, err := m.pr.Probe(ctx, p.ID)
+	if err != nil {
+		return HealthEvent{}
+	}
+	m.mu.Lock()
+	m.state(p.ID).catalog = m.now().Add(m.o.CatalogEvery + m.jitter(m.o.CatalogJitter))
+	m.mu.Unlock()
+	return m.record(ctx, p, CheckResult{OK: res.OK, Latency: res.Latency, Detail: res.Error})
 }
 
 // CheckNow checks one provider of any kind immediately and returns the transition (To equals the new state).
@@ -150,14 +262,25 @@ func (m *Monitor) CheckNow(ctx context.Context, id string) (HealthEvent, error) 
 }
 
 func (m *Monitor) check(ctx context.Context, p Provider) HealthEvent {
-	r := m.pr.Check(ctx, p)
-	now := time.Now().UTC()
+	return m.record(ctx, p, m.pr.Check(ctx, p))
+}
+
+// record turns one check's result into the provider's health, persists and publishes a change, and schedules the next check.
+func (m *Monitor) record(ctx context.Context, p Provider, r CheckResult) HealthEvent {
+	now := m.now()
 	m.mu.Lock()
 	h := m.state(p.ID)
 	from := h.health
 	h.lastCheck, h.latency = now, r.Latency
+	h.next = now.Add(m.interval(p))
 	switch {
-	case r.OK && r.Latency <= m.o.SlowAfter:
+	case r.Limited:
+		// reachable and the key accepted, but asked to wait: not a failure, and nothing is asked before the wait is over
+		h.lastErr = r.Detail
+		if r.RetryAfter > m.interval(p) {
+			h.next = now.Add(r.RetryAfter)
+		}
+	case r.OK && (p.Kind != KindHost || r.Latency <= m.o.SlowAfter):
 		h.failures, h.lastErr, h.health = 0, "", HealthUp
 	case r.OK:
 		h.failures, h.lastErr, h.health = 0, fmt.Sprintf("slow: %s", r.Latency.Round(time.Millisecond)), HealthDegraded
@@ -294,8 +417,7 @@ type Status struct {
 	Available bool
 }
 
-// Status reports the provider's state. A provider that was never checked is "unknown" and counts as available
-// (non-host providers are not health-checked by the loop).
+// Status reports the provider's state. A provider that was never checked is "unknown" and counts as available.
 func (m *Monitor) Status(ctx context.Context, id string) (Status, error) {
 	p, err := m.reg.Get(ctx, id)
 	if err != nil {

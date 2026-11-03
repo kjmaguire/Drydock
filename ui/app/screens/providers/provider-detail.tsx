@@ -344,8 +344,11 @@ function EndpointUptimeSection(handle: Handle<{ v: EndpointUptimeView }>) {
 const ATTESTATION_WORDS: Record<string, string> = { billing_enabled: 'Billing enabled', lan_attested: 'Plain http on my private network' };
 
 /** The health word: from the last check, also while the provider is disabled. */
-function healthWord(status: string): { text: string; tone: 'ok' | 'err' | 'muted' } {
-  return status === 'up' ? { text: 'Up', tone: 'ok' } : status === 'down' ? { text: 'Down', tone: 'err' } : { text: 'Not checked', tone: 'muted' };
+function healthWord(status: string): { text: string; tone: 'ok' | 'err' | 'warn' | 'muted' } {
+  if (status === 'up') return { text: 'Up', tone: 'ok' };
+  if (status === 'down') return { text: 'Down', tone: 'err' };
+  if (status === 'degraded') return { text: 'Having trouble', tone: 'warn' };
+  return { text: 'Not checked', tone: 'muted' };
 }
 
 /**
@@ -364,6 +367,24 @@ export function ProviderPane(handle: Handle<{ p: Provider; onChanged: () => void
   let focusKey = false;
   let probe: ProbeResult | undefined;
   let keyInfo: string | undefined;
+  // OpenRouter's key limits are read once when the detail opens (one GET of the key's limits, nothing spent; F2), so the row
+  // does not wait on a button; Read from OpenRouter reads them again
+  let keyReadFor = '';
+  const readKeyOnOpen = (id: string) => {
+    keyReadFor = id;
+    keyInfo = undefined;
+    handle.queueTask(async () => {
+      try {
+        const r = await s.client.providerDetail(id, true);
+        if (keyReadFor === id && keyInfo === undefined) {
+          keyInfo = keyInfoText(r);
+          redraw();
+        }
+      } catch {
+        // the row keeps "Not read yet" and its button
+      }
+    });
+  };
   const redraw = () => void handle.update();
   const edit = (key: boolean) => {
     editing = true;
@@ -382,6 +403,7 @@ export function ProviderPane(handle: Handle<{ p: Provider; onChanged: () => void
     const st = providerStatus(p);
     const health = healthWord(p.status);
     const brand = providerBrand(p);
+    if (brand === 'openrouter' && p.keyRef && keyReadFor !== p.id) readKeyOnOpen(p.id);
     const attested = Object.entries(p.attestations ?? {});
     return (
       <section mix={panelCss} data-testid="provider" data-name={p.name} data-id={p.id} aria-label={p.name}>
@@ -564,7 +586,7 @@ export function ProviderPane(handle: Handle<{ p: Provider; onChanged: () => void
           <div mix={panelCss} data-testid="provider-detail" role="group" aria-label={`${d.provider.name} details`}>
             <SettingsGroup title="Models" label="Offered models" testId="provider-models" bare>
               {d.models.length === 0 ? (
-                <p mix={muted}>None listed yet: Check now reads the provider&apos;s catalog.</p>
+                <p mix={muted}>None listed yet. Drydock reads the catalog after saving and once a day; Check now reads it now.</p>
               ) : (
                 <div mix={tableCard}>
                   <table aria-label="Models and prices">

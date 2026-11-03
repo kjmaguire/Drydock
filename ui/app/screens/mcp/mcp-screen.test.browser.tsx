@@ -110,6 +110,34 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     await waitFor(() => expect(grants[1]).toEqual(['prj_1', 'tst', 'agt_2', false]), r);
   });
 
+  it('lets every agent of the project use a server in one click, and adds and grants to all from the library (F12)', async () => {
+    const grants: Calls = [];
+    const r = show({ mcpServerList: async () => [projServer({ agents: [{ agentId: 'agt_2', tools: ['*'] }] })], mcpServerGrant: rec(grants, () => projServer()) as never });
+    const card = await server(r);
+    await r.act(() => (card.querySelector('[data-testid="mcp-grant-all"]') as HTMLButtonElement).click());
+    // only the agent not granted yet is asked for
+    await waitFor(() => expect(grants).toEqual([['prj_1', 'tst', 'agt_1', true]]), r);
+
+    cleanup();
+    const adds: Calls = [];
+    const grants2: Calls = [];
+    const r2 = show({
+      mcpServerList: async () => [],
+      mcpLibList: async () => [libServer({ projects: [] })],
+      mcpServerAdd: rec(adds, () => projServer()) as never,
+      mcpServerGrant: rec(grants2, () => projServer()) as never,
+    });
+    const both = await waitFor(() => {
+      const b = r2.$('[data-testid="library-server"][data-server="tst"] [data-testid="mcp-add-grant-all"]');
+      if (!b) throw new Error('not yet');
+      return b as HTMLButtonElement;
+    }, r2);
+    expect(both.textContent).toBe('Add and grant to all 2');
+    await r2.act(() => both.click());
+    await waitFor(() => expect(grants2).toEqual([['prj_1', 'tst', 'agt_1', true], ['prj_1', 'tst', 'agt_2', true]]), r2);
+    expect(adds).toEqual([['prj_1', 'tst']]);
+  });
+
   it('lists the connected servers the project does not have, the built-in ones you connected included, each with its logo', async () => {
     const r = show({
       mcpServerList: async () => [projServer()],

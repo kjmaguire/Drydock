@@ -8,7 +8,7 @@
 // opens with or without a project, and the sidebar's Inbox and Running counts are the same lists.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { AtSign, Bot, CircleCheck, MessageSquareReply, CircleHelp, CirclePause, FileText, GitMerge, Hourglass, ListTree, MessageSquare, OctagonX, PlugZap, Shield, Eye, UserPlus, Wallet, type IconNode } from 'lucide';
+import { AtSign, Bot, CircleCheck, MessageSquareReply, CircleHelp, CirclePause, FileText, GitMerge, Hourglass, ListTree, MessageSquare, OctagonX, PlugZap, Shield, Eye, TriangleAlert, UserPlus, Wallet, type IconNode } from 'lucide';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
@@ -31,11 +31,13 @@ import { RunAgainButton } from '../shared/run-again.tsx';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
 import { MyTasksList } from './my-tasks-screen.tsx';
 import { CliFix, distroOfKey } from '../shared/cli-fix.tsx';
+import { ProblemFix, problemOpenLabel } from './problem-fix.tsx';
 import {
   answerOf,
   canAck,
   clock,
   doingWords,
+  KIND_LABEL,
   LOOK_WORDS,
   msOf,
   needsHint,
@@ -74,6 +76,7 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
   join: { icon: UserPlus, tone: 'accent' },
   agent: { icon: Bot, tone: 'err' },
   connection: { icon: PlugZap, tone: 'err' },
+  problem: { icon: TriangleAlert, tone: 'warn' },
 };
 
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
@@ -771,7 +774,9 @@ function NeedsDetail(
     const answerHere = a.kind !== 'open';
     const budgetPage = it.kind === 'budget' && it.budgetState !== 'paused';
     const join = it.kind === 'join_request' && !!it.joinRequestId;
-    const openLabel = it.chatId
+    const openLabel = problemOpenLabel(it.kind)
+      ? problemOpenLabel(it.kind)
+      : it.chatId
       ? 'Open the chat'
       : budgetPage
         ? 'Open Budgets'
@@ -804,7 +809,7 @@ function NeedsDetail(
       <>
         <div mix={paneHead} data-testid="detail-head">
           <span mix={kindLine} style={{ color: tone[v.tone].fg }} data-testid="detail-kind">
-            {[lookWords(look), projectName].filter(Boolean).join(' · ')}
+            {[look === 'problem' ? (KIND_LABEL[it.kind] ?? lookWords(look)) : lookWords(look), projectName].filter(Boolean).join(' · ')}
           </span>
           <h2>
             {key ? <span mix={keyCss}>{key}</span> : null}
@@ -814,6 +819,8 @@ function NeedsDetail(
           {/* what to do where it is decided, for what is not answered here */}
           {(!d || a.kind === 'open') && hint ? <p data-testid="needs-hint">{hint}</p> : null}
           {/* an agent CLI that is not ready: its fix here, Sign in first (A9); the Agents page keeps the full detail */}
+          {/* what went wrong in the background: its fix here where there is one (B6, F14 and H7) */}
+          {look === 'problem' ? <ProblemFix key={it.key} item={it} /> : null}
           {it.kind === 'connection' && it.adapter ? <CliFix key={it.connectionKey || it.adapter} adapter={it.adapter} distro={distroOfKey(it.connectionKey) || undefined} /> : null}
           {/* a request answered here keeps its page one step away, under what it is about */}
           {answerHere ? <div mix={openRow}>{openLink}</div> : null}

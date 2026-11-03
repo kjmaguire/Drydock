@@ -176,3 +176,36 @@ func TestOpenRouterProviderDetailShowsAvoidedEndpoints(t *testing.T) {
 		t.Fatalf("non-OpenRouter detail has an endpoint uptime section: %+v", od.EndpointUptime)
 	}
 }
+
+// A provider is read once right after it is saved (decision D4, F2): its catalog is listed and its health is known without
+// Check now.
+func TestProviderCreateReadsTheNewProviderOnce(t *testing.T) {
+	dir := t.TempDir()
+	creds := providers.NewMemoryCredentialStoreForTests()
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "d"), User: "kyle", LeaseTTL: 3 * time.Second, Credentials: creds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	a := &app{t: t, c: c}
+	// PROTOCOL FIXTURE: an OpenAI-compatible server's model listing
+	srv := llmtest.New(t, nil)
+	srv.Routes["/v1/models"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"listed-model"}]}`))
+	}
+	var p providers.Provider
+	a.call("provider.create", map[string]any{"Name": "Fixture", "Kind": "direct", "BaseURL": srv.URL + "/v1", "APIKey": "sk-fixture-key-1234567890", "DataClass": "private", "Tier": "cheap"}, &p)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		got, _ := c.Providers.Get(context.Background(), p.ID)
+		ms, _ := c.Providers.Models(context.Background(), p.ID)
+		if got.Status == string(providers.HealthUp) && len(ms) == 1 && ms[0].ID == "listed-model" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the new provider was not read after saving: status %q, models %v", got.Status, ms)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

@@ -158,6 +158,15 @@ export interface RouteRule {
   enabled: boolean;
   version: number;
 }
+/** What a routing rule can say, for the editor's pickers (route.rules.describe, F9). */
+export interface RuleTables {
+  scopes: { value: string; label: string }[];
+  runKinds: string[];
+  roles: string[];
+  tiers: string[];
+  efforts: string[];
+  actions: { key: string; kind: 'tier' | 'effort' | 'bool' | 'int' | 'number' | 'list' }[];
+}
 export interface RoutingOutcome {
   outcome: string;
   accepted: boolean;

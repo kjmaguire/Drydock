@@ -94,6 +94,7 @@ export function providerStatus(p: Pick<Provider, 'enabled' | 'status'>): { text:
   if (!p.enabled) return { text: 'Disabled', tone: 'muted' };
   if (p.status === 'up') return { text: 'Up', tone: 'ok' };
   if (p.status === 'down') return { text: 'Down', tone: 'err' };
+  if (p.status === 'degraded') return { text: 'Having trouble', tone: 'warn' };
   return { text: 'Not checked', tone: 'muted' };
 }
 

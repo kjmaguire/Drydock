@@ -285,7 +285,7 @@ describe('ProviderPane', () => {
   it('no models listed yet says how to get them', async () => {
     const r = show({ providerDetail: async () => ({ ...detail(), models: [] }) });
     await waitFor(() => need(r, '[data-testid="provider-models"]'), r);
-    expect(need(r, '[data-testid="provider-models"]').textContent).toContain('Check now reads the provider');
+    expect(need(r, '[data-testid="provider-models"]').textContent).toContain('Drydock reads the catalog after saving and once a day');
   });
 
   it('a concurrency limit that is not a whole number is told under the field and nothing is sent, the typed key stays; empty is unlimited (M25)', async () => {
@@ -363,7 +363,7 @@ describe('ProviderPane', () => {
     expect(updates[0]?.minEndpointUptime).toBe(undefined);
   });
 
-  it("reads OpenRouter's key limits on a button, and shows a refusal of the core verbatim", async () => {
+  it("reads OpenRouter's key limits when the detail opens and again on a button, and shows a refusal of the core verbatim", async () => {
     const asked: [string, boolean | undefined][] = [];
     const r = show(
       {
@@ -378,10 +378,11 @@ describe('ProviderPane', () => {
       openRouter(),
     );
     await waitFor(() => need(r, '[data-testid="price-row"]'), r);
-    expect(r.$('[data-testid="key-info"]')).toBeNull();
-    await r.act(() => byText(r.container, 'button', 'Read from OpenRouter').click());
+    // read without a click
     await waitFor(() => expect(need(r, '[data-testid="key-info"]').textContent).toBe('Key "main": used 2 of 10, free tier'), r);
-    expect(asked.some(([, refresh]) => refresh === true)).toBe(true);
+    expect(asked.filter(([, refresh]) => refresh === true).length).toBe(1);
+    await r.act(() => byText(r.container, 'button', 'Read from OpenRouter').click());
+    await waitFor(() => expect(asked.filter(([, refresh]) => refresh === true).length).toBe(2), r);
 
     const form = await edit(r);
     await r.act(() => byText(form, 'button', 'Save settings').click());

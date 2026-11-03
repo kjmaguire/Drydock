@@ -605,6 +605,42 @@ form. The selected provider opens below the grid: its card (facts, Test, Models,
 detail. The first enabled provider that is down is selected when the page opens, else the first, else the add form; a provider
 just added opens in place of the form.
 
+**Background refresh (as built, lane B batch B6, F2; decision D4).** Saving a new provider reads it once at once
+(`provider.create` calls `Monitor.Refresh`: its listing, catalog and prices, no prompt), so its detail is not "Not checked" until
+Check now. The health loop then watches every enabled provider: a host every 30 s, a cloud provider (direct or aggregator) every
+15 minutes with one model listing request (a 429's Retry-After pushes the next one out and is not a failure), and a cloud
+provider's catalog is read again once a day plus up to two hours of jitter (`provider.catalog_refreshed`; a price the person set
+is kept). A provider failing its checks shows "Having trouble"; OpenRouter's key limits are read when its detail opens (Read from
+OpenRouter reads them again). Check now stays.
+
+**Background problems reach the Inbox (as built, lane B batch B6, F14 and H7).** What the core already knows went wrong is an
+Inbox item with its fix (`problemItems`, `internal/core/inbox_problems.go`), worked out from the current state on every read like
+P130's agent and CLI items, so each goes by itself once the state is fine: a connected service whose key was refused, whose
+answers changed shape or whose sync failed three times in a row (**Reconnect** opens `/integrations/<kind>?reconnect=1` with the
+Reconnect form open); a model provider that is down (**Check again** here, `provider.test`; not the server of Models on this
+PC); an MCP server whose sign-in expired (its **Sign in** here, the Library's `OAuthPanel`; the core keeps
+`mcp.oauth_expired.<id>` until a new sign-in or a sign-out); an agent CLI sending output Drydock does not read (the Agents page,
+until Test connection passes); a scan tool whose install failed (**Retry** here, `security.tool.install`); a crash report of an
+earlier run (the Support page; deleting the report clears it). Each can be marked done; a service's or a provider's key carries
+the day, so a problem that lasts comes back once a day, not on every failure. The words are the core's own (vendor name, state,
+the recorded reason); no notification or toast carries them.
+
+**Connecting your own MCP server in one dialog (as built, lane B batch B6, F12; P43's steps back without reversing M24).** A new
+web server at an https address lists its tools as it is saved (`mcplib.save` with `discover`, honoured only for https without
+OAuth: it contacts that typed address once; a program is never started by it, and a failure leaves the server saved with the
+reason as its last error); the page's note says how many tools were listed. Its detail's Projects row has **Add to a project...** (the projects are listed only then: the detail itself names none)
+(a project that does not have it, then Add; **Choose its agents** opens that project's Integrations page). There, a server's card
+has **Let every agent of this project use it** beside the per-agent boxes, and a server not in the project yet has **Add and
+grant to all N** beside Add to this project: each is the person's one click, made of the same grant calls a tick makes.
+
+**A routing rule is edited with pickers (as built, lane B batch B6, F9).** Settings > Routing & budgets > Routing rules > Add or
+Edit: **Scope** is a dropdown of the workspace and each project by name; **Turn kind** and **Agent role** write the condition
+(`run.kind == '<kind>' && task.role == '<role>'`, or `true` for any turn); **Prefer tier**, **Require tier**, **Effort** and
+**Refuse the model (deny)** set the action's keys. The tables come from the core (`route.rules.describe`: scopes, turn kinds,
+the workspace's roles, tiers, efforts and action keys). The CEL condition and the action's JSON stay under **Advanced**, which
+opens by itself for a rule the pickers cannot say. A save refused because the rule changed since it was opened reads the rule
+again, puts the edit on the newer version and says so above the list; any other refusal is shown as the core wrote it.
+
 **As built (2026-10-15, decision P65).** The page opens with **Models on this PC** (`ui/app/screens/providers/local-models.tsx`
 over `local.*`, `docs/local-models.md`): the llama.cpp build (install with a source and a backend, the suggested backend
 preselected, the TurboQuant fork behind a warning; progress of the download; the build's tag, backend and the devices it

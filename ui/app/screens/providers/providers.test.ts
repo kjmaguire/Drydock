@@ -125,6 +125,8 @@ describe('provider rows', () => {
     expect(providerStatus({ enabled: true, status: 'up' })).toEqual({ text: 'Up', tone: 'ok' });
     expect(providerStatus({ enabled: true, status: 'down' })).toEqual({ text: 'Down', tone: 'err' });
     expect(providerStatus({ enabled: true, status: 'unknown' })).toEqual({ text: 'Not checked', tone: 'muted' });
+    // a provider failing the background checks is not "Not checked" (F2)
+    expect(providerStatus({ enabled: true, status: 'degraded' })).toEqual({ text: 'Having trouble', tone: 'warn' });
     expect(providerStatus({ enabled: false, status: 'down' })).toEqual({ text: 'Disabled', tone: 'muted' });
   });
 

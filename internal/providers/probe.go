@@ -587,10 +587,14 @@ type CheckResult struct {
 	OK      bool
 	Latency time.Duration
 	Detail  string
+	// Limited is a 429 answer: the provider is reachable and the key accepted, but it asks to be left alone for RetryAfter
+	// (zero when it did not say). The health loop neither counts it as a failure nor checks again before then.
+	Limited    bool
+	RetryAfter time.Duration
 }
 
 // Check runs the liveness check used by the health loop: hosts answer /health (Ollama /api/version); other kinds
-// answer their model listing.
+// answer their model listing (one GET, never a prompt: nothing is spent).
 func (pr *Prober) Check(ctx context.Context, p Provider) CheckResult {
 	key, _ := pr.reg.APIKey(ctx, p) // /health is unauthenticated on vLLM and SGLang; a missing key must not mask liveness
 	start := time.Now()
@@ -601,13 +605,16 @@ func (pr *Prober) Check(ctx context.Context, p Provider) CheckResult {
 			target = origin(p.BaseURL) + "/api/version"
 		}
 	}
-	status, _, _, err := pr.httpGet(ctx, p, key, target)
+	status, _, hdr, err := pr.httpGet(ctx, p, key, target)
 	lat := time.Since(start)
 	switch {
 	case err != nil:
 		return CheckResult{Latency: lat, Detail: err.Error()}
 	case status >= 200 && status < 300:
 		return CheckResult{OK: true, Latency: lat}
+	case status == http.StatusTooManyRequests:
+		wait, _ := RetryAfter(hdr, pr.now())
+		return CheckResult{Limited: true, Latency: lat, Detail: "HTTP 429 (rate limited)", RetryAfter: wait}
 	default:
 		return CheckResult{Latency: lat, Detail: fmt.Sprintf("HTTP %d", status)}
 	}

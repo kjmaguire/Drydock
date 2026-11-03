@@ -341,7 +341,13 @@ func (c *Core) Methods() map[string]Method {
 
 		"provider.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Providers.List(ctx) }),
 		"provider.create": bind(func(ctx context.Context, p providers.NewProvider) (any, error) {
-			return c.Providers.Create(ctx, p)
+			created, err := c.Providers.Create(ctx, p)
+			if err == nil {
+				// read it once right after saving (its listing, catalog and prices: no prompt, nothing spent), so the detail
+				// does not sit at "Not checked" until Check now (decision D4); the health loop watches it from then on
+				c.Health.Refresh(created.ID)
+			}
+			return created, err
 		}),
 		"provider.delete": bind(func(ctx context.Context, p idParam) (any, error) { return nil, c.Providers.Delete(ctx, p.ID) }),
 		"provider.setEnabled": bind(func(ctx context.Context, p struct {

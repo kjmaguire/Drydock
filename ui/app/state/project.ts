@@ -14,7 +14,11 @@ import type { Workspace } from './workspace.ts';
  * items come from the CLIs' last check, so Drydock's own check (connection.checked, A2) and a sign-in's end count too.
  */
 export const needsChanged = (e: DrydockEvent): boolean =>
-  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.read_cursor', 'room.archived', 'chat.permission', 'needsyou.', 'connection.checked', 'connection.sign_in_finished');
+  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.read_cursor', 'room.archived', 'chat.permission', 'needsyou.', 'connection.checked', 'connection.sign_in_finished') ||
+  // what went wrong in the background, and its fix (B6, F14 and H7): a service's sync and key, a provider's health, an MCP
+  // sign-in, an agent CLI's output, a scan tool's install, a crash
+  starts(e, 'integration.sync.failed', 'integration.sync.completed', 'integration.auth_expired', 'integration.schema_drift', 'integration.connected', 'integration.disconnected',
+    'provider.up', 'provider.down', 'provider.degraded', 'mcp.server_oauth', 'adapter.drift', 'security.settings', 'app.crashed');
 
 /** The project's tasks as one read: the newest ones the core lists, and how many the project has in all (when the count answered). */
 export interface TaskPage {

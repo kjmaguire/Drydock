@@ -251,6 +251,28 @@ describe('the Inbox items of P130', () => {
     expect(needsSubtitle(item({ kind: 'agent', agentName: 'Cx', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · agent · Cx · 2 min ago');
   });
 
+  it('opens what went wrong in the background where it is fixed, with one look, and each can be marked done (B6: F14, H7)', () => {
+    expect(needsTarget(item({ key: 'integration:int_1:key:2026-11-03', kind: 'integration', subject: 'linear' }))).toBe('/integrations/linear?reconnect=1');
+    expect(needsTarget(item({ key: 'provider:p1:down:2026-11-03', kind: 'provider', subject: 'p1' }))).toBe('/models/p1');
+    expect(needsTarget(item({ key: 'mcp-sign-in:s1:5', kind: 'mcp_sign_in', subject: 's1' }))).toBe('/integrations/server-s1');
+    expect(needsTarget(item({ key: 'adapter-drift:claude:5', kind: 'adapter_drift', adapter: 'claude', subject: 'claude' }))).toBe('/agents/claude');
+    expect(needsTarget(item({ key: 'tool-install:osv-scanner:5', kind: 'tool_install', subject: 'osv-scanner' }))).toBe('/security');
+    expect(needsTarget(item({ key: 'crash:crash-1.txt', kind: 'crash', subject: 'crash-1.txt' }))).toBe('/support');
+    const kinds = ['integration', 'provider', 'mcp_sign_in', 'adapter_drift', 'tool_install', 'crash'];
+    expect(kinds.map((kind) => needsLook({ kind }))).toEqual(kinds.map(() => 'problem'));
+    expect(kinds.every((k) => !!KIND_LABEL[k])).toBe(true);
+    expect(
+      ['integration:i:key:d', 'provider:p:down:d', 'mcp-sign-in:s:1', 'adapter-drift:a:1', 'tool-install:t:1', 'crash:c'].map((key) => canAck({ key })),
+    ).toEqual([true, true, true, true, true, true]);
+  });
+
+  it('reads the Inbox again when a background problem may have come or gone', () => {
+    const ev = (type: string) => ({ type }) as DrydockEvent;
+    for (const t of ['integration.sync.failed', 'integration.auth_expired', 'provider.down', 'provider.up', 'mcp.server_oauth_expired', 'adapter.drift', 'security.settings', 'app.crashed'])
+      expect(needsChanged(ev(t))).toBe(true);
+    expect(needsChanged(ev('integration.item.upserted'))).toBe(false);
+  });
+
   it("opens an agent's answer to the person in its room, and it can be marked done (X18)", () => {
     const answer = item({ key: 'reply:m9', kind: 'reply', roomId: 'r3', taskId: 't1', agentName: 'Ada' });
     expect(needsTarget(answer)).toBe('/room/r3');

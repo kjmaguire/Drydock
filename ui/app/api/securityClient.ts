@@ -44,6 +44,8 @@ export interface SecurityClient {
   securityWorkspaceTools(): Promise<SecurityTools>;
   /** Reads the newest release of OSV-Scanner and Opengrep now and installs a newer one in the background; the tools after. */
   securityToolsUpdate(): Promise<SecurityTools>;
+  /** Installs (or updates) one scan tool now, in the background; the Inbox's Retry for a failed install (H7). */
+  securityToolInstall(tool: string): Promise<unknown>;
   /** Starts a scan of a folder by its full path. Refused for a relative path, a file, a whole drive or Drydock's data folder. */
   securityFolderScanStart(folder: string): Promise<ScanReport>;
   securityFolderScanCancel(folder: string): Promise<ScanReport>;
@@ -85,6 +87,7 @@ export function createSecurityClient(t: Transport): SecurityClient {
     securityScanReport: async (id) => report(await t.call<ScanReport>('security.scan.report', { id })),
     securityWorkspaceTools: () => t.call('security.tools', {}),
     securityToolsUpdate: () => t.call('security.tools.checkUpdates', {}),
+    securityToolInstall: (tool) => t.call('security.tool.install', { tool }),
     securityFolderScanStart: async (folder) => report(await t.call<ScanReport>('security.scan.start', { folder })),
     securityFolderScanCancel: async (folder) => report(await t.call<ScanReport>('security.scan.cancel', { folder })),
     securityFolderScanGet: async (folder) => {

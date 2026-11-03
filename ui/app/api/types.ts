@@ -930,7 +930,14 @@ export type NeedsKind =
   | 'reply'
   | 'join_request'
   | 'agent'
-  | 'connection';
+  | 'connection'
+  // what the core knows went wrong in the background, each with its fix (lane B batch B6, F14 and H7); subject names the thing
+  | 'integration'
+  | 'provider'
+  | 'mcp_sign_in'
+  | 'adapter_drift'
+  | 'tool_install'
+  | 'crash';
 
 export interface NeedsYouItem {
   key: string;
@@ -965,6 +972,8 @@ export interface NeedsYouItem {
   /** An agent CLI that is not ready (kind connection, P130): the Agents page opens on adapter. */
   adapter?: string;
   connectionKey?: string;
+  /** A background problem's subject: the service's kind, the provider's id, the MCP server's id, the adapter, the tool, the crash report. */
+  subject?: string;
 }
 
 export interface NeedsContext {

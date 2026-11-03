@@ -36,7 +36,7 @@ import { DetailHeader, SettingRow, SettingsGroup } from '../../ui/master-detail.
 import { Menu } from '../../ui/menu.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t, tone } from '../../ui/tokens.ts';
-import { connectReply, kindLabel, scopeSummary, serviceState, syncLine, syncText, verifiedText, type ServiceKind } from './integrations.ts';
+import { connectReply, kindLabel, reconnectAsked, scopeSummary, serviceState, syncLine, syncText, verifiedText, type ServiceKind } from './integrations.ts';
 import { codeSpans, sentence } from '../../ui/code-spans.tsx';
 import { GitHubSignIn } from '../shared/github-sign-in.tsx';
 
@@ -659,7 +659,8 @@ function ConnectedService(
   const act = action(handle);
   let checked: IntegrationVerifyReport | undefined;
   let synced = '';
-  let reconnect = false;
+  // the Inbox's Reconnect (F14) opens the service with its Reconnect form open: /integrations/<kind>?reconnect=1
+  let reconnect = reconnectAsked(globalThis.location?.search ?? '');
   let confirm = false;
   const set = (f: () => void) => {
     f();

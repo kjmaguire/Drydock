@@ -352,7 +352,13 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
               onSaved={(saved) => {
                 set(() => {
                   adding = false;
-                  note = `${saved.display} is connected. Press Find tools, then add it to a project on that project's Integrations page.`;
+                  // a web server's tools are listed as it is saved (F12); a program's wait for Find tools (M24)
+                  note =
+                    saved.tools.length > 0
+                      ? `${saved.display} is connected and its ${saved.tools.length} tools are listed. Tick the ones that only read, then add it to a project from its Projects row.`
+                      : saved.lastError
+                        ? `${saved.display} is saved, but its tools could not be listed: ${saved.lastError}`
+                        : `${saved.display} is connected. Press Find tools, then add it to a project from its Projects row.`;
                   selected = serverKey(saved.id); // the new server's detail: Find tools is the next step
                 });
                 go(routes.integrations.href({ key: serverKey(saved.id) }));

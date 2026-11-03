@@ -1,9 +1,11 @@
 // Routing rules as an ordered list (evaluation order: highest priority first). Each rule shows when it applies and what it
-// does; the editor saves against the rule's version, so a stale edit is refused by the core and its words are shown.
+// does. The editor (F9) picks the scope (the workspace or a project by name), the turn kind and role the rule is for, and the
+// action's main keys; the CEL condition and the action's JSON stay under Advanced, opened by itself for a rule the pickers cannot
+// say. It saves against the rule's version; a rule that changed meanwhile is read again and the edit is put on the newer version.
 
 import { css, on, type Handle } from 'remix/component';
 import { ListOrdered, Pencil, Plus, Power, Trash2 } from 'lucide';
-import type { RouteRule } from '../../api/extTypes.ts';
+import type { RouteAction, RouteRule } from '../../api/extTypes.ts';
 import { parseInteger } from '../../lib/limits.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -12,9 +14,26 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { card, Section } from '../../ui/layout.tsx';
 import { MoreMenu } from '../../ui/menu.tsx';
+import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
-import { actionChips, MAX_CHAIN, newRule, parseChain, parseThen, RUN_KINDS, sortRules, splitChain, withChain } from './routing.ts';
+import {
+  actionChips,
+  MAX_CHAIN,
+  newRule,
+  parseChain,
+  parseThen,
+  pickersOf,
+  RULE_TABLES_FALLBACK,
+  RUN_KINDS,
+  runKindLabel,
+  sortRules,
+  splitChain,
+  staleVersion,
+  whenOf,
+  withAction,
+  withChain,
+} from './routing.ts';
 
 const editorCss = css({
   display: 'grid',
@@ -27,9 +46,11 @@ const editorCss = css({
 /** What the priority says when its text is not a whole number (M25): a typo is never saved as priority 0. */
 export const PRIORITY_ERROR = 'Enter the priority as a whole number, for example 10. A rule with a higher number is checked first.';
 
-function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCancel: () => void }>) {
+function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: (note?: string) => void; onCancel: () => void }>) {
   const s = services(handle);
   const act = action(handle);
+  // what a rule can say (route.rules.describe, F9); the editor still works with what it knows when the core cannot say
+  const tables = query(handle, { load: () => s.client.routeRulesDescribe() });
   const r0 = handle.props.rule;
   let priority = String(r0.priority);
   let priorityError: string | undefined;
@@ -39,6 +60,8 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
   let chain = split.chain;
   let scope = r0.scope;
   let enabled = r0.enabled;
+  // the raw When and Then are under Advanced; it opens by itself for a rule the pickers cannot say
+  const advancedAtStart = pickersOf(r0.when) === null;
 
   const save = async (button: HTMLElement) => {
     const { rule, onSaved } = handle.props;
@@ -59,38 +82,121 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
       return;
     }
     const action = withChain(parsed.value, parseChain(chain));
-    const r = await act.run('save', () => s.client.routeRulesSet({ ...rule, scope, priority: rank.value ?? 0, when, then: action, enabled }));
-    if (r) onSaved();
+    const want: RouteRule = { ...rule, scope, priority: rank.value ?? 0, when, then: action, enabled };
+    let note: string | undefined;
+    const r = await act.run('save', async () => {
+      try {
+        return await s.client.routeRulesSet(want);
+      } catch (err) {
+        // the rule changed since it was read: read it again and put this edit on the newer version (F9), saying so
+        if (!staleVersion(err) || !rule.id) throw err;
+        const now = (await s.client.routeRulesList()).find((x) => x.id === rule.id);
+        if (!now) throw new Error('The rule was deleted since you opened it, so your edit was not saved.');
+        note = `The rule "${rule.id}" had changed since you opened it. Your edit was saved over the newer version.`;
+        return await s.client.routeRulesSet({ ...want, version: now.version });
+      }
+    });
+    if (r) onSaved(note);
   };
 
   const set = (fn: (v: string) => void) => on('input', (e: Event & { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => {
     fn(e.currentTarget.value);
     void handle.update();
   });
+  const redraw = () => void handle.update();
+  // a picker changes the action's one key in the Then text (the text stays the one source)
+  const setKey = (key: keyof RouteAction, value: string | boolean) => {
+    const cur = parseThen(then);
+    if (!cur.ok) return;
+    then = JSON.stringify(withAction(cur.value, key, value), null, 2);
+    redraw();
+  };
 
   return () => {
     const { rule, onCancel } = handle.props;
+    const tb = tables.data ?? RULE_TABLES_FALLBACK;
+    const scopes = tb.scopes.some((x) => x.value === scope) ? tb.scopes : [...tb.scopes, { value: scope, label: scope }];
+    const picks = pickersOf(when);
+    const roles = picks?.role && !tb.roles.includes(picks.role) ? [...tb.roles, picks.role] : tb.roles;
+    const act0 = parseThen(then);
+    const cur: RouteAction = act0.ok ? act0.value : {};
+    const tierOpts = [{ value: '', label: 'No change' }, ...tb.tiers.map((x) => ({ value: x, label: x }))];
     return (
       <div mix={[card, editorCss]} data-testid="rule-editor">
         <div class="wide">
           <ErrorNote error={act.error} what="Rule not saved" />
         </div>
-        <Field label="Scope (workspace or project:<id>)">{(id) => <input id={id} value={scope} spellcheck={false} mix={set((v) => (scope = v))} />}</Field>
+        <Field label="Scope">
+          {(id) => <Select id={id} value={scope} options={scopes.map((x) => ({ value: x.value, label: x.label }))} testId="rule-scope" onChange={(v) => ((scope = v), redraw())} />}
+        </Field>
         <Field label="Priority" error={priorityError}>
           {(id) => <input id={id} inputMode="numeric" value={priority} {...errorAttrs(id, priorityError)} mix={set((v) => ((priority = v), (priorityError = undefined)))} />}
         </Field>
-        <div class="wide">
+        {picks ? (
+          <>
+            <Field label="Turn kind">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={picks.kind}
+                  testId="rule-run-kind"
+                  options={[{ value: '', label: 'Any turn' }, ...tb.runKinds.map((k) => ({ value: k, label: runKindLabel(k) === k ? k : `${runKindLabel(k)} (${k})` }))]}
+                  onChange={(v) => ((when = whenOf(v, picks.role)), redraw())}
+                />
+              )}
+            </Field>
+            <Field label="Agent role">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={picks.role}
+                  testId="rule-role"
+                  options={[{ value: '', label: 'Any role' }, ...roles.map((x) => ({ value: x, label: x }))]}
+                  onChange={(v) => ((when = whenOf(picks.kind, v)), redraw())}
+                />
+              )}
+            </Field>
+          </>
+        ) : (
+          <p class="wide" mix={faint} data-testid="rule-when-custom">
+            This rule&apos;s condition is written as an expression: change it under Advanced.
+          </p>
+        )}
+        {act0.ok ? (
+          <>
+            <Field label="Prefer tier">
+              {(id) => <Select id={id} value={cur.prefer_tier ?? ''} testId="rule-prefer-tier" options={tierOpts} onChange={(v) => setKey('prefer_tier', v)} />}
+            </Field>
+            <Field label="Require tier">
+              {(id) => <Select id={id} value={cur.require_tier ?? ''} testId="rule-require-tier" options={tierOpts} onChange={(v) => setKey('require_tier', v)} />}
+            </Field>
+            <Field label="Effort">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={cur.set_effort ?? ''}
+                  testId="rule-effort"
+                  options={[{ value: '', label: 'No change' }, ...tb.efforts.map((x) => ({ value: x, label: x }))]}
+                  onChange={(v) => setKey('set_effort', v)}
+                />
+              )}
+            </Field>
+            <div>
+              <Checkbox label="Refuse the model (deny)" checked={!!cur.deny} onChange={(v) => setKey('deny', v)} />
+            </div>
+          </>
+        ) : null}
+        <details class="wide" open={advancedAtStart} data-testid="rule-advanced">
+          <summary>Advanced: the condition and the action as written</summary>
           <Field label="When (CEL expression)">{(id) => <textarea id={id} rows={2} spellcheck={false} value={when} mix={set((v) => (when = v))} />}</Field>
           <p mix={faint} data-testid="run-kinds-hint">
             run.kind is one of {RUN_KINDS.map((k) => `'${k}'`).join(', ')}; for example <code>run.kind == 'room_reply'</code> for an agent&apos;s replies in the
             room.
           </p>
-        </div>
-        <div class="wide">
           <Field label="Then (action as JSON: prefer_tier, require_tier, require_capability, deny, escalate_to, handoff, set_effort, set_team_size, penalty)">
             {(id) => <textarea id={id} rows={5} spellcheck={false} value={then} mix={set((v) => (then = v))} />}
           </Field>
-        </div>
+        </details>
         <div class="wide">
           <Field label={`Fallback chain (models, in order, at most ${MAX_CHAIN})`}>
             {(id) => <input id={id} value={chain} spellcheck={false} placeholder="none" mix={set((v) => (chain = v))} />}
@@ -110,7 +216,8 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
           />
         </div>
         <p class="wide" mix={faint}>
-          Saving is checked against version {rule.version}; if the rule changed since you read it, the core refuses and you reload.
+          Saving is checked against version {rule.version}; if someone changed the rule since you opened it, it is read again and your edit is put on the newer
+          version.
         </p>
         <div mix={formActions}>
           <Button variant="primary" disabled={act.busy !== ''} mix={on('click', (e) => void save(e.currentTarget))}>
@@ -166,6 +273,7 @@ export function RulesPanel(handle: Handle) {
   let editing: string | undefined;
   let deleting: string | undefined; // the rule whose Delete was chosen from its menu: the row asks first
   let adding = false;
+  let note = ''; // what a save had to do (F9: an edit put on a newer version)
   const redraw = () => void handle.update();
 
   return () => {
@@ -189,11 +297,17 @@ export function RulesPanel(handle: Handle) {
         }
       >
         <ErrorNote error={q.error ?? act.error} what="Rules" />
+        {note ? (
+          <p mix={muted} data-testid="rule-note">
+            {note}
+          </p>
+        ) : null}
         {adding ? (
           <RuleEditor
             rule={newRule()}
-            onSaved={() => {
+            onSaved={(n) => {
               adding = false;
+              note = n ?? '';
               redraw();
               q.reload();
             }}
@@ -291,8 +405,9 @@ export function RulesPanel(handle: Handle) {
                 {editing === r.id ? (
                   <RuleEditor
                     rule={r}
-                    onSaved={() => {
+                    onSaved={(n) => {
                       editing = undefined;
+                      note = n ?? '';
                       redraw();
                       q.reload();
                     }}

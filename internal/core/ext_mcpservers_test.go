@@ -660,3 +660,26 @@ func TestAMcpWriteCallThatEndsTakesItsQuestionWithIt(t *testing.T) {
 		t.Fatalf("the question of a call that is gone is still open: %+v", left)
 	}
 }
+
+// Connecting a web server is one step (F12): mcplib.save with discover lists its tools right away for a typed https address,
+// and never starts a program (M24) or reaches a plain http address.
+func TestMCPSaveDiscoversAnHTTPSServerOnlyWhenAsked(t *testing.T) {
+	self, _ := os.Executable()
+	a := openMCPApp(t, &claude.Adapter{Exe: os.Args[0]})
+	var prog, web, quiet core.MCPLibraryServer
+	// a program: saved, not started
+	a.call("mcplib.save", core.MCPServerInput{ID: "prog", Display: "Program", Transport: "stdio", Argv: []string{self}, Discover: true}, &prog)
+	if prog.DiscoveredAt != 0 || prog.LastError != "" {
+		t.Fatalf("a program was started on save: %+v", prog)
+	}
+	// an https address with nothing listening: the save stands and the discovery's failure is the server's last error
+	a.call("mcplib.save", core.MCPServerInput{ID: "web", Display: "Web", Transport: "http", URL: "https://127.0.0.1:1/mcp", Discover: true}, &web)
+	if web.ID != "web" || web.LastError == "" {
+		t.Fatalf("an https server was not contacted on save: %+v", web)
+	}
+	// without discover nothing is contacted
+	a.call("mcplib.save", core.MCPServerInput{ID: "quiet", Display: "Quiet", Transport: "http", URL: "https://127.0.0.1:1/mcp"}, &quiet)
+	if quiet.LastError != "" {
+		t.Fatalf("a server was contacted without discover: %+v", quiet)
+	}
+}

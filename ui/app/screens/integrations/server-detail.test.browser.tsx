@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { McpLibraryServer, McpOAuthStatus } from '../../api/mcpClient.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { devLicense, libServer, projects } from '../mcp/fixtures.ts';
 import { IntegrationsScreen } from './integrations-screen.tsx';
 
@@ -103,13 +103,34 @@ describe('Your servers on the Integrations page', () => {
     expect(facts.textContent).toContain('send guard on');
     expect(card.querySelector('[data-testid="mcp-secrets"]')!.textContent).toContain('API_KEY');
     expect(card.textContent).not.toContain('sekret');
-    expect(card.querySelector('[data-testid="server-projects"]')!.textContent).toContain("Not in any project yet. Add it to a project, and choose which of its agents may use it, on that project's Integrations page.");
+    expect(card.querySelector('[data-testid="server-projects"]')!.textContent).toContain(
+      "Not in any project yet. No agent uses it until you choose which may, on the project's Integrations page.",
+    );
     expect(card.querySelectorAll('h2').length).toBe(1);
     // the address opens it too
     cleanup();
     const again = show({}, 'server-tst');
     await one(again, '[data-testid="server-detail"][data-server="tst"]');
     expect(again.$('[data-key="server-tst"]')!.getAttribute('aria-current')).toBe('true');
+  });
+
+  it('adds the server to a project from its detail, and links to that project to choose its agents (F12)', async () => {
+    const calls: Calls = [];
+    const r = show({ mcpLibList: async () => [libServer({ projects: ['prj_2'] })], mcpServerAdd: rec(calls, () => ({}) as never) as never });
+    await waitFor(() => expect(r.services.workspace.projectList.length).toBe(2), r);
+    const card = await pick(r);
+    // the detail names no project until the person asks to add it to one
+    expect(card.textContent).not.toContain('Alpha');
+    await r.act(() => (card.querySelector('[data-testid="server-add-to-project"]') as HTMLButtonElement).click());
+    const sel = await one(r, '[data-testid="server-add-project"]');
+    // only the projects that do not have it yet
+    expect(sel.closest('[data-testid="server-detail"]')).toBe(card);
+    const add = byText(card, 'button', 'Add') as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    await r.act(() => choose(sel, 'prj_1'));
+    await r.act(() => add.click());
+    await waitFor(() => expect(calls).toEqual([['prj_1', 'tst']]), r);
+    await waitFor(() => expect(card.querySelector('[data-testid="server-added"]')!.textContent).toContain('Added to Alpha. Choose its agents'), r);
   });
 
   it('carries nothing of a single project: it counts the projects without naming them, and reads no project', async () => {
@@ -194,13 +215,32 @@ describe('Your servers on the Integrations page', () => {
     await waitFor(() => expect(saves.length).toBe(1), r);
     expect(saves[0]![0]).toMatchObject({ id: 'tst', display: 'Test server', transport: 'stdio', argv: ['C:\\tools\\srv.exe', '--flag'], secretEnv: { API_KEY: 'abc123' }, guard: true });
     await waitFor(() => expect(note(r)).toContain('is connected'), r);
-    expect(note(r)).toContain("add it to a project on that project's Integrations page");
+    expect(note(r)).toContain('Press Find tools, then add it to a project from its Projects row.');
+    // a program is never started by saving it (M24): no discover asked
+    expect((saves[0]![0] as { discover?: boolean }).discover).toBe(undefined);
     expect(r.$('dialog[open]')).toBeNull();
     // the next step is in the new server's detail
     const card = await one(r, '[data-testid="server-detail"][data-server="tst"]');
     expect(byText(card, 'button', 'Find tools')).not.toBeNull();
     expect(r.went).toEqual(['/integrations/server-tst']);
     expect(r.container.innerHTML).not.toContain('abc123');
+  });
+
+  it('a web server at an https address lists its tools as it is saved, and the note says how many (F12)', async () => {
+    const saves: Calls = [];
+    let list: McpLibraryServer[] = [];
+    const listed = () => libServer({ projects: [], transport: 'http', url: 'https://mcp.example.com/mcp', argv: [], secretEnv: [] });
+    const r = show({ mcpLibList: async () => list, mcpLibSave: rec(saves, () => ((list = [listed()]), list[0]!)) as never });
+    const f = await addForm(r);
+    type(byLabel(f, 'Short id'), 'tst');
+    type(byLabel(f, 'Name'), 'Test server');
+    await r.act(() => choose(byLabel(f, 'Kind'), 'http'));
+    await waitFor(() => byLabel(f, /^Address/), r);
+    type(byLabel(f, /^Address/), 'https://mcp.example.com/mcp');
+    await r.act(() => byText(f, 'button', 'Connect server').click());
+    await waitFor(() => expect(saves.length).toBe(1), r);
+    expect(saves[0]![0]).toMatchObject({ transport: 'http', url: 'https://mcp.example.com/mcp', discover: true });
+    await waitFor(() => expect(note(r)).toContain(`is connected and its ${listed().tools.length} tools are listed`), r);
   });
 
   it('the dialog describes a server first, and imports from a file on the other choice; servers built into Drydock are not in it', async () => {

@@ -137,6 +137,19 @@ const (
 	NeedsReply      NeedsKind = "reply"
 	NeedsAgent      NeedsKind = "agent"
 	NeedsConnection NeedsKind = "connection"
+	// What the core already knows went wrong in the background, each with its fix (lane B batch B6, F14 and H7), added by the
+	// core from current state so each goes by itself once the state is fine again: a connected service whose key was refused,
+	// whose answers changed shape or whose sync failed three times in a row (NeedsIntegration), a model provider that is down
+	// (NeedsProvider), an MCP server whose sign-in expired (NeedsMCPSignIn), an agent CLI sending output Drydock does not read
+	// (NeedsAdapterDrift), a scan tool whose install failed (NeedsToolInstall) and a crash report from an earlier run
+	// (NeedsCrash). Subject names the thing: the integration's kind, the provider's id, the server's id, the adapter, the tool,
+	// the crash report's name.
+	NeedsIntegration  NeedsKind = "integration"
+	NeedsProvider     NeedsKind = "provider"
+	NeedsMCPSignIn    NeedsKind = "mcp_sign_in"
+	NeedsAdapterDrift NeedsKind = "adapter_drift"
+	NeedsToolInstall  NeedsKind = "tool_install"
+	NeedsCrash        NeedsKind = "crash"
 )
 
 // Budget states of a NeedsBudget item.
@@ -189,6 +202,8 @@ type NeedsYouItem struct {
 	JoinRequestID string `json:"joinRequestId,omitempty"`
 	Adapter       string `json:"adapter,omitempty"`
 	ConnectionKey string `json:"connectionKey,omitempty"`
+	// Subject is what a background problem's item is about (see NeedsIntegration and the kinds after it); empty for the rest.
+	Subject string `json:"subject,omitempty"`
 }
 
 // NeedsContext is a task's state in one line: who did the work, how big the change is, how its checks went and what its

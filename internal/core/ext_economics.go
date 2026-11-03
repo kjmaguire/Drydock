@@ -523,6 +523,12 @@ func (e *economics) methods() map[string]Method {
 			}
 			return r, err
 		}),
+		// what a rule can say, for the editor's pickers (F9): the scopes (the workspace and each project by name), the turn
+		// kinds a rule matches with run.kind, the roles of the workspace's agents (task.role), the tiers and efforts, and the
+		// action keys with the kind of value each takes
+		"route.rules.describe": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return c.routeRulesDescribe(ctx), nil
+		}),
 		"route.rules.delete": bind(func(ctx context.Context, p idParam) (any, error) {
 			err := e.rules.Delete(ctx, p.ID)
 			if err == nil {
@@ -953,4 +959,56 @@ func orLevel(l router.Level) router.Level {
 		return router.LevelBalanced
 	}
 	return l
+}
+
+// RuleScope is one scope a routing rule can have: "workspace" or "project:<id>", with its name.
+type RuleScope struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// RuleActionKey is one key of a rule's action and the kind of value it takes: tier, effort, bool, int, number or list.
+type RuleActionKey struct {
+	Key  string `json:"key"`
+	Kind string `json:"kind"`
+}
+
+// RuleTables is what route.rules.describe answers.
+type RuleTables struct {
+	Scopes   []RuleScope     `json:"scopes"`
+	RunKinds []string        `json:"runKinds"`
+	Roles    []string        `json:"roles"`
+	Tiers    []string        `json:"tiers"`
+	Efforts  []string        `json:"efforts"`
+	Actions  []RuleActionKey `json:"actions"`
+}
+
+// routeRuleRunKinds are the turn kinds a rule matches with run.kind: the agent turns first (P63), then the app's own calls.
+var routeRuleRunKinds = []router.RunKind{router.RunAgentTask, router.RunReview, router.RunRoomReply, router.RunSpec, router.RunTests, router.RunDesign,
+	router.RunSecurityReview, router.RunLead, router.RunRecommend, router.RunConsult, router.RunSummarize, router.RunClassify}
+
+func (c *Core) routeRulesDescribe(ctx context.Context) RuleTables {
+	t := RuleTables{Scopes: []RuleScope{{Value: "workspace", Label: "Workspace"}}, Roles: []string{},
+		Tiers:   []string{string(providers.TierPremium), string(providers.TierCheap), string(providers.TierFree)},
+		Efforts: []string{string(router.EffortLow), string(router.EffortMedium), string(router.EffortHigh), string(router.EffortMax)},
+		Actions: []RuleActionKey{{"prefer_tier", "tier"}, {"require_tier", "tier"}, {"escalate_to", "tier"}, {"set_effort", "effort"}, {"deny", "bool"},
+			{"handoff", "bool"}, {"set_team_size", "int"}, {"penalty", "number"}, {"require_capability", "list"}}}
+	for _, k := range routeRuleRunKinds {
+		t.RunKinds = append(t.RunKinds, string(k))
+	}
+	if ps, err := c.Projects(ctx); err == nil {
+		for _, p := range ps {
+			t.Scopes = append(t.Scopes, RuleScope{Value: "project:" + p.ID, Label: p.Name})
+		}
+	}
+	if rows, err := c.DB.Reader().QueryContext(ctx, `SELECT DISTINCT role FROM agents WHERE archived_at=0 AND role<>'' ORDER BY role`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var r string
+			if rows.Scan(&r) == nil {
+				t.Roles = append(t.Roles, r)
+			}
+		}
+	}
+	return t
 }

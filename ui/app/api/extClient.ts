@@ -78,6 +78,7 @@ import type {
   RouteSettingsPatch,
   RetentionBlock,
   RouteRule,
+  RuleTables,
   RuleReq,
   SchedulerStatus,
   LibrarySkill,
@@ -127,6 +128,7 @@ export interface ExtClient {
   routeRulesList(): Promise<RouteRule[]>;
   routeRulesSet(rule: RouteRule): Promise<RouteRule>;
   routeRulesDelete(id: string): Promise<void>;
+  routeRulesDescribe(): Promise<RuleTables>;
   routePreview(request: Record<string, unknown>): Promise<RoutePreview>;
   /** Several dry runs in one call, in the order asked (at most 32); a failed one is { error } in its place. */
   routePreviews(requests: Record<string, unknown>[]): Promise<(RoutePreview | { error: string })[]>;
@@ -366,6 +368,7 @@ export function createExtClient(t: Transport): ExtClient {
     routeRulesList: async () => arr((await call<{ rules: RouteRule[] | null }>('route.rules.list')).rules),
     routeRulesSet: (rule) => call('route.rules.set', { rule }),
     routeRulesDelete: (id) => voidCall('route.rules.delete', { id }),
+    routeRulesDescribe: () => call('route.rules.describe', {}),
     routePreview: (request) => call('route.preview', { request }),
     routePreviews: async (requests) => (await call<(RoutePreview | { error: string })[] | null>('route.previews', { requests })) ?? [],
     routeCheapGet: (providerId) => call('route.cheap.get', { providerId }),
