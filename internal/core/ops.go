@@ -490,6 +490,9 @@ func (c *Core) RespondScoped(ctx context.Context, runID, requestID, decision, sc
 	}
 	c.trustOnApproval(ctx, runID, requestID, decision)
 	review := c.isReviewRequest(ctx, runID, requestID)
+	if review && decision == "rejected" {
+		c.consumePRReview(ctx, runID, data)
+	}
 	var d []byte = data
 	if err := c.Engine.Resume(ctx, workflow.RunID(runID), workflow.Response{RequestID: workflow.RequestID(requestID), Decision: decision, By: c.Human(), Data: d}); err != nil {
 		return err

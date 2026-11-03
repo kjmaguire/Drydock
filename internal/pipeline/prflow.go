@@ -534,7 +534,7 @@ func PRFeedback(d Deps, src PRSource) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		nf, err := readPRFeedback(ctx, d, cfg, t)
+		nf, err := readPRFeedback(ctx, d, cfg, t, false)
 		if err != nil {
 			if ctx.Err() != nil {
 				return workflow.NodeOutput{}, err
@@ -570,10 +570,13 @@ type prFeedbackRead struct {
 	ids       []int64            // everything read this time, so it is not read again
 }
 
-// readPRFeedback reads what people wrote on the PR that was not read before (the ids in earlier pr_feedback, pr_comments and
-// pr_review_waiting evidence), splits it into trusted change requests and text for the person to read, and records the latter
-// (pr_comments) for the person. Drydock's own replies are skipped.
-func readPRFeedback(ctx context.Context, d Deps, cfg PRConfig, t tasks.Task) (prFeedbackRead, error) {
+// readPRFeedback reads what people wrote on the PR that was not read before (the ids in earlier pr_feedback and pr_comments
+// evidence), splits it into trusted change requests and text for the person to read, and records the latter (pr_comments) for
+// the person. Drydock's own replies are skipped. waiting also counts the change requests the waiting-review poll recorded
+// (pr_review_waiting) as read: only the poll itself does, so it records a request once. pr_feedback does not: a request the
+// poll recorded is still the worker's to act on unless the person sent the task back with it (ConsumePRReviewWaiting, which
+// records it as pr_feedback).
+func readPRFeedback(ctx context.Context, d Deps, cfg PRConfig, t tasks.Task, waiting bool) (prFeedbackRead, error) {
 	n := prNumber(t.PRRef)
 	var evs []host.ReviewEvent
 	if err := cfg.retry(ctx, func() (e error) { evs, e = cfg.GitHub.Reviews(ctx, n, time.Time{}); return e }); err != nil {
@@ -582,7 +585,7 @@ func readPRFeedback(ctx context.Context, d Deps, cfg PRConfig, t tasks.Task) (pr
 	seen := map[int64]bool{}
 	prior, _ := d.Tasks.Evidence(ctx, t.ID)
 	for _, e := range prior {
-		if e.Kind == "pr_feedback" || e.Kind == "pr_comments" || e.Kind == EvidencePRReviewWaiting {
+		if e.Kind == "pr_feedback" || e.Kind == "pr_comments" || waiting && e.Kind == EvidencePRReviewWaiting {
 			var fd struct {
 				Seen []int64 `json:"seen"`
 			}
@@ -594,6 +597,7 @@ func readPRFeedback(ctx context.Context, d Deps, cfg PRConfig, t tasks.Task) (pr
 	}
 	var r prFeedbackRead
 	var untrusted []host.ReviewEvent
+	var untrustedIDs []int64
 	for _, e := range evs {
 		if seen[e.ID] || strings.Contains(e.Body, drydockMarker) || strings.TrimSpace(e.Body) == "" && e.State != "CHANGES_REQUESTED" {
 			continue
@@ -604,11 +608,14 @@ func readPRFeedback(ctx context.Context, d Deps, cfg PRConfig, t tasks.Task) (pr
 			r.act = append(r.act, e)
 		default:
 			untrusted = append(untrusted, e)
+			untrustedIDs = append(untrustedIDs, e.ID)
 		}
 	}
 	r.untrusted = len(untrusted)
 	if len(untrusted) > 0 {
-		b, _ := json.Marshal(map[string]any{"seen": r.ids, "comments": untrusted})
+		// only the comments recorded here count as read through this evidence: the change requests read with them are read
+		// through their own record (pr_feedback, or the poll's pr_review_waiting)
+		b, _ := json.Marshal(map[string]any{"seen": untrustedIDs, "comments": untrusted})
 		_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "pr_comments", Summary: fmt.Sprintf("%d comment(s) on the PR for the human to read (not acted on automatically)", len(untrusted)), Data: b})
 	}
 	return r, nil
@@ -655,7 +662,7 @@ func WaitingPRReviews(ctx context.Context, d Deps, cfg PRConfig, t tasks.Task) (
 	if t.PRRef == "" {
 		return WaitingPRReview{}, nil
 	}
-	r, err := readPRFeedback(ctx, d, cfg, t)
+	r, err := readPRFeedback(ctx, d, cfg, t, true)
 	if err != nil {
 		return WaitingPRReview{}, err
 	}
@@ -672,6 +679,63 @@ func WaitingPRReviews(ctx context.Context, d Deps, cfg PRConfig, t tasks.Task) (
 	}
 	d.emit(ctx, "github.review_waiting", t, map[string]any{"number": prNumber(t.PRRef), "requests": len(r.act), "author": out.Author})
 	return out, nil
+}
+
+// ConsumePRReviewWaiting is called when a person sends a task back from its review with feedback (H12): when that feedback
+// carries a change request the waiting-review poll recorded (Send back with the GitHub review), the request is recorded as
+// pr_feedback, as if pr_feedback had read it, so pr_feedback does not send the same request back a second time and the push
+// after the rework answers its review threads. A request the person did not send stays unread for pr_feedback, which hands it
+// to the worker after the person's own rework. Reports whether a request was consumed.
+func ConsumePRReviewWaiting(ctx context.Context, d Deps, taskID, feedback string) bool {
+	if strings.TrimSpace(feedback) == "" {
+		return false
+	}
+	ev, err := d.Tasks.Evidence(ctx, taskID)
+	if err != nil {
+		return false
+	}
+	read := map[int64]bool{}
+	for _, e := range ev {
+		if e.Kind == "pr_feedback" {
+			var fd struct {
+				Seen []int64 `json:"seen"`
+			}
+			_ = json.Unmarshal(e.Data, &fd)
+			for _, id := range fd.Seen {
+				read[id] = true
+			}
+		}
+	}
+	for i := len(ev) - 1; i >= 0; i-- {
+		if ev[i].Kind != EvidencePRReviewWaiting {
+			continue
+		}
+		var w struct {
+			Seen       []int64 `json:"seen"`
+			CommentIDs []int64 `json:"commentIds"`
+			Author     string  `json:"author"`
+			Requests   int     `json:"requests"`
+			Feedback   string  `json:"feedback"`
+		}
+		if json.Unmarshal(ev[i].Data, &w) != nil || w.Feedback == "" || !strings.Contains(feedback, w.Feedback) {
+			continue
+		}
+		fresh := false
+		for _, id := range w.Seen {
+			if !read[id] {
+				fresh = true
+			}
+		}
+		if !fresh {
+			return false
+		}
+		data, _ := json.Marshal(map[string]any{"commentIds": w.CommentIDs, "seen": w.Seen, "author": w.Author})
+		failed := false
+		_, err := d.Tasks.AddEvidence(ctx, taskID, tasks.Evidence{Kind: "pr_feedback", Passed: &failed, Data: data,
+			Summary: fmt.Sprintf("%d change request(s) from %s on GitHub, sent back by the person", w.Requests, w.Author)})
+		return err == nil
+	}
+	return false
 }
 
 // MergePR merges through GitHub after the human approved. A PR that a human already merged on GitHub is accepted as

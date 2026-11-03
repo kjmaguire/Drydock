@@ -7,6 +7,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/safe"
+	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
 // Reviews posted while a pull request waits for the person (H12). The pr_feedback step reads a pull request's reviews once,
@@ -119,4 +120,22 @@ func (c *Core) prReviewNote(ctx context.Context, taskID string, created int64) *
 		return nil
 	}
 	return &PRReviewNote{Summary: summary, Author: d.Author, Feedback: d.Feedback}
+}
+
+// consumePRReview records, when a person sends a task back from its review with a collaborator's change request the poll
+// recorded (Send back with the GitHub review), that the request was handed to the worker (pipeline.ConsumePRReviewWaiting):
+// pr_feedback then does not send it back again, and the push after the rework answers its review threads. A rejection in the
+// person's own words consumes nothing, so pr_feedback still hands the collaborator's request to the worker afterwards.
+func (c *Core) consumePRReview(ctx context.Context, runID string, data []byte) {
+	var r struct {
+		Feedback string `json:"feedback"`
+	}
+	if json.Unmarshal(data, &r) != nil || r.Feedback == "" {
+		return
+	}
+	info, err := c.Engine.Status(ctx, workflow.RunID(runID))
+	if err != nil || info.TaskID == "" {
+		return
+	}
+	pipeline.ConsumePRReviewWaiting(ctx, c.Deps, info.TaskID, r.Feedback)
 }

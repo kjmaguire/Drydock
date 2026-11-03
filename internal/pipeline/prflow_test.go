@@ -724,3 +724,115 @@ func TestPRFlowReviewsPostedWhileWaitingForApprovalReachThePerson(t *testing.T) 
 		t.Fatalf("a second read must find nothing new: %+v %v", again, err)
 	}
 }
+
+// rightImplDocs is rightImplDoc with Add documented too: a third correct version for a second rework.
+const rightImplDocs = "package gocalc\n\n// Add returns a plus b.\nfunc Add(a, b int) int { return a + b }\n\n// Subtract returns a minus b.\nfunc Subtract(a, b int) int { return a - b }\n"
+
+// waitingReviewRun is a PR-flow run waiting at its review with a collaborator's change request (a review and an inline thread)
+// recorded by the waiting-review poll.
+func waitingReviewRun(t *testing.T) (*env, *githubFixture, workflow.RunID, roles, string) {
+	t.Helper()
+	ad, cfg, lg := fakeRoles(t,
+		fakeagent.Script{
+			Rules: []fakeagent.Rule{
+				{Match: "reviewed the pull request", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDocs}}, {Say: "renamed"}}},
+				{Match: "Please document Add.", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDocs}}, {Say: "documented"}}},
+			},
+			Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "implemented"}}},
+		},
+		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
+	e := setup(t, cfg, ad)
+	f := &githubFixture{}
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 6)
+	e.awaitPending(t, id, "review")
+	f.mu.Lock()
+	f.reviews = func(bool) []map[string]any {
+		return []map[string]any{{"id": 301, "state": "CHANGES_REQUESTED", "body": "Please rename Subtract to Minus.", "user": map[string]string{"login": "kyle"}, "author_association": "OWNER", "submitted_at": "2026-10-08T11:00:00Z"}}
+	}
+	f.inline = func(bool) []map[string]any {
+		return []map[string]any{{"id": 303, "body": "Rename it here.", "path": "calc.go", "line": 6, "user": map[string]string{"login": "kyle"}, "author_association": "OWNER", "created_at": "2026-10-08T11:00:01Z"}}
+	}
+	f.mu.Unlock()
+	pr, err := src(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _ := e.tasks.Get(context.Background(), e.task.ID)
+	if got, err := pipeline.WaitingPRReviews(context.Background(), e.deps, pr, task); err != nil || got.Requests != 2 {
+		t.Fatalf("read while waiting = %+v, %v", got, err)
+	}
+	ev, _ := e.tasks.Evidence(context.Background(), task.ID)
+	var wd struct{ Feedback string }
+	for _, x := range ev {
+		if x.Kind == pipeline.EvidencePRReviewWaiting {
+			_ = json.Unmarshal(x.Data, &wd)
+		}
+	}
+	if !strings.Contains(wd.Feedback, "Please rename Subtract to Minus.") {
+		t.Fatalf("waiting feedback %q", wd.Feedback)
+	}
+	return e, f, id, lg, wd.Feedback
+}
+
+// H12 review fix: a change request the poll recorded while the approval waited is not lost when the person sends the task
+// back in their own words: after that rework pr_feedback still hands the collaborator's request to the worker and the push
+// after it answers the collaborator's thread.
+func TestPRFlowAWaitingReviewStillReachesTheWorkerAfterTheOwnersOwnRework(t *testing.T) {
+	e, f, id, lg, _ := waitingReviewRun(t)
+	if err := e.answer(t, id, "rejected", "human:kyle", `{"feedback":"Please document Add."}`); err != nil {
+		t.Fatal(err)
+	}
+	e.awaitPending(t, id, "review")
+	wp := prompts(lg.workLog)
+	collab := 0
+	for _, p := range wp {
+		if strings.Contains(p, "Please rename Subtract to Minus.") {
+			collab++
+		}
+	}
+	if len(wp) != 3 || !strings.Contains(wp[1], "Please document Add.") || collab != 1 || !strings.Contains(wp[2], "Please rename Subtract to Minus.") {
+		t.Fatalf("the collaborator's request must reach the worker once, after the person's own rework: %q", wp)
+	}
+	f.mu.Lock()
+	replies := f.replies[303]
+	f.mu.Unlock()
+	if len(replies) != 1 || !strings.Contains(replies[0], "Addressed in") {
+		t.Fatalf("the collaborator's thread must be answered once: %v", f.replies)
+	}
+}
+
+// H12 review fix: Send back with the GitHub review hands the request to the worker once: pr_feedback does not send the same
+// request back a second time, and the push after the rework answers the collaborator's thread.
+func TestPRFlowSendingBackTheGitHubReviewHandsItOverOnce(t *testing.T) {
+	e, f, id, lg, fb := waitingReviewRun(t)
+	if !pipeline.ConsumePRReviewWaiting(context.Background(), e.deps, e.task.ID, fb) {
+		t.Fatal("the sent-back request was not recorded as handed over")
+	}
+	if pipeline.ConsumePRReviewWaiting(context.Background(), e.deps, e.task.ID, fb) {
+		t.Fatal("a request is handed over once")
+	}
+	b, _ := json.Marshal(map[string]string{"feedback": fb})
+	if err := e.answer(t, id, "rejected", "human:kyle", string(b)); err != nil {
+		t.Fatal(err)
+	}
+	e.awaitPending(t, id, "review")
+	wp := prompts(lg.workLog)
+	if len(wp) != 2 || !strings.Contains(wp[1], "Please rename Subtract to Minus.") {
+		t.Fatalf("the request must reach the worker once: %q", wp)
+	}
+	f.mu.Lock()
+	replies := f.replies[303]
+	f.mu.Unlock()
+	if len(replies) != 1 || !strings.Contains(replies[0], "Addressed in") {
+		t.Fatalf("the collaborator's thread must be answered once: %v", f.replies)
+	}
+}
+
+// A rejection in the person's own words hands nothing over: the request stays for pr_feedback.
+func TestConsumePRReviewWaitingNeedsTheRequestsText(t *testing.T) {
+	e, _, _, _, _ := waitingReviewRun(t)
+	if pipeline.ConsumePRReviewWaiting(context.Background(), e.deps, e.task.ID, "Please document Add.") {
+		t.Fatal("the person's own words handed over the collaborator's request")
+	}
+}

@@ -277,6 +277,42 @@ describe('PullsScreen', () => {
       await waitFor(() => expect(githubIssues.calls.length).toBe(2), r);
     });
 
+    it('a refused issue does not stop the bulk import, says why, and is left out of the next one', async () => {
+      const githubImportIssue = recorder((_p: string, n: number) => (n === 12 ? Promise.reject(new Error('issue #12 has a high injection risk')) : task({ id: `t${n}`, seq: n })));
+      const more: GitHubIssue = { number: 15, title: 'More', body: '', html_url: '', state: 'open', labels: [], author: 'bob' };
+      const r = mount(<PullsScreen />, svc({ githubIssues: async () => [...issues, more], githubImportIssue }, { agents: [] }));
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(4), r);
+      await r.act(() => byText(r.container, 'button', 'Import 4 as backlog tasks').click());
+      await waitFor(() => expect(githubImportIssue.calls.map((c) => c[1])).toEqual([12, 13, 14, 15]), r);
+      await waitFor(() => expect(r.$('[data-testid="gh-import-status"]')!.textContent).toBe('Imported 3 issues as backlog tasks. #12 was not imported: issue #12 has a high injection risk.'), r);
+      // #12 keeps its own buttons, but no bulk import offers it again (one issue left is not a bulk)
+      expect(byText(r.container, 'button', 'Import issue #12 as a task')).toBeTruthy();
+      expect(r.$('[data-testid="gh-import-all"]')).toBeNull();
+    });
+
+    it('switching project shows none of the last project: no imported mark by number, no buttons on its issues', async () => {
+      const projects = [{ id: 'prj_1', name: 'gocalc' }, { id: 'prj_2', name: 'other' }] as never;
+      const later: { release?: (v: GitHubIssue[]) => void } = {};
+      const githubIssues = recorder((p: string) => (p === 'prj_1' ? [issues[0]!] : new Promise<GitHubIssue[]>((res) => { later.release = res; })));
+      const githubImportIssue = recorder(() => task({ id: 't9', seq: 9 }));
+      const s = svc({ projectList: async () => projects, githubIssues, githubImportIssue }, { agents: [] });
+      const r = mount(<PullsScreen />, s);
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(1), r);
+      await r.act(() => byText(r.container, 'button', 'Import issue #12 as a task').click());
+      await waitFor(() => expect(r.$('[data-testid="gh-issue-task"]')!.getAttribute('href')).toBe('/task/t9'), r);
+      await r.act(() => s.workspace.selectProject('prj_2'));
+      // while the other project's issues load, the last project's list is gone and nothing can be imported from it
+      await waitFor(() => expect(githubIssues.calls.map((c) => c[0])).toEqual(['prj_1', 'prj_2']), r);
+      expect(r.$$('[data-testid="gh-issue"]').length).toBe(0);
+      expect(r.$('[data-testid="gh-import-status"]')).toBeNull();
+      // the other project's own issue #12 is not marked as imported by the first project's task
+      await r.act(() => later.release?.([{ ...issues[0]!, title: 'Another project issue' }]));
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(1), r);
+      expect(r.$('[data-testid="gh-issue-task"]')).toBeNull();
+      expect(byText(r.container, 'button', 'Import issue #12 as a task')).toBeTruthy();
+      expect(githubImportIssue.calls).toEqual([['prj_1', 12, undefined]]);
+    });
+
     it('opening the page again within a minute does not ask GitHub again', async () => {
       const githubIssues = recorder(() => issues);
       const s = svc({ githubIssues });

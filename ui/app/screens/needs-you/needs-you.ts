@@ -17,6 +17,8 @@ export const KIND_LABEL: Record<string, string> = {
   join_request: 'Request to join',
   agent: 'Agent',
   connection: 'Agent CLI',
+  // a collaborator's change request on GitHub while the review and merge waits (H12)
+  pr_review: 'Changes asked on GitHub',
 };
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */

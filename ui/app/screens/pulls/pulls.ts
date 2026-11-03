@@ -31,3 +31,10 @@ export function importLine(n: number, task: Pick<TaskCreateResult, 'seq' | 'star
   if (started) return `Issue #${n} is task #${task.seq}. ${started.worker} builds it and ${started.reviewer} reviews it; it has started.`;
   return `Issue #${n} is task #${task.seq} in the backlog.`;
 }
+
+/** What a bulk import did: how many issues it imported, and each one it could not import and why. */
+export function bulkImportLine(done: number, failed: readonly { n: number; why: string }[]): string {
+  const made = `Imported ${done} ${done === 1 ? 'issue' : 'issues'} as backlog tasks.`;
+  if (failed.length === 0) return made;
+  return `${made} ${failed.map((f) => `#${f.n} was not imported: ${f.why}`).join('. ')}${/[.!?]$/.test(failed[failed.length - 1]!.why) ? '' : '.'}`;
+}

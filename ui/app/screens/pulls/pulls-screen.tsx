@@ -18,7 +18,7 @@ import { t } from '../../ui/tokens.ts';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { pickPair } from '../workspace/start.ts';
 import { IssueItem, PullRequestPanel } from './pr-parts.tsx';
-import { hasLabels, importedTask, importLine, ISSUES_FRESH_MS, labelList } from './pulls.ts';
+import { bulkImportLine, hasLabels, importedTask, importLine, ISSUES_FRESH_MS, labelList } from './pulls.ts';
 
 const pickerCss = css({
   display: 'flex',
@@ -88,11 +88,22 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
   let importing: number | 'all' | undefined;
   let importError: Error | undefined;
   let status: { text: string; task?: { id: string; seq: number } } | undefined;
-  const madeHere = new Map<number, { id: string; seq: number }>();
+  // the tasks imported on this page, by project and issue number: an issue number is a project's own
+  const madeHere = new Map<string, { id: string; seq: number }>();
+  const madeKey = (projectId: string, n: number) => `${projectId}#${n}`;
+  // the issues a bulk import was refused for: still listed, with their own buttons, but not in the next bulk import
+  const refused = new Set<string>();
 
   const loadIssues = async (fresh: boolean) => {
     const projectId = s.project.id;
     if (!projectId || loadingIssues) return;
+    if (projectId !== issuesFor) {
+      // another project: nothing of the last one stays on screen (its issues' numbers would import this project's issues)
+      issues = undefined;
+      issueError = undefined;
+      importError = undefined;
+      status = undefined;
+    }
     issuesFor = projectId;
     const cache = issueCacheOf(s.client);
     const kept = cache.get(projectId);
@@ -105,10 +116,11 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
     issueError = undefined;
     void handle.update();
     try {
-      issues = await s.client.githubIssues(projectId);
-      cache.set(projectId, { at: Date.now(), list: issues });
+      const list = await s.client.githubIssues(projectId);
+      cache.set(projectId, { at: Date.now(), list });
+      if (s.project.id === projectId) issues = list;
     } catch (e) {
-      issueError = e instanceof Error ? e : new Error(String(e));
+      if (s.project.id === projectId) issueError = e instanceof Error ? e : new Error(String(e));
     } finally {
       loadingIssues = false;
       void handle.update();
@@ -121,15 +133,16 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
     const name = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
     return pair ? { ...pair, workerName: name(pair.worker), reviewerName: name(pair.reviewer) } : undefined;
   };
-  const taskOf = (n: number) => madeHere.get(n) ?? importedTask(s.project.taskList, n);
+  const taskOf = (n: number) => (s.project.id ? madeHere.get(madeKey(s.project.id, n)) : undefined) ?? importedTask(s.project.taskList, n);
 
   // one issue: a backlog task, or (start) assigned to the crew's pair and started; the page stays where it is
   const importOne = async (n: number, start: boolean) => {
     const projectId = s.project.id;
     const pair = start ? pairNames() : undefined;
-    if (!projectId || (start && !pair)) return undefined;
+    // the list shown must be this project's: while another project's issues load, nothing is imported
+    if (!projectId || projectId !== issuesFor || loadingIssues || (start && !pair)) return undefined;
     const created = await s.client.githubImportIssue(projectId, n, pair ? { assignee: pair.worker, reviewer: pair.reviewer, start: true } : undefined);
-    madeHere.set(n, { id: created.id, seq: created.seq });
+    madeHere.set(madeKey(projectId, n), { id: created.id, seq: created.seq });
     handle.props.onImported?.(created);
     return { created, pair };
   };
@@ -150,23 +163,27 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
     }
   };
 
-  // every listed issue not imported yet, as backlog tasks only (nothing starts)
+  // every listed issue not imported yet, as backlog tasks only (nothing starts); an issue that is refused (a high injection
+  // risk, say) does not stop the ones after it, and is left out of the next bulk import
   const importAll = async (ns: number[]) => {
     importing = 'all';
     importError = undefined;
     status = undefined;
     void handle.update();
     let done = 0;
+    const failed: { n: number; why: string }[] = [];
     try {
       for (const n of ns) {
-        await importOne(n, false);
-        done++;
+        try {
+          if (await importOne(n, false)) done++;
+        } catch (e) {
+          failed.push({ n, why: e instanceof Error ? e.message : String(e) });
+          refused.add(madeKey(issuesFor ?? '', n));
+        }
       }
-    } catch (e) {
-      importError = e instanceof Error ? e : new Error(String(e));
     } finally {
       importing = undefined;
-      status = { text: `Imported ${done} ${done === 1 ? 'issue' : 'issues'} as backlog tasks.` };
+      status = { text: bulkImportLine(done, failed) };
       void handle.update();
     }
   };
@@ -189,6 +206,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
     const wanted = labelList(labels);
     const shown = (issues ?? []).filter((i) => hasLabels(i, wanted));
     const waiting = shown.filter((i) => !taskOf(i.number));
+    const bulk = waiting.filter((i) => !refused.has(madeKey(s.project.id ?? '', i.number)));
     const list = withPR();
     const taskId = currentId();
     const current = list.find((x) => x.id === taskId);
@@ -247,9 +265,9 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
             <Button type="submit" icon={RefreshCw} disabled={loadingIssues || !s.project.id}>
               {loadingIssues ? 'Reading issues...' : 'Refresh issues'}
             </Button>
-            {waiting.length > 1 ? (
-              <Button icon={Import} disabled={importing !== undefined} data-testid="gh-import-all" mix={on('click', () => void importAll(waiting.map((i) => i.number)))}>
-                {importing === 'all' ? 'Importing...' : `Import ${waiting.length} as backlog tasks`}
+            {bulk.length > 1 ? (
+              <Button icon={Import} disabled={importing !== undefined || loadingIssues} data-testid="gh-import-all" mix={on('click', () => void importAll(bulk.map((i) => i.number)))}>
+                {importing === 'all' ? 'Importing...' : `Import ${bulk.length} as backlog tasks`}
               </Button>
             ) : null}
           </form>
@@ -279,7 +297,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
                   key={i.number}
                   issue={i}
                   imported={taskOf(i.number)}
-                  busy={importing !== undefined}
+                  busy={importing !== undefined || loadingIssues}
                   onImport={() => void doImport(i.number, false)}
                   onImportStart={pair ? () => void doImport(i.number, true) : undefined}
                 />
