@@ -958,6 +958,21 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     expect(form.closest('dialog')!.textContent).toContain('New agent');
   });
 
+  it("?new=agent&describe= opens Describe with the sentence in its box, and drafts nothing (the Plan page's Add a planner, X45)", async () => {
+    const before = window.location.pathname + window.location.search;
+    window.history.replaceState(window.history.state, '', '/team?new=agent&describe=' + encodeURIComponent('Plans each feature and writes the spec before anyone codes.'));
+    let drafted = 0;
+    try {
+      const { r } = showCrew({ agentDraft: async () => (drafted++, {}) as never });
+      const form = await waitFor(() => must(r.$('dialog[open] [data-testid="describe-agent"]'), 'no form'), r);
+      expect(form.querySelector('textarea')!.value).toBe('Plans each feature and writes the spec before anyone codes.');
+      expect(window.location.search).toBe('');
+      expect(drafted).toBe(0);
+    } finally {
+      window.history.replaceState(window.history.state, '', before);
+    }
+  });
+
   it('says what a team needs when there is no agent yet, and draws no timeline', async () => {
     const { r } = showCrew({ agentTimeline: async (since) => ({ since, until: NOW, agents: [] }) }, []);
     await waitFor(() => expect(r.container.textContent).toContain('A task needs a worker and a different agent as reviewer'), r);

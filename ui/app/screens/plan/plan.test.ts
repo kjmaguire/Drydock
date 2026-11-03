@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Plan, ProposedTask } from '../../api/extTypes.ts';
-import { acceptLabel, andList, assignable, closure, dependencyWaits, deselect, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, startedText, stepStates, toggle } from './plan.ts';
+import { acceptLabel, andList, assignable, autoPlanner, closure, plansByRole, dependencyWaits, deselect, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, startedText, stepStates, toggle } from './plan.ts';
 
 const pt = (key: string, deps: string[] = []): ProposedTask => ({
   key,
@@ -118,5 +118,20 @@ describe('dependencyWaits (X47)', () => {
     const tick = { promoted: [], started: ['task_mul', 'task_div'], skipped: [{ taskId: 'task_mod', reason: 'x' }], active: 2, capacity: 2, max: 2 };
     expect(dependencyWaits(p, tick)).toEqual([]);
     expect(dependencyWaits({ ...p, createdTasks: { mul: 'task_mul' } }, { ...tick, started: [], skipped: [] })).toEqual([]);
+  });
+});
+
+describe('who plans (X45)', () => {
+  const a = (id: string, role: string) => ({ id, role });
+  it('picks as the core does: pm or planner, then architect, then the lead, then anyone', () => {
+    expect(autoPlanner([a('b', 'backend'), a('p', 'Planner')])).toEqual({ agent: a('p', 'Planner'), fallback: false });
+    expect(autoPlanner([a('x', 'architect'), a('p', 'product_manager')]).agent?.id).toBe('p');
+    expect(autoPlanner([a('b', 'backend'), a('x', 'architect')]).agent?.id).toBe('x');
+    expect(autoPlanner([a('b', 'backend'), a('l', 'Team Lead')])).toEqual({ agent: a('l', 'Team Lead'), fallback: true });
+    expect(autoPlanner([a('b', 'backend'), a('r', 'reviewer')])).toEqual({ agent: a('b', 'backend'), fallback: true });
+    expect(autoPlanner([])).toEqual({ agent: undefined, fallback: false });
+  });
+  it('a planner, pm or architect plans by role; the lead and the rest do not', () => {
+    expect([plansByRole('planner'), plansByRole('PM'), plansByRole('software-architect'), plansByRole('team lead'), plansByRole('backend')]).toEqual([true, true, true, false, false]);
   });
 });

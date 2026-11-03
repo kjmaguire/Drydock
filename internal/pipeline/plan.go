@@ -86,7 +86,7 @@ func NormalizePlanRole(s string) string {
 		return RoleLead
 	}
 	switch n {
-	case "product manager", "product":
+	case "product manager", "product", "product owner", "planner", "planning":
 		return "pm"
 	case "ux", "designer", "ui designer", "ux/ui designer":
 		return "ux designer"
@@ -439,6 +439,9 @@ type PlanDeps struct {
 	Team func(ctx context.Context, projectID string) ([]TeamMember, error)
 	// Assign sets the worker and reviewer of a created task from its role. Optional; failures are reported, not fatal.
 	Assign func(ctx context.Context, t tasks.Task, role string) error
+	// LinkRequirement links a created task's acceptance criteria to a requirement the plan was made from, as the human who
+	// accepted the plan (their accept is the decision). Optional; failures are reported in the run's result, not fatal.
+	LinkRequirement func(ctx context.Context, by, requirementID, taskID string) error
 }
 
 // PlanInput is the run input of the plan-team workflow.
@@ -448,6 +451,8 @@ type PlanInput struct {
 	Goal         string `json:"goal"`
 	Requirements string `json:"requirements,omitempty"`
 	PlannerAgent string `json:"plannerAgent,omitempty"`
+	// RequirementIDs are the project's requirement documents the plan was made from: each created task is linked to them.
+	RequirementIDs []string `json:"requirementIds,omitempty"`
 }
 
 // PlanReviewPayload is what the human sees when asked to review a plan.
@@ -500,7 +505,9 @@ func PlanAssignable(p Proposal, team []TeamMember) map[string]bool {
 type PlanResult struct {
 	Created    map[string]string `json:"created"` // key -> task id
 	Unassigned []string          `json:"unassigned,omitempty"`
-	By         string            `json:"by"`
+	// Unlinked are "task key: requirement id" pairs whose trace link could not be made.
+	Unlinked []string `json:"unlinked,omitempty"`
+	By       string   `json:"by"`
 }
 
 func (pd PlanDeps) planInput(in workflow.NodeInput) (PlanInput, error) {
@@ -764,6 +771,7 @@ func (pd PlanDeps) planCreate() workflow.NodeHandler {
 			if id := prior[k]; id != "" {
 				if _, err := pd.Tasks.Get(ctx, id); err == nil {
 					res.Created[k] = id
+					pd.linkRequirements(ctx, pi, h.By, k, id, &res) // a link is idempotent: a retry makes the ones a crash missed
 					continue
 				}
 			}
@@ -784,6 +792,7 @@ func (pd PlanDeps) planCreate() workflow.NodeHandler {
 			}
 			res.Created[k] = nt.ID
 			pd.setPlan(ctx, pi.PlanID, "PROPOSED", nil, res.Created, "", "") // remember progress so a retry does not duplicate
+			pd.linkRequirements(ctx, pi, h.By, k, nt.ID, &res)
 			if pd.Assign != nil {
 				if err := pd.Assign(ctx, nt, t.Role); err != nil {
 					res.Unassigned = append(res.Unassigned, k)
@@ -794,6 +803,18 @@ func (pd PlanDeps) planCreate() workflow.NodeHandler {
 		pd.emitPlan(ctx, pi, "plan.accepted", map[string]any{"planId": pi.PlanID, "created": res.Created, "by": h.By})
 		b, _ := json.Marshal(res)
 		return workflow.NodeOutput{Value: b}, nil
+	}
+}
+
+// linkRequirements links a created task to every requirement the plan was made from (X48), as the human who accepted it.
+func (pd PlanDeps) linkRequirements(ctx context.Context, pi PlanInput, by, key, taskID string, res *PlanResult) {
+	if pd.LinkRequirement == nil {
+		return
+	}
+	for _, rid := range pi.RequirementIDs {
+		if err := pd.LinkRequirement(ctx, by, rid, taskID); err != nil {
+			res.Unlinked = append(res.Unlinked, key+": "+rid)
+		}
 	}
 }
 
@@ -841,6 +862,32 @@ func (pd PlanDeps) PlanGraph() *workflow.Graph {
 
 // NewPlan inserts the plan row and returns its id; the caller starts the workflow with PlanInput.
 func NewPlan(ctx context.Context, db *storage.DB, projectID, goal, requirements, plannerAgent string) (PlanInput, error) {
+	return NewPlanFrom(ctx, db, projectID, goal, requirements, plannerAgent, nil)
+}
+
+// ClipRequirements cuts a requirements text to what a plan holds (at a character boundary, saying so at the end): the
+// requirement documents a plan is made from can be longer than the text a person types.
+func ClipRequirements(s string) string {
+	const note = "\n\n(cut here: the requirements are longer than a plan holds)"
+	if len(s) <= maxRequirements {
+		return s
+	}
+	cut := maxRequirements - len(note)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + note
+}
+
+// maxPlanRequirementDocs bounds the requirement documents one plan is made from.
+const maxPlanRequirementDocs = 20
+
+// NewPlanFrom is NewPlan for a plan made from the project's requirement documents: requirements already holds their text (the
+// caller builds it), and requirementIDs are kept with the plan so its accepted tasks are linked to them.
+func NewPlanFrom(ctx context.Context, db *storage.DB, projectID, goal, requirements, plannerAgent string, requirementIDs []string) (PlanInput, error) {
+	if len(requirementIDs) > maxPlanRequirementDocs {
+		return PlanInput{}, fmt.Errorf("plan: choose at most %d requirement documents", maxPlanRequirementDocs)
+	}
 	goal = strings.TrimSpace(cleanText(goal))
 	switch {
 	case goal == "":
@@ -852,15 +899,20 @@ func NewPlan(ctx context.Context, db *storage.DB, projectID, goal, requirements,
 	case !utf8.ValidString(requirements):
 		return PlanInput{}, errors.New("plan: the requirements are not valid UTF-8 text")
 	}
-	pi := PlanInput{PlanID: ids.New("plan"), ProjectID: projectID, Goal: goal, Requirements: requirements, PlannerAgent: plannerAgent}
+	pi := PlanInput{PlanID: ids.New("plan"), ProjectID: projectID, Goal: goal, Requirements: requirements, PlannerAgent: plannerAgent, RequirementIDs: requirementIDs}
+	reqIDs := ""
+	if len(requirementIDs) > 0 {
+		b, _ := json.Marshal(requirementIDs)
+		reqIDs = string(b)
+	}
 	sha := ""
 	if requirements != "" {
 		sum := sha256.Sum256([]byte(requirements))
 		sha = hex.EncodeToString(sum[:])
 	}
 	err := db.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO plans(id,project_id,goal,requirements_sha,planner_agent,status,created_at) VALUES(?,?,?,?,?,'PLANNING',?)`,
-			pi.PlanID, projectID, goal, sha, plannerAgent, storage.Now())
+		_, err := tx.ExecContext(ctx, `INSERT INTO plans(id,project_id,goal,requirements_sha,planner_agent,status,created_at,requirement_ids) VALUES(?,?,?,?,?,'PLANNING',?,?)`,
+			pi.PlanID, projectID, goal, sha, plannerAgent, storage.Now(), reqIDs)
 		return err
 	})
 	return pi, err
@@ -880,15 +932,20 @@ type Plan struct {
 	CreatedAt int64             `json:"createdAt"`
 	DecidedAt int64             `json:"decidedAt,omitempty"`
 	DecidedBy string            `json:"decidedBy,omitempty"`
+	// RequirementIDs are the requirement documents the plan was made from (its accepted tasks are linked to them).
+	RequirementIDs []string `json:"requirementIds,omitempty"`
 }
 
-const planCols = `id,project_id,run_id,goal,status,planner_agent,proposal,accepted_tasks,error,created_at,decided_at,decided_by`
+const planCols = `id,project_id,run_id,goal,status,planner_agent,proposal,accepted_tasks,error,created_at,decided_at,decided_by,requirement_ids`
 
 func scanPlan(sc interface{ Scan(...any) error }) (Plan, error) {
 	var p Plan
-	var prop, acc string
-	if err := sc.Scan(&p.ID, &p.ProjectID, &p.RunID, &p.Goal, &p.Status, &p.Planner, &prop, &acc, &p.Error, &p.CreatedAt, &p.DecidedAt, &p.DecidedBy); err != nil {
+	var prop, acc, reqs string
+	if err := sc.Scan(&p.ID, &p.ProjectID, &p.RunID, &p.Goal, &p.Status, &p.Planner, &prop, &acc, &p.Error, &p.CreatedAt, &p.DecidedAt, &p.DecidedBy, &reqs); err != nil {
 		return p, err
+	}
+	if reqs != "" {
+		_ = json.Unmarshal([]byte(reqs), &p.RequirementIDs)
 	}
 	if prop != "" && prop != "{}" {
 		var pr Proposal

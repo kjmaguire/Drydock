@@ -92,5 +92,6 @@ describe('Work (decision P141)', () => {
     expect(modelEffort('sonnet', '', name)).toBe('sonnet');
     expect(editAgentHref('agt 1')).toBe('/team?edit=agt%201');
     expect(newAgentHref()).toBe('/team?new=agent');
+    expect(newAgentHref('Plans each feature.')).toBe('/team?new=agent&describe=Plans%20each%20feature.');
   });
 });

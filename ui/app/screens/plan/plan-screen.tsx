@@ -1,4 +1,4 @@
-// Plan with PlanTeam: describe a goal, an agent with the pm or architect role proposes a graph of tasks, and nothing is
+// Plan with PlanTeam: describe a goal, a planner on the crew (its pm or planner, else its architect, else its lead, else anyone: X45) proposes a graph of tasks, and nothing is
 // created until the human accepts a dependency-closed selection of them (edited if they like). The planner's text is
 // outside text: it is rendered inert through the Markdown component and decides nothing.
 
@@ -19,7 +19,29 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { plural } from '../../lib/format.ts';
 import { newAgentHref } from '../work/edit-agent.ts';
-import { acceptLabel, andList, assignable, dependencyWaits, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, planTone, stageText, startedText, STEPS, stepStates, toggle, type StepState } from './plan.ts';
+import {
+  acceptLabel,
+  andList,
+  assignable,
+  autoPlanner,
+  dependencyWaits,
+  editsFor,
+  lines,
+  milestoneTitle,
+  newestFirst,
+  nobodyCount,
+  PLANNER_DESCRIPTION,
+  plansByRole,
+  planTone,
+  rememberedPlanner,
+  rememberPlanner,
+  stageText,
+  startedText,
+  STEPS,
+  stepStates,
+  toggle,
+  type StepState,
+} from './plan.ts';
 
 // --- stepper ---
 
@@ -671,6 +693,29 @@ const newPlanCss = css({
   '& > summary:hover': { color: t.text },
 });
 const planSelect = css({ width: '280px', maxWidth: '40vw' });
+const reqStack = css({ display: 'grid', gap: t.s2, alignContent: 'start', minWidth: '0', '& > p': { margin: '0', fontSize: t.textSm } });
+// the project's requirement documents as toggles: a pressed one is planned from (X48)
+const chipRow = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '6px',
+  fontSize: t.textSm,
+  '& .chip': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    minHeight: '28px',
+    padding: '0 10px',
+    borderRadius: t.rSm,
+    border: `1px solid ${t.border}`,
+    background: 'transparent',
+    color: t.textMuted,
+    fontSize: t.textSm,
+    cursor: 'pointer',
+  },
+  '& .chip[aria-pressed="true"]': { borderColor: t.accent, color: t.text, background: t.bgActive },
+});
 
 export function PlanScreen(handle: Handle) {
   const s = services(handle);
@@ -687,7 +732,17 @@ export function PlanScreen(handle: Handle) {
   });
   let goal = '';
   let reqs = '';
-  let planner = '';
+  // the planner the person chose here; undefined: the one remembered for the project, else the core's pick (X45)
+  let planner: string | undefined;
+  let plannerFor = '';
+  // the project's requirement documents to plan from (X48)
+  let reqIds = new Set<string>();
+  const docs = query(handle, {
+    load: () => s.client.requirementList(pid()!),
+    when: (e) => e.type.startsWith('requirement.'),
+    key: pid,
+    enabled: () => !!pid(),
+  });
   let sel: string | undefined;
   // the scheduler pass of the last "Accept and start", shown on that plan's accepted card
   let started: { planId: string; tick?: TickResult; error?: string } | undefined;
@@ -699,18 +754,139 @@ export function PlanScreen(handle: Handle) {
   const propose = async () => {
     const projectId = pid();
     if (!projectId) return;
-    const r = await act.run('propose', () => s.client.planPropose(projectId, goal.trim(), reqs, planner));
+    const chosen = plannerValue();
+    const ids = (docs.data ?? []).filter((d) => reqIds.has(d.id)).map((d) => d.id);
+    const r = await act.run('propose', () => s.client.planPropose(projectId, goal.trim(), reqs, chosen, ids));
     if (r) {
       goal = '';
       reqs = '';
+      reqIds = new Set();
       sel = r.planId;
       q.reload();
     }
   };
 
-  return () => {
+  // the chosen planner: this page's choice, else the one remembered for the project (while it is on the crew), else automatic
+  const plannerValue = (): string => {
+    const projectId = pid() ?? '';
+    if (plannerFor !== projectId) (plannerFor = projectId), (planner = undefined);
+    const agents = s.project.agentList;
+    if (planner !== undefined) return agents.some((a) => a.id === planner) ? planner : '';
+    return rememberedPlanner(projectId, agents);
+  };
+
+  // the goal, the requirements (typed, and the project's documents as chips), who plans, and Propose
+  const composeForm = () => {
     const ro = s.workspace.license;
     const agents = s.project.agentList;
+    const auto = autoPlanner(agents);
+    const byRole = agents.some((a) => plansByRole(a.role));
+    const chosen = plannerValue();
+    const documents = (docs.data ?? []).filter((d) => !d.archived);
+    return (
+      <form
+        mix={[
+          card,
+          composeCss,
+          on('submit', (e) => {
+            e.preventDefault();
+            if (!act.busy && !ro.readOnly && goal.trim() && agents.length > 0) void propose();
+          }),
+        ]}
+      >
+        <Field label="Goal">
+          {(id) => (
+            <textarea
+              id={id}
+              rows={3}
+              value={goal}
+              placeholder="Add arithmetic helpers to the calculator"
+              mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
+            />
+          )}
+        </Field>
+        <div mix={reqGrid}>
+          <div mix={reqStack}>
+            <Field label="Requirements or constraints (optional)">
+              {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
+            </Field>
+            {documents.length > 0 ? (
+              <div mix={chipRow} role="group" aria-label="Plan from the project's requirements" data-testid="plan-req-chips">
+                <span mix={muted}>From the requirements:</span>
+                {documents.map((d) => {
+                  const on_ = reqIds.has(d.id);
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      class="chip"
+                      aria-pressed={on_ ? 'true' : 'false'}
+                      data-testid="plan-req-chip"
+                      mix={on('click', () => {
+                        reqIds = new Set(reqIds);
+                        if (on_) reqIds.delete(d.id);
+                        else reqIds.add(d.id);
+                        void handle.update();
+                      })}
+                    >
+                      {on_ ? <Icon icon={Check} size={12} /> : null}
+                      {d.title}
+                    </button>
+                  );
+                })}
+                {reqIds.size > 0 ? <span mix={muted} data-testid="plan-req-note">Accepted tasks are linked to {reqIds.size === 1 ? 'it' : 'them'} in the trace.</span> : null}
+              </div>
+            ) : null}
+          </div>
+          <div mix={reqStack}>
+            {agents.length > 1 ? (
+              <Field label="Planner agent">
+                {(id) => (
+                  <Select
+                    id={id}
+                    label="Planner agent"
+                    value={chosen}
+                    options={[{ value: '', label: auto.agent ? `Automatic: ${auto.agent.name}` : 'Automatic' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
+                    onChange={(v) => {
+                      planner = v;
+                      rememberPlanner(pid() ?? '', v);
+                      void handle.update();
+                    }}
+                  />
+                )}
+              </Field>
+            ) : agents.length === 1 ? (
+              <p mix={muted} data-testid="plan-planner">
+                {agents[0]?.name} plans.
+              </p>
+            ) : null}
+            {!byRole ? (
+              <p mix={muted} data-testid="plan-no-planner">
+                No planner on the crew ·{' '}
+                <a href={newAgentHref(PLANNER_DESCRIPTION)} data-testid="plan-add-planner">
+                  Add a planner
+                </a>
+                {agents.length === 0 ? '. A plan needs one agent on the crew.' : ''}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div mix={formActions}>
+          <Button
+            type="submit"
+            variant="primary"
+            icon={Sparkles}
+            disabled={act.busy !== '' || ro.readOnly || !goal.trim() || agents.length === 0}
+            title={ro.readOnly ? ro.reason : undefined}
+          >
+            {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
+          </Button>
+        </div>
+      </form>
+    );
+  };
+
+  return () => {
     const plans = newestFirst(q.data ?? []);
     const current = plans.find((p) => p.id === sel) ?? plans[0];
     // while a plan is drafted or waits for review it leads, and the form for a new goal folds under it (UI review P1-9)
@@ -719,7 +895,7 @@ export function PlanScreen(handle: Handle) {
       <Page
         title="Plan"
         icon={Sparkles}
-        subtitle="A pm or architect agent proposes tasks; nothing is created until you accept" guide="tasks"
+        subtitle="A planner on the crew proposes tasks; nothing is created until you accept" guide="tasks"
         actions={
           plans.length > 1 ? (
             <Select
@@ -759,109 +935,13 @@ export function PlanScreen(handle: Handle) {
             </Section>
             <details mix={newPlanCss} data-testid="plan-new">
               <summary>Plan something else</summary>
-              <form
-                mix={[
-                  card,
-                  composeCss,
-                  on('submit', (e) => {
-                    e.preventDefault();
-                    if (!act.busy && !ro.readOnly && goal.trim()) void propose();
-                  }),
-                ]}
-              >
-                <Field label="Goal">
-                  {(id) => (
-                    <textarea
-                      id={id}
-                      rows={3}
-                      value={goal}
-                      placeholder="Add arithmetic helpers to the calculator"
-                      mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
-                    />
-                  )}
-                </Field>
-                <div mix={reqGrid}>
-                  <Field label="Requirements or constraints (optional)">
-                    {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
-                  </Field>
-                  <Field label="Planner agent">
-                    {(id) => (
-                      <Select
-                        id={id}
-                        label="Planner agent"
-                        value={planner}
-                        options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
-                        onChange={(v) => ((planner = v), void handle.update())}
-                      />
-                    )}
-                  </Field>
-                </div>
-                <div mix={formActions}>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    icon={Sparkles}
-                    disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
-                    title={ro.readOnly ? ro.reason : undefined}
-                  >
-                    {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
-                  </Button>
-                </div>
-              </form>
+              {composeForm()}
             </details>
           </>
         ) : (
           <>
             <Section title="What should the team achieve?" description="The planner breaks it into tasks with acceptance criteria and dependencies.">
-              <form
-                mix={[
-                  card,
-                  composeCss,
-                  on('submit', (e) => {
-                    e.preventDefault();
-                    if (!act.busy && !ro.readOnly && goal.trim()) void propose();
-                  }),
-                ]}
-              >
-                <Field label="Goal">
-                  {(id) => (
-                    <textarea
-                      id={id}
-                      rows={3}
-                      value={goal}
-                      placeholder="Add arithmetic helpers to the calculator"
-                      mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
-                    />
-                  )}
-                </Field>
-                <div mix={reqGrid}>
-                  <Field label="Requirements or constraints (optional)">
-                    {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
-                  </Field>
-                  <Field label="Planner agent">
-                    {(id) => (
-                      <Select
-                        id={id}
-                        label="Planner agent"
-                        value={planner}
-                        options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
-                        onChange={(v) => ((planner = v), void handle.update())}
-                      />
-                    )}
-                  </Field>
-                </div>
-                <div mix={formActions}>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    icon={Sparkles}
-                    disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
-                    title={ro.readOnly ? ro.reason : undefined}
-                  >
-                    {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
-                  </Button>
-                </div>
-              </form>
+              {composeForm()}
             </Section>
             <Section title="Proposal">
               {current ? (

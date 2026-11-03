@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { allDoneOf, dueISO, matchesFilter, progressText, segments, taskGroups, unfinishedOf, zeroTime } from './milestones.ts';
+import { allDoneOf, dueISO, dueText, milestonesOfTask, nextMilestone, matchesFilter, progressText, segments, taskGroups, unfinishedOf, zeroTime } from './milestones.ts';
 
 const p = {
   total: 4,
@@ -67,5 +67,39 @@ describe('adding many tasks (X49)', () => {
       { key: 'label:api', label: 'All tasks labelled api', ids: ['c'] },
       { key: 'label:ui', label: 'All tasks labelled ui', ids: ['a', 'c'] },
     ]);
+  });
+});
+
+describe('due and overdue milestones (X411)', () => {
+  const NOW = Date.parse('2026-11-03T12:00:00Z');
+  const ms = (id: string, dueAt: string | undefined, over: Partial<{ overdue: boolean; status: string; taskIds: string[] }> = {}) => ({
+    id,
+    title: id,
+    dueAt,
+    overdue: false,
+    status: 'open',
+    taskIds: [] as string[],
+    ...over,
+  });
+  it('says how far an open milestone is from its date, in days', () => {
+    expect(dueText(ms('a', '2026-11-06T12:00:00Z'), NOW)).toBe('due in 3 days');
+    expect(dueText(ms('a', '2026-11-04T12:00:00Z'), NOW)).toBe('due in 1 day');
+    expect(dueText(ms('a', '2026-11-03T18:00:00Z'), NOW)).toBe('due today');
+    expect(dueText(ms('a', '2026-11-01T12:00:00Z', { overdue: true }), NOW)).toBe('overdue by 2 days');
+    expect(dueText(ms('a', '2026-11-03T06:00:00Z', { overdue: true }), NOW)).toBe('overdue by 1 day');
+    expect(dueText(ms('a', undefined), NOW)).toBe('');
+    expect(dueText(ms('a', '0001-01-01T00:00:00Z'), NOW)).toBe('');
+    expect(dueText(ms('a', '2026-11-01T12:00:00Z', { status: 'closed' }), NOW)).toBe('');
+  });
+  it('the next milestone is an overdue one first, then the soonest due; never a closed or undated one', () => {
+    const list = [ms('later', '2026-12-01T00:00:00Z'), ms('soon', '2026-11-05T00:00:00Z'), ms('none', undefined), ms('closed', '2026-11-04T00:00:00Z', { status: 'closed' })];
+    expect(nextMilestone(list)?.id).toBe('soon');
+    expect(nextMilestone([...list, ms('late', '2026-10-01T00:00:00Z', { overdue: true })])?.id).toBe('late');
+    expect(nextMilestone([ms('none', undefined)])).toBe(undefined);
+  });
+  it("splits a project's milestones into the task's and the open ones it could join", () => {
+    const list = [ms('a', undefined, { taskIds: ['t1'] }), ms('b', undefined), ms('c', undefined, { status: 'closed' })];
+    const r = milestonesOfTask(list, 't1');
+    expect([r.in.map((m) => m.id), r.open.map((m) => m.id)]).toEqual([['a'], ['b']]);
   });
 });

@@ -148,12 +148,14 @@ export function DescribeAgent(
     adapters: AdapterInfo[];
     onCreated: () => void;
     onDraft?: (d: AgentDraft, confirmedMode: string) => void;
+    /** The sentence the box opens with (the Plan page's "Add a planner", X45); nothing is drafted until the person asks. */
+    initial?: string;
   }>,
 ) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
-  let text = '';
+  let text = handle.props.initial ?? '';
   let draft: AgentDraft | undefined;
   let confirmedMode = '';
   const set = (f: () => void) => {
@@ -404,13 +406,15 @@ export function NewAgent(
     projectId: string;
     adapters: AdapterInfo[];
     tab?: NewAgentTab;
+    /** The sentence Describe opens with. */
+    describe?: string;
     onCreated: () => void;
     onAdded?: () => void;
   }>,
 ) {
   let tab: NewAgentTab = handle.props.tab ?? 'describe';
   return () => {
-    const { projectId, adapters, onCreated, onAdded } = handle.props;
+    const { projectId, adapters, onCreated, onAdded, describe } = handle.props;
     return (
       <Tabs
         label="How to make the agent"
@@ -433,7 +437,7 @@ export function NewAgent(
       >
         {(name) =>
           name === 'describe' ? (
-            <DescribeAgent key={`d:${projectId}`} projectId={projectId} adapters={adapters} onCreated={onCreated} />
+            <DescribeAgent key={`d:${projectId}`} projectId={projectId} adapters={adapters} onCreated={onCreated} initial={describe} />
           ) : name === 'configure' ? (
             <AgentForm key={`c:${projectId}`} projectId={projectId} adapters={adapters} onCreated={onCreated} />
           ) : (

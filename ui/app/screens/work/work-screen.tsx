@@ -22,6 +22,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ChatConversation } from '../chats/chat-conversation.tsx';
 import { WEEK_MS, firstCheckText, mergedSince, spendLine } from '../overview/overview.ts';
+import { dueText, nextMilestone } from '../milestones/milestones.ts';
 import { findingsText } from '../security/security.ts';
 import { TaskDetailScreen } from '../tasks/task-detail-screen.tsx';
 import { AgentPanelHost } from '../team/agent-panel.tsx';
@@ -132,7 +133,11 @@ const statsCss = css({
   '& > a': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: t.s2, minHeight: '28px', padding: `0 ${t.s1}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, textDecoration: 'none' },
   '& > a > b': { color: t.text, fontWeight: '500', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
   '& > a:hover': { background: t.bgHover, color: t.text },
+  '& > a > .ms': { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 });
+
+// an overdue milestone on the rail reads in the danger colour, its words saying so as well
+const overdueCss = css({ '&, & > b': { color: t.danger } });
 
 export interface WorkScreenProps {
   /** The ?item= value: "task:<id>" or "chat:<id>". */
@@ -151,6 +156,13 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
   const budget = query(handle, { load: () => s.client.budgetStatus({ projectId: pid()! }), when: (e) => e.type.startsWith('budget.') || e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const evals = query(handle, { load: () => s.client.evalsReport({ projectId: pid()!, sinceMs: Date.now() - WEEK_MS }), when: (e) => e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const scan = query(handle, { load: () => s.client.securityScanGet(pid()!), when: (e) => e.type.startsWith('security.'), ...on_ });
+  // the project's milestones: the rail names the next one due, red when it is overdue (X411)
+  const milestones = query(handle, {
+    load: () => s.client.milestoneList(pid()!),
+    when: (e) => e.type.startsWith('milestone.') || e.type.startsWith('task.'),
+    debounceMs: 500,
+    ...on_,
+  });
   const act = action(handle);
   handle.signal.addEventListener('abort', () => (s.ui.workOpen = undefined));
   let search = '';
@@ -196,6 +208,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
     const first = evals.data ? firstCheckText(evals.data.report) : undefined;
     const lastScan = scan.data && scan.data.status !== 'running' ? scan.data : undefined;
     const merged = mergedSince(p.taskList, Date.now() - WEEK_MS);
+    const next = nextMilestone(milestones.data ?? []);
     const channels = p.roomList.filter((r) => r.kind === 'channel' && !r.archived);
     const general = channels.find((r) => r.name === 'general') ?? channels[0];
 
@@ -323,6 +336,14 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             <a href={routes.tasks.href()} data-testid="work-merged">
               Merged this week <b>{merged}</b>
             </a>
+            {next ? (
+              <a href={routes.milestones.href()} data-testid="work-milestone" data-overdue={next.overdue ? 'true' : undefined} mix={next.overdue ? overdueCss : undefined} title={`Next milestone: ${next.title}`}>
+                <span class="ms">Next milestone: {next.title}</span>
+                <b>
+                  {dueText(next, Date.now())} · {next.progress.percent}%
+                </b>
+              </a>
+            ) : null}
           </div>
         </aside>
         <AgentPanelHost agents={agents} />

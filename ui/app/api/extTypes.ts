@@ -662,6 +662,16 @@ export interface RequirementTrace {
   tasksStale: number;
   verified: boolean;
 }
+/** An open task whose title or a criterion matches a passage of a requirement (requirement.suggestLinks): a text match, never a link by itself. */
+export interface LinkSuggestion {
+  taskId: string;
+  seq: number;
+  title: string;
+  /** The heading path of the passage that matched. */
+  heading: string;
+  matched: 'title' | 'criterion';
+  score: number;
+}
 export interface Milestone {
   id: string;
   projectId: string;
@@ -954,6 +964,8 @@ export interface Plan {
   start?: TickResult | null;
   /** plan.accept with start: the pass failed (the plan was accepted and its tasks exist). */
   startError?: string;
+  /** The project's requirement documents the plan was made from: accepting it links each created task to them. */
+  requirementIds?: string[] | null;
 }
 export interface SchedulerStatus {
   settings: DevSettings;

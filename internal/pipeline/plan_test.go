@@ -92,7 +92,7 @@ type planEnv struct {
 	pd pipeline.PlanDeps
 }
 
-func newPlanEnv(t *testing.T, planner fakeagent.Script) *planEnv {
+func newPlanEnv(t *testing.T, planner fakeagent.Script, opts ...func(*pipeline.PlanDeps)) *planEnv {
 	e := newTpl(t, map[string]fakeagent.Script{aPM: planner, aWork: {Default: []fakeagent.Step{say("x")}}, aReview: shipReviewer()}, tplOpts{title: "Harness task"})
 	pe := &planEnv{tpl: e}
 	pe.pd = pipeline.PlanDeps{
@@ -113,6 +113,9 @@ func newPlanEnv(t *testing.T, planner fakeagent.Script) *planEnv {
 			_, err := e.tasks.Patch(ctx, tk.ID, tasks.Update{Assignee: &w, Reviewer: &r})
 			return err
 		},
+	}
+	for _, o := range opts {
+		o(&pe.pd)
 	}
 	if err := e.eng.RegisterNew(pe.pd.PlanGraph()); err != nil {
 		t.Fatal(err)

@@ -314,6 +314,8 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   let now = clock();
   let newOpen = false;
   let newTab: NewAgentTab = 'describe';
+  // the sentence Describe opens with (/team?new=agent&describe=..., the Plan page's "Add a planner", X45)
+  let newDescribe = '';
   let removing: Agent | undefined;
   let pickProject = '';
   let savedNote = '';
@@ -330,7 +332,9 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     if (!all() && u.searchParams.get('new') === 'agent') {
       newOpen = true;
       newTab = 'describe';
+      newDescribe = (u.searchParams.get('describe') ?? '').slice(0, 500);
       u.searchParams.delete('new');
+      u.searchParams.delete('describe');
     }
     if (edit || newOpen) window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
   }
@@ -390,6 +394,7 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   const openNew = (tab: NewAgentTab = 'describe') => {
     newOpen = true;
     newTab = tab;
+    newDescribe = '';
     void handle.update();
   };
 
@@ -597,7 +602,7 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
           </>
         ) : null}
 
-        <Dialog open={newOpen} title="New agent" label="New agent" wide onClose={() => ((newOpen = false), void handle.update())}>
+        <Dialog open={newOpen} title="New agent" label="New agent" wide onClose={() => ((newOpen = false), (newDescribe = ''), void handle.update())}>
           {newOpen ? (
             <div mix={dialogStack} data-testid="new-agent">
               {projectPicker(projects, target)}
@@ -606,9 +611,11 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
                   key={target}
                   projectId={target}
                   tab={newTab}
+                  describe={newDescribe}
                   adapters={sortAdapters(adapters.data ?? [])}
                   onCreated={() => {
                     newOpen = false;
+                    newDescribe = '';
                     void handle.update();
                     reloadAgents();
                   }}

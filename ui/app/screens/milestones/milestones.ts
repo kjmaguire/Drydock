@@ -59,3 +59,32 @@ export function taskGroups(free: readonly { id: string; labels?: string[] }[], p
   for (const l of labels) out.push({ key: `label:${l}`, label: `All tasks labelled ${l}`, ids: free.filter((x) => (x.labels ?? []).includes(l)).map((x) => x.id) });
   return out;
 }
+
+const DAY = 86_400_000;
+
+/**
+ * Where an open milestone stands against its date (X411): "due today", "due in 3 days", "overdue by 2 days", or "" with no date.
+ * Overdue is the core's word (an open milestone past its date); the days are counted from `now`.
+ */
+export function dueText(m: Pick<Milestone, 'dueAt' | 'overdue' | 'status'>, now: number): string {
+  if (m.status !== 'open' || zeroTime(m.dueAt)) return '';
+  const days = Math.round((new Date(m.dueAt!).getTime() - now) / DAY);
+  if (m.overdue) {
+    const late = Math.max(1, -days);
+    return `overdue by ${late} ${late === 1 ? 'day' : 'days'}`;
+  }
+  if (days <= 0) return 'due today';
+  return `due in ${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
+/** The milestone Work's rail shows (X411): an overdue open one first, then the open one due soonest; none without a date. */
+export function nextMilestone<M extends Pick<Milestone, 'dueAt' | 'overdue' | 'status'>>(list: readonly M[]): M | undefined {
+  const dated = list.filter((m) => m.status === 'open' && !zeroTime(m.dueAt));
+  return [...dated].sort((a, b) => Number(b.overdue) - Number(a.overdue) || new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime())[0];
+}
+
+/** The open milestones a task is in, and the open ones it could be added to (X411: the task page's Milestone row). */
+export function milestonesOfTask<M extends Pick<Milestone, 'id' | 'status' | 'taskIds'>>(list: readonly M[], taskId: string): { in: M[]; open: M[] } {
+  const has = (m: M) => (m.taskIds ?? []).includes(taskId);
+  return { in: list.filter(has), open: list.filter((m) => m.status === 'open' && !has(m)) };
+}

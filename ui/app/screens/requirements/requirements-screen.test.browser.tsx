@@ -178,6 +178,66 @@ describe('RequirementsScreen', () => {
     await waitFor(() => expect(linked).toEqual([['req_1', 't2', ['AC1: Given a cart, when paid, then an order exists']]]), r);
   });
 
+  it('suggests the open tasks that likely cover the requirement: Link links their criteria, Choose opens a task without any, Dismiss hides one (X43)', async () => {
+    try {
+      localStorage.removeItem('drydock.reqDismissed.req_1');
+    } catch {
+      // storage blocked
+    }
+    const linked: unknown[][] = [];
+    const t2 = { ...task, id: 't2', seq: 12, title: 'Card payments', acceptance: ['Given a cart, when paid by card, then an order exists', 'Looks nice'] } as Task;
+    const t3 = { ...task, id: 't3', seq: 13, title: 'Refund flow', acceptance: [] } as Task;
+    const t4 = { ...task, id: 't4', seq: 14, title: 'Dark mode' } as Task;
+    const asked: unknown[][] = [];
+    const r = mount(
+      <RequirementsScreen />,
+      servicesWith({
+        taskList: async () => [task, t2, t3, t4],
+        requirementLink: async (...a) => (linked.push(a), []),
+        requirementSuggestLinks: async (...a) => (
+          asked.push(a),
+          [
+            { taskId: 't2', seq: 12, title: 'Card payments', heading: 'Checkout > Card payments', matched: 'title', score: 2 },
+            { taskId: 't3', seq: 13, title: 'Refund flow', heading: 'Checkout > Refunds', matched: 'criterion', score: 1 },
+            { taskId: 't4', seq: 14, title: 'Dark mode', heading: 'Checkout', matched: 'title', score: 0.5 },
+            // already linked (t1): never offered again
+            { taskId: 't1', seq: 1, title: 'Build checkout', heading: 'Checkout', matched: 'title', score: 3 },
+          ]
+        ),
+      }),
+    );
+    const row = await waitFor(() => need(r.$('[data-testid="requirement"]')), r);
+    await r.act(() => byText(row, 'button', 'Open').click());
+    await waitFor(() => need(r.$('[data-testid="req-link"]')), r);
+    await waitFor(() => expect(r.$$('[data-testid="req-suggestion"]').length).toBe(3), r);
+    expect(asked[0]).toEqual(['req_1', 5]);
+    const first = need(r.$('[data-testid="req-suggestion"][data-task="t2"]'));
+    expect(first.textContent).toContain('Likely covered by #12 Card payments');
+    expect(first.textContent).toContain('its title matches "Card payments"');
+    expect(need(r.$('[data-testid="req-suggestion"][data-task="t3"]')).textContent).toContain('a criterion matches "Refunds"');
+    expect(linked).toEqual([]);
+    // Link sends the task's own Given/When/Then criteria, nothing else
+    await r.act(() => byLabel<HTMLButtonElement>(r.container, 'Link #12 Card payments').click());
+    await waitFor(() => expect(linked).toEqual([['req_1', 't2', ['Given a cart, when paid by card, then an order exists']]]), r);
+    // a task without criteria is chosen in the form below, to write them
+    await r.act(() => byLabel<HTMLButtonElement>(r.container, 'Choose #13 Refund flow to write its criteria').click());
+    expect((r.$('[data-testid="req-other-criteria"]') as HTMLDetailsElement).open).toBe(true);
+    // Dismiss hides it, also after the page is opened again
+    await r.act(() => byLabel<HTMLButtonElement>(r.container, 'Dismiss #14 Dark mode').click());
+    expect(r.$('[data-testid="req-suggestion"][data-task="t4"]')).toBe(null);
+    cleanup();
+    const again = mount(<RequirementsScreen />, servicesWith({ taskList: async () => [task, t4], requirementSuggestLinks: async () => [{ taskId: 't4', seq: 14, title: 'Dark mode', heading: 'Checkout', matched: 'title', score: 0.5 }] }));
+    const row2 = await waitFor(() => need(again.$('[data-testid="requirement"]')), again);
+    await again.act(() => byText(row2, 'button', 'Open').click());
+    await waitFor(() => need(again.$('[data-testid="req-link"]')), again);
+    expect(again.$('[data-testid="req-suggestions"]')).toBe(null);
+    try {
+      localStorage.removeItem('drydock.reqDismissed.req_1');
+    } catch {
+      // storage blocked
+    }
+  });
+
   it('keeps typed criteria in sight when the person switches to a task that has its own (X42)', async () => {
     const t2 = {
       ...task,

@@ -19,6 +19,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
+	"github.com/kjmaguire/drydock/internal/requirements"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -96,7 +97,7 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 	if err := pipeline.RegisterTemplates(c.Engine, a.td); err != nil {
 		return nil, nil, err
 	}
-	a.pd = pipeline.PlanDeps{Deps: d, PlannerConfig: a.plannerConfig, Team: a.team, Assign: a.assignByRole}
+	a.pd = pipeline.PlanDeps{Deps: d, PlannerConfig: a.plannerConfig, Team: a.team, Assign: a.assignByRole, LinkRequirement: a.linkPlanRequirement}
 	if err := c.Engine.RegisterNew(a.pd.PlanGraph()); err != nil {
 		return nil, nil, err
 	}
@@ -499,33 +500,32 @@ func (c *Core) StartTemplate(ctx context.Context, req StartTemplateReq) (StartTe
 
 // ---- plans ----
 
-// ProposePlan starts the planner: a read-only agent turn whose reply is validated and then put to the human.
-func (a *agentsDev) proposePlan(ctx context.Context, projectID, goal, requirements, plannerID string) (map[string]any, error) {
+// ProposePlan starts the planner: a read-only agent turn whose reply is validated and then put to the human. With no planner
+// named, the crew's pm (or planner) drafts it, else its architect, else its lead, else its first agent (pipeline.PickPlanner):
+// the turn is read-only, so a crew the app made without a planner can still plan, and the card says who did. requirementIDs
+// are the project's requirement documents the plan is made from (X48): their text joins the person's own requirements, and
+// accepting the plan links each created task to them.
+func (a *agentsDev) proposePlan(ctx context.Context, projectID, goal, requirements string, requirementIDs []string, plannerID string) (map[string]any, error) {
 	c := a.c
 	if _, err := c.GetProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	ags, err := c.Agents(ctx, projectID)
+	fallback := false
+	if plannerID == "" {
+		team, err := a.team(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		plannerID, fallback = pipeline.PickPlanner(team)
+	}
+	if plannerID == "" {
+		return nil, errors.New("no planner: the crew has no agents yet; add one (a planner, pm or architect plans best)")
+	}
+	reqText, ids, err := a.planRequirements(ctx, projectID, requirements, requirementIDs)
 	if err != nil {
 		return nil, err
 	}
-	if plannerID == "" {
-		for _, want := range []string{"pm", "architect"} {
-			for _, ag := range ags {
-				if pipeline.RoleMatches(ag.Role, want) {
-					plannerID = ag.ID
-					break
-				}
-			}
-			if plannerID != "" {
-				break
-			}
-		}
-	}
-	if plannerID == "" {
-		return nil, errors.New("no planner: add an agent with the pm or architect role, or pass plannerAgentId")
-	}
-	pi, err := pipeline.NewPlan(ctx, c.DB, projectID, goal, requirements, plannerID)
+	pi, err := pipeline.NewPlanFrom(ctx, c.DB, projectID, goal, reqText, plannerID, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +534,56 @@ func (a *agentsDev) proposePlan(ctx context.Context, projectID, goal, requiremen
 		return nil, err
 	}
 	_ = pipeline.SetPlanRun(ctx, c.DB, pi.PlanID, string(id))
-	return map[string]any{"planId": pi.PlanID, "runId": id, "plannerAgentId": plannerID}, nil
+	return map[string]any{"planId": pi.PlanID, "runId": id, "plannerAgentId": plannerID, "fallback": fallback}, nil
+}
+
+// planRequirements is the requirements text a plan is made from: the person's own text, then each chosen requirement document
+// of this project (its current passages, without the ones kept out of search), cut to what a plan holds. The ids come back
+// without duplicates, in the order given.
+func (a *agentsDev) planRequirements(ctx context.Context, projectID, own string, requirementIDs []string) (string, []string, error) {
+	if len(requirementIDs) == 0 {
+		return own, nil, nil
+	}
+	rs := a.requirements()
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(own))
+	var ids []string
+	seen := map[string]bool{}
+	for _, id := range requirementIDs {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		r, err := rs.Get(ctx, id)
+		if err != nil {
+			return "", nil, err
+		}
+		if r.ProjectID != projectID {
+			return "", nil, fmt.Errorf("the requirement %q belongs to another project", r.Title)
+		}
+		title, text, _, err := rs.PlanText(ctx, id)
+		if err != nil {
+			return "", nil, err
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString("## " + title + "\n\n" + text)
+		ids = append(ids, id)
+	}
+	return pipeline.ClipRequirements(b.String()), ids, nil
+}
+
+// requirements is the requirement documents' service over this core's database (the knowledge extension keeps its own; both are
+// stateless views of the same tables).
+func (a *agentsDev) requirements() *requirements.Service {
+	return &requirements.Service{DB: a.c.DB, Bus: a.c.Bus, Scanner: a.c.Scanner}
+}
+
+// linkPlanRequirement links a task a plan created to a requirement it was made from, as the human who accepted the plan.
+func (a *agentsDev) linkPlanRequirement(ctx context.Context, by, requirementID, taskID string) error {
+	_, err := a.requirements().LinkCriteria(ctx, by, requirementID, taskID, nil)
+	return err
 }
 
 // planView is a stored plan as the Plan screen reads it: per proposed task whether anyone on the crew has its role (what the
@@ -773,10 +822,11 @@ func (a *agentsDev) methods() map[string]Method {
 		"plan.propose": bind(func(ctx context.Context, p struct {
 			ProjectID      string `json:"projectId"`
 			Goal           string `json:"goal"`
-			Requirements   string `json:"requirements"`
-			PlannerAgentID string `json:"plannerAgentId"`
+			Requirements   string   `json:"requirements"`
+			RequirementIDs []string `json:"requirementIds"`
+			PlannerAgentID string   `json:"plannerAgentId"`
 		}) (any, error) {
-			return a.proposePlan(ctx, p.ProjectID, p.Goal, p.Requirements, p.PlannerAgentID)
+			return a.proposePlan(ctx, p.ProjectID, p.Goal, p.Requirements, p.RequirementIDs, p.PlannerAgentID)
 		}),
 		"plan.get": bind(func(ctx context.Context, p struct {
 			PlanID string `json:"planId"`

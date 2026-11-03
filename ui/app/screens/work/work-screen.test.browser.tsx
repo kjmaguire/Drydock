@@ -71,6 +71,35 @@ describe('Work (decision P141)', () => {
     expect(none.$('[data-testid="recommend-line"]')).toBeNull();
   });
 
+  it('the rail names the next milestone due, with its progress, and says when it is overdue (X411)', async () => {
+    const m = (id: string, title: string, dueAt: string, overdue = false, percent = 60) =>
+      ({ id, projectId: 'prj_1', title, dueAt, overdue, status: 'open', created: '', updated: '', taskIds: [], progress: { total: 5, completed: 3, inProgress: 0, blocked: 0, open: 2, cancelled: 0, failed: 0, percent } }) as never;
+    const due = new Date(now + 3 * 86_400_000 + 3_600_000).toISOString();
+    const r = mount(<WorkScreen />, svc({ milestoneList: async () => [m('m2', 'GA', new Date(now + 30 * 86_400_000).toISOString()), m('m1', 'Beta', due)] }));
+    const link = await waitFor(() => {
+      const a = r.$('[data-testid="work-milestone"]');
+      if (!a) throw new Error('not yet');
+      return a;
+    }, r);
+    expect(link.textContent).toBe('Next milestone: Betadue in 3 days · 60%');
+    expect(link.getAttribute('href')).toBe('/milestones');
+    expect(link.getAttribute('data-overdue')).toBe(null);
+    cleanup();
+    const late = mount(<WorkScreen />, svc({ milestoneList: async () => [m('m1', 'Beta', new Date(now - 2 * 86_400_000).toISOString(), true, 40)] }));
+    const red = await waitFor(() => {
+      const a = late.$('[data-testid="work-milestone"]');
+      if (!a) throw new Error('not yet');
+      return a;
+    }, late);
+    expect(red.getAttribute('data-overdue')).toBe('true');
+    expect(red.querySelector('b')!.textContent).toBe('overdue by 2 days · 40%');
+    cleanup();
+    // no dated open milestone: no line
+    const none = mount(<WorkScreen />, svc({ milestoneList: async () => [] }));
+    await waitFor(() => expect(none.$('[data-testid="work-merged"]')).not.toBe(null), none);
+    expect(none.$('[data-testid="work-milestone"]')).toBe(null);
+  });
+
   it("lists the project's tasks and chats as Needs you, Running and Earlier, opens the one that needs you, and shows the crew", async () => {
     const s = svc();
     const r = mount(<WorkScreen />, s);
