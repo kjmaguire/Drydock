@@ -1,5 +1,6 @@
 // Assignment and control of an open task that is not running: choose a worker and a different reviewer, assign, pick a workflow
-// template, start, or cancel (confirmed). While a run is in flight the task page offers only CancelTask (beside the run's
+// template, start, or cancel (confirmed). A task with nobody assigned starts with the pair chosen for it (pickPair, the Home and
+// New task rule), so one Start assigns the pair shown and starts. While a run is in flight the task page offers only CancelTask (beside the run's
 // properties), and the steer box. A closed task shows nothing here.
 
 import { css, on, type Handle } from 'remix/component';
@@ -15,6 +16,7 @@ import { Field } from '../../ui/form.tsx';
 import { Select, type SelectOption } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { addCodeReviewer, aloneInCrew } from '../shared/add-reviewer.tsx';
+import { pickPair } from '../workspace/start.ts';
 import { isRunActive, isTerminal } from './tasks.ts';
 
 const boxCss = css({
@@ -62,18 +64,19 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
   return () => {
     const { detail } = handle.props;
     const task = detail.task;
-    worker ??= task.assignee ?? '';
-    reviewer ??= task.reviewer ?? '';
     template ??= task.template ?? '';
     if (isTerminal(task.status) || isRunActive(detail.run)) return null;
     const agents = s.project.agentList;
+    // the person's choice, else the task's own, else the pair chosen for it (a task a person took on keeps no agent preselected)
+    const pair = task.assignee ? undefined : pickPair(agents as never);
     const list = templates.data ?? [];
     const chosen: WorkflowTemplate | undefined = list.find((x) => x.name === template);
     const ro = s.workspace.license;
     const busy = act.busy !== '';
-    const w = worker;
-    const r = reviewer;
+    const w = worker ?? task.assignee ?? pair?.worker ?? '';
+    const r = reviewer ?? task.reviewer ?? pair?.reviewer ?? '';
     const tpl = template;
+    const assigned = w === (task.assignee ?? '') && r === (task.reviewer ?? '');
     return (
       <div mix={boxCss} role="group" aria-label="Assignment and control">
         <ErrorNote error={act.error} />
@@ -147,12 +150,14 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
           <Button
             variant="primary"
             icon={Play}
-            disabled={ro.readOnly || !task.assignee || !task.reviewer || busy || w !== (task.assignee ?? '') || r !== (task.reviewer ?? '')}
-            title={ro.readOnly ? ro.reason : !task.assignee || !task.reviewer ? 'Assign a worker and a reviewer first' : 'Start the task'}
+            disabled={ro.readOnly || !w || !r || w === r || busy}
+            title={ro.readOnly ? ro.reason : !w || !r ? 'Choose a worker and a reviewer first' : assigned ? 'Start the task' : 'Assign the worker and reviewer shown, then start'}
             mix={on(
               'click',
               () =>
                 void run('start', async () => {
+                  // one Start: the pair shown is assigned first when it is not the task's yet
+                  if (!assigned) await s.client.taskAssign(task.id, w, r);
                   if (!tpl) return s.client.taskStart(task.id);
                   const res = await s.client.taskStartTemplate({ taskId: task.id, template: tpl });
                   notes = res.notes ?? [];

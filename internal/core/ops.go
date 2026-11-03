@@ -50,6 +50,73 @@ func (c *Core) CreateTask(ctx context.Context, req tasks.CreateReq) (tasks.Task,
 	return c.Tasks.Create(ctx, req)
 }
 
+// CreateTaskReq is task.create: a task, and optionally its crew and its start in the same click (the New task page's "Create and
+// start"). Assignee names the worker; a missing Reviewer is chosen as task.assign chooses one (reviewerFor). Start starts the
+// task's workflow under StartTask's checks (licence, repository), which are made before the task is created, so a refused start
+// leaves no task behind.
+type CreateTaskReq struct {
+	tasks.CreateReq
+	Assignee string `json:"assignee"`
+	Reviewer string `json:"reviewer"`
+	Start    bool   `json:"start"`
+}
+
+// CreateTaskWith is task.create: CreateTask, then the assignment and the start the request asks for. A start that fails once the
+// task exists (the engine refused it) returns the task with an error that names it, so the person can start it from its page.
+func (c *Core) CreateTaskWith(ctx context.Context, req CreateTaskReq) (tasks.Task, error) {
+	if req.Assignee == "" && req.Reviewer == "" && !req.Start {
+		return c.CreateTask(ctx, req.CreateReq)
+	}
+	if req.Assignee == "" {
+		return tasks.Task{}, errors.New("choose a worker for the task, or create it without one")
+	}
+	if strings.HasPrefix(req.Assignee, tasks.PersonPrefix) {
+		return tasks.Task{}, errors.New("a task made and started here goes to an agent of the team; take it on yourself from its page")
+	}
+	if _, err := c.GetProject(ctx, req.ProjectID); err != nil {
+		return tasks.Task{}, err
+	}
+	if req.Start {
+		if err := c.RequireLicensed(ctx, "start_task"); err != nil {
+			return tasks.Task{}, err
+		}
+		if err := c.requireRepo(ctx, req.ProjectID); err != nil {
+			return tasks.Task{}, err
+		}
+	}
+	reviewer, err := c.reviewerFor(ctx, tasks.Task{ProjectID: req.ProjectID}, req.Assignee, req.Reviewer)
+	if err != nil {
+		return tasks.Task{}, err
+	}
+	if reviewer == req.Assignee {
+		return tasks.Task{}, errors.New("a task needs a worker and a different agent as reviewer")
+	}
+	for _, id := range []string{req.Assignee, reviewer} {
+		if a, err := c.agent(ctx, id); err != nil || a.ProjectID != req.ProjectID || a.Archived {
+			return tasks.Task{}, fmt.Errorf("agent %s is not on this project's team", id)
+		}
+	}
+	t, err := c.Tasks.Create(ctx, req.CreateReq)
+	if err != nil {
+		return t, err
+	}
+	if nt, err := c.AssignTask(ctx, t.ID, req.Assignee, reviewer); err != nil {
+		return t, fmt.Errorf("task #%d was created but not assigned: %w", t.Seq, err)
+	} else {
+		t = nt
+	}
+	if !req.Start {
+		return t, nil
+	}
+	if _, err := c.StartTask(ctx, t.ID); err != nil {
+		return t, fmt.Errorf("task #%d was created but did not start: %w", t.Seq, err)
+	}
+	if nt, err := c.Tasks.Get(ctx, t.ID); err == nil {
+		t = nt
+	}
+	return t, nil
+}
+
 // AssignTask sets a task's worker and independent reviewer. They must be different agents of the project.
 func (c *Core) AssignTask(ctx context.Context, taskID, assignee, reviewer string) (tasks.Task, error) {
 	t, err := c.Tasks.Get(ctx, taskID)

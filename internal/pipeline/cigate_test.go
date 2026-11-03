@@ -71,7 +71,7 @@ func TestPRFlowWithoutCIAsksTheHumanAndAHumanWaiverPasses(t *testing.T) {
 	id := e.runPR(t, src, 4)
 	e.await(t, id, workflow.StatusWaitingHuman)
 	q := e.pendingOne(t, id)
-	if q.NodeID != "ci" || q.Spec.Kind != "question" || q.Spec.Title != "No CI ran on pull request #7 within 60ms. Check again, merge without CI this time, or stop." {
+	if q.NodeID != "ci" || q.Spec.Kind != "question" || q.Spec.Title != "No CI ran on pull request #7 within 60ms. Keep waiting, merge without CI this time, or stop." {
 		t.Fatalf("question %+v", q)
 	}
 	if p := payloadOf(t, q); p.Gate != "ci" || p.Reason != "none" || p.PR != 7 || p.Head == "" {
@@ -304,7 +304,7 @@ func TestPRFlowAsksWhenARequiredCheckNeverReports(t *testing.T) {
 	e.await(t, id, workflow.StatusWaitingHuman)
 	q := e.pendingOne(t, id)
 	p := payloadOf(t, q)
-	if q.NodeID != "ci" || q.Spec.Title != "The required check(s) deploy did not report on pull request #7 within 60ms. Check again, merge without CI this time, or stop." ||
+	if q.NodeID != "ci" || q.Spec.Title != "The required check(s) deploy did not report on pull request #7 within 60ms. Keep waiting, merge without CI this time, or stop." ||
 		p.Reason != "missing" || strings.Join(p.Missing, ",") != "deploy" {
 		t.Fatalf("question %+v", q)
 	}
@@ -446,7 +446,7 @@ func TestPRFlowAWaiverNeverCoversAFailedCheck(t *testing.T) {
 	id := e.runPR(t, short, 4)
 	e.await(t, id, workflow.StatusWaitingHuman)
 	q := e.pendingOne(t, id)
-	if q.NodeID != "ci" || q.Spec.Title != "CI on pull request #7 is still running after 150ms (e2e). Check again, merge without CI this time, or stop." || payloadOf(t, q).Reason != "running" {
+	if q.NodeID != "ci" || q.Spec.Title != "CI on pull request #7 is still running after 150ms (e2e). Keep waiting, merge without CI this time, or stop." || payloadOf(t, q).Reason != "running" {
 		t.Fatalf("question %+v", q)
 	}
 	f.mu.Lock()

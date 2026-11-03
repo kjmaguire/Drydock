@@ -1,6 +1,6 @@
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
-import type { NeedsYouItem, TaskSummary } from '../../api/types.ts';
+import type { NeedsYouItem, PendingRequest, TaskSummary } from '../../api/types.ts';
 import { agoWords, plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 
@@ -274,8 +274,23 @@ export type Answer =
   | { kind: 'spec'; runId: string }
   /** A review and merge: Merge (asking for changes, with the feedback, is on the task's page). */
   | { kind: 'merge'; runId: string }
-  /** Decided on its page (a budget pause, a CI gate, a question to answer, an outbound write...), or decided already. */
+  /** A gate the task page answers with a panel of its own (CI, merge, verdict, limit, watchdog, budget, repository configuration): the same panel here (C3). */
+  | { kind: 'gate'; runId: string }
+  /** A chat's CLI waiting to be allowed a tool call: Allow once, Allow in this chat, Deny (C3). */
+  | { kind: 'chat'; chatId: string; askId: string }
+  /** Decided on its page (a question to answer, an outbound write...), or decided already. */
   | { kind: 'open' };
+
+/** A workflow request as approval.get describes it, in the shape the task page's panels read (its id, kind, title, phase and payload). */
+export function pendingOf(d: Pick<ApprovalDetail, 'id' | 'kind' | 'title' | 'phase' | 'payload'>): PendingRequest {
+  return { id: d.id, nodeId: '', step: 0, spec: { kind: d.kind, title: d.title, payload: d.payload, phase: d.phase } as PendingRequest['spec'] };
+}
+
+/** The waiting chat request an inbox item is ("chat-ask:<id>" in a chat), or undefined. */
+export function chatAskOf(it: Pick<NeedsYouItem, 'key' | 'chatId'>): { chatId: string; askId: string } | undefined {
+  const askId = it.key.startsWith('chat-ask:') ? it.key.slice('chat-ask:'.length) : '';
+  return askId && it.chatId ? { chatId: it.chatId, askId } : undefined;
+}
 
 /** Whether a request's payload is one a special panel of the task's page answers (a budget pause, a gate, a limit, a watchdog pause). */
 function special(payload: unknown): boolean {
@@ -284,10 +299,14 @@ function special(payload: unknown): boolean {
   return (typeof v.gate === 'string' && v.gate !== '') || v.phase === 'limit' || (typeof v.signal === 'string' && v.signal !== '' && typeof v.stage === 'number');
 }
 
-export function answerOf(d: ApprovalDetail): Answer {
+/**
+ * How the pane answers the request. `panel` says whether the task page has a panel for a special request (review-panel.tsx
+ * hasGatePanel); a special request without one is decided on its page.
+ */
+export function answerOf(d: ApprovalDetail, panel: (p: PendingRequest) => boolean = () => false): Answer {
   if (d.status !== 'REQUESTED' || !d.runId) return { kind: 'open' };
   if (d.gate === 'permission_prompt') return { kind: 'permission', runId: d.runId, forTask: d.approveForTask, note: d.approveForTask ? undefined : d.approveForTaskNote };
-  if (special(d.payload)) return { kind: 'open' };
+  if (special(d.payload)) return panel(pendingOf(d)) ? { kind: 'gate', runId: d.runId } : { kind: 'open' };
   if (d.kind === 'review' && d.phase === 'spec') return { kind: 'spec', runId: d.runId };
   if (d.kind === 'review' && d.phase === 'merge') return { kind: 'merge', runId: d.runId };
   if (d.kind === 'approval') return { kind: 'approval', runId: d.runId };

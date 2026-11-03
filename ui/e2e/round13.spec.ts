@@ -42,6 +42,6 @@ test('a project with no repository opens, gets a repository from settings, and t
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill('Add Multiply');
   await page.getByLabel('Description').fill('Add a Multiply function to the gocalc package.');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Add Multiply/ })).toBeVisible();
 });

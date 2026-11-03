@@ -472,6 +472,41 @@ describe('the Inbox', () => {
   });
 });
 
+describe('every gate answered from the Inbox (C3)', () => {
+  const ciItem: NeedsYouItem = {
+    key: 'approval:apr7', kind: 'question', severity: 2, title: 'CI did not report on the pull request', projectId: 'p1', taskId: 't2', taskSeq: 42, approvalId: 'apr7', createdAt: iso(NOW - 60_000),
+  };
+  const ciDetail: ApprovalDetail = {
+    id: 'apr7', kind: 'question', gate: 'ci', title: ciItem.title, description: 'CI did not report.', shell: false, targets: [], shortened: false, editable: false, projectId: 'p1',
+    runId: 'run7', createdAt: NOW, status: 'REQUESTED', approveForTask: false, rules: [], payload: { gate: 'ci', pr: 4, url: 'https://github.com/o/r/pull/4', reason: 'none', missing: [], running: [] },
+  };
+
+  it("a CI gate shows the task page's panel; its answer goes to the request's run, and A does not answer it", async () => {
+    const { r, calls } = await open({ approvalGet: async () => ciDetail }, [ciItem]);
+    await waitFor(() => expect(r.$('[data-testid="detail-gate"] [data-testid="ci-gate"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="needs-hint"]')).toBeNull();
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the task');
+    await r.act(() => press('a'));
+    await new Promise((res) => setTimeout(res, 30));
+    expect(calls.respond).toEqual([]);
+    const again = Array.from(r.$$('[data-testid="detail-gate"] button')).find((b) => b.textContent?.includes('Check CI again')) as HTMLButtonElement;
+    await r.act(() => again.click());
+    await waitFor(() => expect(calls.respond).toEqual([['run7', 'apr7', 'answered', {}]]), r);
+  });
+
+  it("a chat's waiting tool call is allowed once with A, or denied, from the detail", async () => {
+    const chatItem: NeedsYouItem = { key: 'chat-ask:ask1', kind: 'chat_permission', severity: 2, title: 'Asks to use Bash: go test ./...', detail: 'In the chat Tests', projectId: 'p1', chatId: 'c1', createdAt: iso(NOW - 60_000) };
+    const answers: unknown[][] = [];
+    const ask = { id: 'ask1', chatId: 'c1', turnId: 'u1', messageId: 'm1', tool: 'Bash', summary: 'Bash: go test ./...', input: { command: 'go test ./...' }, created: NOW, expiresAt: NOW + 1_800_000 };
+    const { r } = await open({ chatAsks: async () => [ask], chatAnswer: async (...a) => void answers.push(a) }, [chatItem]);
+    await waitFor(() => expect(r.$('[data-testid="detail-chat-ask"] [data-testid="chat-ask"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the chat');
+    await waitFor(() => expect(r.$('[data-row-key="needs:chat-ask:ask1"] kbd')?.textContent).toBe('A'), r);
+    await r.act(() => press('a'));
+    await waitFor(() => expect(answers).toEqual([['c1', 'ask1', true]]), r);
+  });
+});
+
 describe('an agent that failed its task (C6)', () => {
   const agentFailed: NeedsYouItem = {
     key: 'agent:a1:failed:1', kind: 'agent', severity: 1, title: 'Failed: the worker gave up', projectId: 'p1', agentId: 'a1', agentName: 'Free hand', taskId: 't5', taskSeq: 43, createdAt: iso(NOW - 60_000),

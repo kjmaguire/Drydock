@@ -387,21 +387,34 @@ describe('Task view: header, properties and content', () => {
 });
 
 describe('Task view: assignment and control', () => {
-  it('Assign sends the worker and a different reviewer; Start waits until the assignment is saved', async () => {
+  it('Assign sends the worker and a different reviewer; an unassigned task has the pair chosen for it', async () => {
     const taskAssign = recorder(() => task());
     const d = detail({ task: task({ assignee: undefined, reviewer: undefined }) });
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskAssign }));
     await waitFor(() => expect(optionsOf(byLabel<HTMLElement>(r.container, 'Worker')).some((o) => o.value === 'a1')).toBe(true), r);
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Assign').disabled).toBe(true);
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(true);
-    expect(byText(r.container, 'button', 'Start').getAttribute('title')).toBe('Assign a worker and a reviewer first');
-    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Worker'), 'a1'));
+    // C1: the builder works, the reviewer-role agent reviews; Start assigns them and starts
+    await waitFor(() => expect(valueOf(byLabel<HTMLElement>(r.container, 'Worker'))).toBe('a1'), r);
+    expect(valueOf(byLabel<HTMLElement>(r.container, 'Reviewer'))).toBe('a2');
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(false);
+    expect(byText(r.container, 'button', 'Start').getAttribute('title')).toBe('Assign the worker and reviewer shown, then start');
     await r.act(() => type(byLabel<HTMLElement>(r.container, 'Reviewer'), 'a1'));
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Assign').disabled).toBe(true); // same agent twice
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(true);
     await r.act(() => type(byLabel<HTMLElement>(r.container, 'Reviewer'), 'a2'));
     expect(optionsOf(byLabel<HTMLElement>(r.container, 'Worker')).find((o) => o.value === 'a1')!.label).toBe('Dana (backend)');
     await r.act(() => byText(r.container, 'button', 'Assign').click());
     await waitFor(() => expect(taskAssign.calls).toEqual([['t1', 'a1', 'a2']]), r);
+  });
+
+  it('one Start assigns the pair chosen for an unassigned task, then starts it (C1)', async () => {
+    const calls: string[] = [];
+    const taskAssign = recorder((id: string, w: string, rv: string) => (calls.push(`assign ${id} ${w} ${rv}`), task()));
+    const taskStart = recorder((id: string) => (calls.push(`start ${id}`), 'run0'));
+    const d = detail({ task: task({ assignee: undefined, reviewer: undefined }) });
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskAssign, taskStart }));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Start').click());
+    await waitFor(() => expect(calls).toEqual(['assign t1 a1 a2', 'start t1']), r);
   });
 
   it('Start with a template calls task.startTemplate and shows what the template needs', async () => {

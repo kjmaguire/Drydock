@@ -1,6 +1,6 @@
 // Pure helpers for the project screens (no DOM, no services).
 
-import { CONTEXT_CEILING, type DevSettings } from '../../api/extTypes.ts';
+import { CI_WAITS, CONTEXT_CEILING, type DevSettings } from '../../api/extTypes.ts';
 
 /** One argument per line; blank lines and surrounding spaces are dropped. */
 export const argv = (s: string): string[] =>
@@ -42,3 +42,6 @@ export const parallelWarn = (n: number): boolean => n > 5;
 
 /** A context ceiling the core refuses: set, and outside CONTEXT_CEILING's bounds (0 or empty means the default). */
 export const ceilingOff = (n: number | undefined): boolean => !!n && (n < CONTEXT_CEILING.min || n > CONTEXT_CEILING.max);
+
+/** A CI wait the core refuses: below 0 or above CI_WAITS.max minutes (0 or empty means the default). */
+export const ciWaitOff = (n: number | undefined): boolean => !!n && (n < 0 || n > CI_WAITS.max);

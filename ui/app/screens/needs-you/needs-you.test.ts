@@ -183,6 +183,9 @@ describe('the Inbox helpers', () => {
     expect(answerOf(d({ kind: 'review', phase: 'merge' }))).toEqual({ kind: 'merge', runId: 'run1' });
     // the task's page answers these: a budget pause, a CI gate, the limit question, a watchdog pause, a plan, a question
     for (const payload of [{ gate: 'budget' }, { gate: 'ci' }, { phase: 'limit' }, { signal: 'tool_spin', stage: 2 }]) expect(answerOf(d({ payload })).kind).toBe('open');
+    // with the task page's panel for it, a gate is answered in place (C3); one without a panel stays on its page
+    expect(answerOf(d({ kind: 'question', payload: { gate: 'ci' } }), (p) => (p.spec.payload as { gate?: string }).gate === 'ci')).toEqual({ kind: 'gate', runId: 'run1' });
+    expect(answerOf(d({ payload: { gate: 'outbound' } }), () => false).kind).toBe('open');
     expect(answerOf(d({ kind: 'review', phase: 'plan' })).kind).toBe('open');
     expect(answerOf(d({ kind: 'question' })).kind).toBe('open');
     // answered already, or not answered on a run (an outbound write, a mode change recorded decided)

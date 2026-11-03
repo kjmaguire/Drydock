@@ -247,7 +247,7 @@ func (e *env) prSetup(t *testing.T, f *githubFixture) (pipeline.PRSource, *httpt
 		return pipeline.PRConfig{
 			GitHub:     host.GitHub{API: host.HTTPAPI{BaseURL: srv.URL}, Owner: "o", Repo: "r"},
 			BaseBranch: "main", MergeStrategy: host.MergeSquash, DeleteBranch: true,
-			CIPoll: 10 * time.Millisecond, CIGrace: 60 * time.Millisecond, MergeTries: 2, MergePoll: 5 * time.Millisecond,
+			CIPoll: 10 * time.Millisecond, CIGrace: 60 * time.Millisecond, MergeTries: 2, MergePoll: 5 * time.Millisecond, GitHubRetry: 5 * time.Millisecond,
 		}, nil
 	}
 	return src, srv
@@ -465,6 +465,11 @@ func TestPRFlowAGitHubFailureAsksTheHumanAndRetriesOnlyThatStep(t *testing.T) {
 	if err != nil || len(pend) != 1 || pend[0].Spec.Kind != "question" || !strings.Contains(pend[0].Spec.Title, "Could not open the pull request on GitHub") {
 		t.Fatalf("pending %+v %v", pend, err)
 	}
+	// the github gate (C4): the step, and the fix the core worked out (a 401 is a sign-in)
+	var gp struct{ Gate, Step, Fix string }
+	if json.Unmarshal(pend[0].Spec.Payload, &gp) != nil || gp.Gate != "github" || gp.Step != "open the pull request" || gp.Fix != "gh_signin" {
+		t.Fatalf("payload %s", pend[0].Spec.Payload)
+	}
 	if err := e.eng.Resume(context.Background(), id, workflow.Response{RequestID: pend[0].ID, Decision: "answered", By: "human:kyle", Data: json.RawMessage(`{"text":"signed in again"}`)}); err != nil {
 		t.Fatal(err)
 	}
@@ -521,13 +526,17 @@ func TestPRFlowACIReadFailureAsksInsteadOfFailingTheRun(t *testing.T) {
 		fakeagent.Script{Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "implemented"}}}},
 		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
 	e := setup(t, cfg, ad)
-	f := &githubFixture{ciReadFail: 1}
+	f := &githubFixture{ciReadFail: 3} // more than the retries of a transient failure (C4)
 	src, _ := e.prSetup(t, f)
 	id := e.runPR(t, src, 4)
 	e.await(t, id, workflow.StatusWaitingHuman)
 	pend, _ := e.eng.Pending(context.Background(), id)
 	if len(pend) != 1 || pend[0].Spec.Kind != "question" || !strings.Contains(pend[0].Spec.Title, "Could not read CI on GitHub") {
 		t.Fatalf("pending %+v", pend)
+	}
+	var gp struct{ Gate, Fix string }
+	if json.Unmarshal(pend[0].Spec.Payload, &gp) != nil || gp.Gate != "github" || gp.Fix != "network" {
+		t.Fatalf("payload %s", pend[0].Spec.Payload)
 	}
 	if err := e.eng.Resume(context.Background(), id, workflow.Response{RequestID: pend[0].ID, Decision: "answered", By: "human:kyle", Data: json.RawMessage(`{"text":"try again"}`)}); err != nil {
 		t.Fatal(err)
@@ -536,6 +545,18 @@ func TestPRFlowACIReadFailureAsksInsteadOfFailingTheRun(t *testing.T) {
 	if wp := prompts(lg.workLog); len(wp) != 1 {
 		t.Fatalf("the worker ran %d times; a GitHub read failure must not redo paid work", len(wp))
 	}
+}
+
+// C4: GitHub having a bad moment (one 502 while CI is read) is tried again by itself, with backoff, before anyone is asked.
+func TestPRFlowATransientGitHubFailureIsTriedAgainBeforeAsking(t *testing.T) {
+	ad, cfg, _ := fakeRoles(t,
+		fakeagent.Script{Turns: [][]fakeagent.Step{{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: rightImplDoc}}, {Say: "implemented"}}}},
+		fakeagent.Script{Default: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}})
+	e := setup(t, cfg, ad)
+	f := &githubFixture{ciReadFail: 1}
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 4)
+	e.awaitPending(t, id, "review") // the merge approval: no question about GitHub came first
 }
 
 // awaitPending waits (as long as a loaded Windows runner needs) until the run's one pending request is of kind.

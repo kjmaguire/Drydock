@@ -4,6 +4,10 @@
 //   {waive_ci: true}; only a person can, and it never covers a failed check), or stop (rejected).
 // - the merge gate (payload gate "merge"): GitHub would not merge the pull request now (branch protection, behind its base,
 //   conflicts, a draft, not worked out yet). Check again or stop. Drydock never bypasses branch protection.
+// - a GitHub failure of a pull-request step (payload gate "github", C4): GitHub or the network failed (a transient failure was
+//   tried again three times first), gh is signed out, or the branch changed after the review. Try again (answered: the same step
+//   runs again, nothing paid is redone), or stop (rejected), with the fix the core worked out (sign in, wait for the network,
+//   review the new commits).
 // Check names come from GitHub and are shown as plain text.
 //
 // And the question a blocking gate asks when none of its checks could judge (payload gate "verdict", audit 2026-10-16, M28):
@@ -17,7 +21,8 @@ import { ExternalLink, Octagon, RefreshCw, ShieldOff } from 'lucide';
 import { isRecord } from '../../api/guards.ts';
 import type { PendingRequest } from '../../api/types.ts';
 import { visible } from '../../lib/visible.ts';
-import { Button } from '../../ui/button.tsx';
+import { routes } from '../../routes.ts';
+import { Button, buttonStyle } from '../../ui/button.tsx';
 import { formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
@@ -34,6 +39,14 @@ export interface CIGatePayload {
   running?: string[] | null;
   /** What Drydock could not see or did not accept (an agent's waiver, unreadable branch protection). */
   notes?: string[] | null;
+  /** How long "Keep waiting" waits again, in minutes (the project's CI wait for this reason, C7); absent from older cores. */
+  waitMinutes?: number;
+}
+
+/** The CI gate's primary answer: wait the project's window again (C7), in words. */
+export function keepWaitingLabel(p: Pick<CIGatePayload, 'waitMinutes'>): string {
+  const n = p.waitMinutes ?? 0;
+  return n > 0 ? `Keep waiting another ${n} ${n === 1 ? 'minute' : 'minutes'}` : 'Check CI again';
 }
 
 /** The merge step's payload when GitHub would not merge (pipeline.MergePR). */
@@ -44,6 +57,30 @@ export interface MergeGatePayload {
   state: string;
   reason: string;
 }
+
+/** pipeline.githubTrouble's payload (gate "github"): the step that failed, GitHub's error, and what fixes it. */
+export interface GitHubTroublePayload {
+  gate: 'github';
+  step: string;
+  error: string;
+  /** gh_signin, network, review_again, or '' when nothing in particular is known. */
+  fix: string;
+  pr?: number;
+}
+
+export function githubTroublePayload(p: PendingRequest): GitHubTroublePayload | undefined {
+  const v = p.spec.payload;
+  if (p.spec.kind !== 'question' || !isRecord(v) || v.gate !== 'github') return undefined;
+  const text = (x: unknown) => (typeof x === 'string' ? x : '');
+  return { gate: 'github', step: text(v.step), error: text(v.error), fix: text(v.fix), pr: typeof v.pr === 'number' ? v.pr : undefined };
+}
+
+/** What fixes a GitHub failure, in words, by the core's fix. */
+export const GITHUB_FIX: Record<string, string> = {
+  gh_signin: 'GitHub refused the sign-in. Run gh auth login in a terminal (the GitHub page checks it), then try again.',
+  network: 'GitHub or the network did not answer, also after three tries. Try again in a while.',
+  review_again: 'The branch changed after the review. Look at the new commits on GitHub before anything is merged, then try again or stop.',
+};
 
 /** One check that gave no verdict, as the core lists it (pipeline.unjudged). */
 export interface UnjudgedCheck {
@@ -196,7 +233,7 @@ export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boole
         <p>Merging without CI applies to this commit only and is recorded with your name; a check that fails is still sent back to the worker.</p>
         <div mix={formActions}>
           <Button variant="primary" icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
-            Check CI again
+            {keepWaitingLabel(p)}
           </Button>
           <Button icon={ShieldOff} disabled={busy || readOnly} mix={on('click', () => void onRespond('approved', { waive_ci: true }))}>
             Merge without CI this time
@@ -244,6 +281,34 @@ export function MergeGatePanel(handle: Handle<{ payload: MergeGatePayload; busy:
           <Button variant="primary" icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
             Check again
           </Button>
+          <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
+            Stop
+          </Button>
+        </div>
+      </div>
+    );
+  };
+}
+
+/** A GitHub failure of a pull-request step: what failed, the fix, then Try again or Stop. */
+export function GitHubTroublePanel(handle: Handle<{ payload: GitHubTroublePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
+  return () => {
+    const { payload: p, busy, readOnly, onRespond } = handle.props;
+    return (
+      <div mix={gateCss} data-testid="github-trouble" data-fix={p.fix}>
+        <p class="what">
+          Could not {visible(p.step || 'reach GitHub')}: {visible(p.error)}
+        </p>
+        <p data-testid="github-trouble-fix">{GITHUB_FIX[p.fix] ?? 'Fix the cause, then try again: only this step runs again.'}</p>
+        <div mix={formActions}>
+          <Button variant="primary" icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
+            Try again
+          </Button>
+          {p.fix === 'gh_signin' ? (
+            <a href={routes.github.href()} mix={buttonStyle('secondary')} data-testid="github-trouble-signin">
+              Open GitHub settings
+            </a>
+          ) : null}
           <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
             Stop
           </Button>

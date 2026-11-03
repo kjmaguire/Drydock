@@ -2,13 +2,13 @@
 // gate before a pull request is merged. Only the human changes them.
 
 import { css, on, type Handle } from 'remix/component';
-import { CONTEXT_CEILING, DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
+import { CI_WAITS, CONTEXT_CEILING, DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ceilingOff, devBody, numOrUndef, parallelWarn } from './project.ts';
+import { ceilingOff, ciWaitOff, devBody, numOrUndef, parallelWarn } from './project.ts';
 import { SettingRow, SettingsGroup, ToggleRow, errorPad, footerCss, noteRow, subhead } from './settings-kit.tsx';
 
 const stackRow = css({ display: 'grid', gap: '6px', padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}`, '& label': { fontSize: t.textMd, fontWeight: '500' }, '& textarea': { fontFamily: t.mono, fontSize: t.textSm } });
@@ -123,6 +123,8 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
   const ciName = `ci-${handle.id}`;
   const skName = `skills-${handle.id}`;
   const ceilId = `ceiling-${handle.id}`;
+  const graceId = `ci-grace-${handle.id}`;
+  const maxWaitId = `ci-maxwait-${handle.id}`;
   return () => {
     if (q.data && q.data !== loaded) {
       loaded = q.data;
@@ -267,7 +269,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                   Required (default)
                 </label>
                 <p id={`${ciName}-required`}>
-                  Merges only after CI passed on the reviewed commit. With no CI after 2 minutes you are asked what to do.
+                  Merges only after CI passed on the reviewed commit. When CI says nothing or runs long, you are asked what to do (the waits below).
 </p>
               </div>
               <div>
@@ -287,6 +289,37 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
 </p>
               </div>
             </div>
+            <SettingRow
+              label="Minutes to wait for CI to start"
+              for={graceId}
+              description={`How long a pushed commit may show no CI result before you are asked. Empty means ${CI_WAITS.grace}; at most ${CI_WAITS.max}.`}
+            >
+              <input
+                id={graceId}
+                inputMode="numeric"
+                placeholder={String(CI_WAITS.grace)}
+                value={d.ciGraceMinutes ? String(d.ciGraceMinutes) : ''}
+                mix={[numCss, on('input', (e) => patch({ ciGraceMinutes: numOrUndef(e.currentTarget.value) ?? 0 }))]}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Minutes to wait for running checks"
+              for={maxWaitId}
+              description={`How long CI checks may run before you are asked. Empty means ${CI_WAITS.maxWait}; at most ${CI_WAITS.max}.`}
+            >
+              <input
+                id={maxWaitId}
+                inputMode="numeric"
+                placeholder={String(CI_WAITS.maxWait)}
+                value={d.ciMaxWaitMinutes ? String(d.ciMaxWaitMinutes) : ''}
+                mix={[numCss, on('input', (e) => patch({ ciMaxWaitMinutes: numOrUndef(e.currentTarget.value) ?? 0 }))]}
+              />
+            </SettingRow>
+            {ciWaitOff(d.ciGraceMinutes) || ciWaitOff(d.ciMaxWaitMinutes) ? (
+              <p mix={[noteRow, warnNote]} data-testid="ci-wait-note">
+                {`The CI waits are between 0 (the defaults) and ${CI_WAITS.max} minutes.`}
+              </p>
+            ) : null}
             {ciNone ? (
               <p mix={noteRow} data-testid="ci-none-note">
                 {d.ciNoneBy

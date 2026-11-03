@@ -24,13 +24,17 @@ type PRConfig struct {
 	DeleteBranch  bool // delete the remote branch after merge
 	// CI waiting
 	CIPoll    time.Duration // default 15s
-	CIGrace   time.Duration // how long a commit may show no CI result before the CI gate asks the human (default 2m)
-	CIMaxWait time.Duration // how long checks may run before the CI gate asks the human (default 30m)
+	CIGrace   time.Duration // how long a commit may show no CI result before the CI gate asks the human (default: the project's DevSettings.CIGrace, 5m)
+	CIMaxWait time.Duration // how long checks may run before the CI gate asks the human (default: the project's DevSettings.CIMaxWait, 60m)
 	LogBytes  int           // max failing-log bytes fed back (default 6000)
 	// MergeTries and MergePoll bound how long the merge step waits for GitHub to work out whether the pull request can be
 	// merged (host.MergeWait: default 4 reads, 2s apart).
 	MergeTries int
 	MergePoll  time.Duration
+	// GitHubTries and GitHubRetry bound the retries of a transient GitHub failure (a 5xx, the network) of a read or of the
+	// reviewed branch's push before the person is asked (retryGitHub: default 3 tries, 2 s then 4 s apart, with jitter).
+	GitHubTries int
+	GitHubRetry time.Duration
 }
 
 func (c PRConfig) remote() string {
@@ -111,20 +115,21 @@ func PushPR(d Deps, src PRSource) workflow.NodeHandler {
 		if err := checkCIPush(ctx, d, t, func() ([]string, error) { return repo.ChangedPaths(ctx, w, cfg.BaseBranch) }, head, cfg.BaseBranch); err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		if err := repo.Push(ctx, w, cfg.remote()); err != nil {
+		if err := cfg.retry(ctx, func() error { return repo.Push(ctx, w, cfg.remote()) }); err != nil {
 			return githubTrouble(in, "push the branch", err)
 		}
 		d.emit(ctx, "github.pushed", t, map[string]any{"branch": t.Branch, "commit": head})
 
 		var pr host.PR
 		if t.PRRef != "" {
-			if pr, _, err = cfg.GitHub.GetPR(ctx, prNumber(t.PRRef), ""); err != nil {
+			if err = cfg.retry(ctx, func() (e error) { pr, _, e = cfg.GitHub.GetPR(ctx, prNumber(t.PRRef), ""); return e }); err != nil {
 				return githubTrouble(in, "read the pull request", err)
 			}
 		} else {
 			// A pull request this flow opened before a crash, or whose answer was lost, is adopted rather than opened again
 			// (GitHub refuses a second one for the branch, which no retry could get past).
-			existing, ferr := cfg.GitHub.FindOpenPR(ctx, t.Branch)
+			var existing *host.PR
+			ferr := cfg.retry(ctx, func() (e error) { existing, e = cfg.GitHub.FindOpenPR(ctx, t.Branch); return e })
 			if ferr != nil {
 				return githubTrouble(in, "look for the branch's pull request", ferr)
 			}
@@ -218,16 +223,7 @@ func CI(d Deps, src PRSource) workflow.NodeHandler {
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		w := host.CIWait{Poll: cfg.CIPoll, Grace: cfg.CIGrace, MaxWait: cfg.CIMaxWait}
-		if w.Poll <= 0 {
-			w.Poll = 15 * time.Second
-		}
-		if w.Grace <= 0 {
-			w.Grace = 2 * time.Minute
-		}
-		if w.MaxWait <= 0 {
-			w.MaxWait = 30 * time.Minute
-		}
+		w := ciWindow(cfg, func() DevSettings { return LoadDevSettings(ctx, d.Tasks.DB, t.ProjectID) })
 		logBytes := cfg.LogBytes
 		if logBytes <= 0 {
 			logBytes = 6000
@@ -267,7 +263,7 @@ func CI(d Deps, src PRSource) workflow.NodeHandler {
 				d.emit(ctx, "github.protection_unread", t, map[string]any{"branch": cfg.BaseBranch, "error": perr.Error()})
 			}
 			w.Required = required
-			st, err = cfg.GitHub.WaitCI(ctx, head, w)
+			err = cfg.retry(ctx, func() (e error) { st, e = cfg.GitHub.WaitCI(ctx, head, w); return e })
 			if running = errors.Is(err, host.ErrCIStillRunning); err != nil && !running {
 				if ctx.Err() != nil {
 					return workflow.NodeOutput{}, err
@@ -443,10 +439,35 @@ func ciQuestion(ctx context.Context, d Deps, t tasks.Task, n int, head, reason s
 			url = e.Ref
 		}
 	}
-	p, _ := json.Marshal(map[string]any{"gate": "ci", "pr": n, "url": url, "head": head, "reason": reason, "missing": st.Missing, "running": running, "notes": notes})
+	// waitMinutes is how long "Keep waiting" waits again (the node runs again with the same window): the grace for a commit
+	// nothing reported on, the longest wait for checks still running
+	wait := w.Grace
+	if reason == "running" {
+		wait = w.MaxWait
+	}
+	p, _ := json.Marshal(map[string]any{"gate": "ci", "pr": n, "url": url, "head": head, "reason": reason, "missing": st.Missing, "running": running, "notes": notes, "waitMinutes": int(wait.Round(time.Minute) / time.Minute)})
 	d.emit(ctx, "github.ci_needs_human", t, map[string]any{"commit": head, "reason": reason})
 	return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, Payload: p,
-		Title: what + " Check again, merge without CI this time, or stop."}}
+		Title: what + " Keep waiting, merge without CI this time, or stop."}}
+}
+
+// ciWindow is how the CI node waits: every 15 s by default, and the waits the configuration names, else the project's own
+// (Development flow, DevSettings.CIGrace and CIMaxWait, C7).
+func ciWindow(cfg PRConfig, dev func() DevSettings) host.CIWait {
+	w := host.CIWait{Poll: cfg.CIPoll, Grace: cfg.CIGrace, MaxWait: cfg.CIMaxWait}
+	if w.Poll <= 0 {
+		w.Poll = 15 * time.Second
+	}
+	if w.Grace <= 0 || w.MaxWait <= 0 {
+		s := dev()
+		if w.Grace <= 0 {
+			w.Grace = s.CIGrace()
+		}
+		if w.MaxWait <= 0 {
+			w.MaxWait = s.CIMaxWait()
+		}
+	}
+	return w
 }
 
 // plainDuration writes d the way a person says it: "2 minutes", "30 seconds".
@@ -509,7 +530,8 @@ func PRFeedback(d Deps, src PRSource) workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		n := prNumber(t.PRRef)
-		evs, err := cfg.GitHub.Reviews(ctx, n, time.Time{})
+		var evs []host.ReviewEvent
+		err = cfg.retry(ctx, func() (e error) { evs, e = cfg.GitHub.Reviews(ctx, n, time.Time{}); return e })
 		if err != nil {
 			if ctx.Err() != nil {
 				return workflow.NodeOutput{}, err
@@ -600,7 +622,11 @@ func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 		if a, ok := delivered(in); ok && a.decision == "rejected" && isHuman(a.by) {
 			return workflow.NodeOutput{}, fmt.Errorf("merge of pull request #%d: stopped by %s", n, a.by)
 		}
-		pr, err := cfg.GitHub.MergeState(ctx, n, host.MergeWait{Tries: cfg.MergeTries, Delay: cfg.MergePoll})
+		var pr host.PR
+		err = cfg.retry(ctx, func() (e error) {
+			pr, e = cfg.GitHub.MergeState(ctx, n, host.MergeWait{Tries: cfg.MergeTries, Delay: cfg.MergePoll})
+			return e
+		})
 		if err != nil {
 			return githubTrouble(in, "read the pull request", err)
 		}
@@ -619,8 +645,9 @@ func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 				if reviewed == "" {
 					reason = "the reviewed commit is not known (the task's worktree is gone), so nothing is merged"
 				}
-				p, _ := json.Marshal(map[string]any{"pr": n, "reason": reason, "head": pr.Head.SHA, "reviewed": reviewed})
-				return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Title: "Not merged: " + reason, Payload: p}}, nil
+				// the github gate (C4): Try again reads the pull request again, Stop ends the run; the fix is to review the new commits
+				p, _ := json.Marshal(map[string]any{"gate": GitHubGate, "step": "merge the pull request", "error": reason, "fix": FixReviewAgain, "pr": n, "reason": reason, "head": pr.Head.SHA, "reviewed": reviewed})
+				return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Title: "Not merged: " + reason, Payload: p}}, nil
 			}
 			// GitHub's own answer to whether it would merge now. One it would not merge is a question for the human, never a
 			// bypass: nothing here asks for administrator rights (GitHub can let an administrator's merge past protection rules
@@ -636,8 +663,8 @@ func MergePR(d Deps, src PRSource) workflow.NodeHandler {
 				var ae *host.APIError
 				if errors.As(err, &ae) && (ae.Status == 405 || ae.Status == 409) {
 					// not mergeable (required checks/reviews, conflicts, head moved): a human decision, not a failure
-					p, _ := json.Marshal(map[string]any{"pr": n, "reason": ae.Message})
-					return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Title: "GitHub refused the merge: " + ae.Message, Payload: p}}, nil
+					p, _ := json.Marshal(map[string]any{"gate": GitHubGate, "step": "merge the pull request", "error": ae.Message, "fix": "", "pr": n, "reason": ae.Message})
+					return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Title: "GitHub refused the merge: " + ae.Message, Payload: p}}, nil
 				}
 				return githubTrouble(in, "merge the pull request", err)
 			}
@@ -760,7 +787,9 @@ func delivered(in workflow.NodeInput) (human, bool) {
 
 // githubTrouble turns a GitHub or network failure of a pull-request step (gh signed out, an outage, a remote that refuses
 // the push) into a question for the human instead of a failed run: a failed run strands the task after the agents' work
-// was paid for. Answering runs the same step again (nothing else is redone); rejecting stops the run.
+// was paid for. A transient failure was already tried again (retryGitHub) before it comes here. The question is the "github"
+// gate: its payload names the step, the error and what fixes it (githubFix), and its answers are Try again ("answered": the
+// same step runs again, nothing else is redone) and Stop ("rejected": the run stops).
 func githubTrouble(in workflow.NodeInput, step string, err error) (workflow.NodeOutput, error) {
 	if a, ok := delivered(in); ok && a.decision == "rejected" && isHuman(a.by) {
 		return workflow.NodeOutput{}, fmt.Errorf("%s: stopped by %s after GitHub failed: %w", step, a.by, err)
@@ -769,7 +798,7 @@ func githubTrouble(in workflow.NodeInput, step string, err error) (workflow.Node
 	if len(msg) > 300 {
 		msg = msg[:300] + "..."
 	}
-	p, _ := json.Marshal(map[string]any{"step": step, "error": msg})
+	p, _ := json.Marshal(map[string]any{"gate": GitHubGate, "step": step, "error": msg, "fix": githubFix(err)})
 	return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Payload: p,
-		Title: "Could not " + step + " on GitHub: " + msg + ". Fix the cause (for example run `gh auth login`), then answer to try again."}}, nil
+		Title: "Could not " + step + " on GitHub: " + msg + ". Fix the cause, then try again, or stop."}}, nil
 }

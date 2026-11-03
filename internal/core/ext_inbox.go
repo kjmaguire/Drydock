@@ -297,7 +297,8 @@ type ApprovalDetail struct {
 	Kind       string `json:"kind"`
 	ActionKind string `json:"actionKind,omitempty"`
 	Phase      string `json:"phase,omitempty"`
-	// Gate is "permission_prompt" for an agent's tool permission request (answered with run.respond on RunID).
+	// Gate is "permission_prompt" for an agent's tool permission request (answered with run.respond on RunID); for a workflow
+	// request it is its payload's gate (ci, merge, verdict, repo_config_changed, budget_pause...), "" when it has none.
 	Gate        string         `json:"gate,omitempty"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"` // what is being decided, in plain words
@@ -431,6 +432,7 @@ FROM approvals WHERE id=?`, id).Scan(&d.ID, &d.RunID, &d.Kind, &d.ActionKind, &d
 		}
 	} else {
 		d.Payload = json.RawMessage(payload)
+		d.Gate = payloadGate(payload) // the inbox answers a gate with the task page's panel for it (C3)
 		if t != nil {
 			agentID = t.Assignee
 		}
@@ -444,6 +446,19 @@ FROM approvals WHERE id=?`, id).Scan(&d.ID, &d.RunID, &d.Kind, &d.ActionKind, &d
 	}
 	d.Description = approvalDescription(d, t)
 	return d, nil
+}
+
+// payloadGate is a workflow request's gate ("ci", "merge", "verdict", "repo_config_changed", "budget_pause", ...): the "gate" of
+// its payload, "" when it names none or the payload is not an object.
+func payloadGate(payload []byte) string {
+	var v struct {
+		Gate any `json:"gate"`
+	}
+	if json.Unmarshal(payload, &v) != nil {
+		return ""
+	}
+	g, _ := v.Gate.(string)
+	return g
 }
 
 // permissionEditable says whether a person can change a permission request's input before approving it: only where the CLI

@@ -30,7 +30,7 @@ test('the board: columns from the steps, a ready-to-merge card, C for a new task
   await page.keyboard.press('c');
   await expect(page).toHaveURL(/\/tasks\/new$/);
   await page.getByLabel('Task title').fill('Write the README');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Write the README/ })).toBeVisible();
   await projectNav(page, 'nav-tasks');
 

@@ -231,7 +231,7 @@ test('every page keeps to the density budget: short text, the type scale, room b
   await page.getByLabel('Task title').fill('Fix Subtract');
   await page.getByLabel('Description').fill('Subtract returns 0; make it return a - b.');
   await page.getByLabel('Acceptance criteria').fill('Given 5 and 3 When Subtract is called Then 2');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Fix Subtract/ })).toBeVisible();
   const taskUrl = new URL(page.url());
   await choose(page.getByLabel('Worker', { exact: true }), { label: 'Worker One (backend)' });

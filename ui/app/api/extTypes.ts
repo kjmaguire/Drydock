@@ -318,6 +318,9 @@ export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'relevant';
 /** The context package ceiling's default and bounds in tokens (the core's ctxeng.DefaultCeiling, MinCeiling, MaxCeiling). */
 export const CONTEXT_CEILING = { default: 20000, min: 4000, max: 200000 } as const;
 
+/** The CI waits' defaults and ceiling in minutes (the core's DefaultCIGraceMinutes, DefaultCIMaxWaitMinutes, MaxCIWaitMinutes). */
+export const CI_WAITS = { grace: 5, maxWait: 60, max: 360 } as const;
+
 export interface DevSettings {
   maxParallel: number;
   autoSchedule: boolean;
@@ -336,6 +339,9 @@ export interface DevSettings {
   /** Who declared that the repository has no CI, and when (Unix ms). Set by the core when it saves `none`, never by the UI. */
   ciNoneBy?: string;
   ciNoneAt?: number;
+  /** Minutes a pushed commit may show no CI result, and CI checks may run, before the person is asked (0 or absent: CI_WAITS; C7). */
+  ciGraceMinutes?: number;
+  ciMaxWaitMinutes?: number;
   /**
    * How a Claude agent gets the project's skills: `all` puts every skill that reaches it into every turn; `relevant` puts in
    * the repository's own skills and the imported ones whose paths match the task's files, and lists the other imported ones

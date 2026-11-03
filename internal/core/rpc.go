@@ -209,7 +209,8 @@ func (c *Core) Methods() map[string]Method {
 			return c.Agents(ctx, p.ProjectID)
 		}),
 
-		"task.create": bind(func(ctx context.Context, p tasks.CreateReq) (any, error) { return c.CreateTask(ctx, p) }),
+		// task.create makes a task; with assignee (and reviewer) it is assigned, with start it starts too (Create and start)
+		"task.create": bind(func(ctx context.Context, p CreateTaskReq) (any, error) { return c.CreateTaskWith(ctx, p) }),
 		"task.list": bind(func(ctx context.Context, p struct {
 			taskFilterParams
 			// Limit is how many of the newest tasks to return (default and ceiling: see TaskListDefault and TaskListMax).

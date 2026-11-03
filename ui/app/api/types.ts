@@ -558,6 +558,11 @@ export interface TaskCreateReq {
   priority?: number;
   /** Trimmed, lower-cased and deduplicated by the core; too many or too long is refused. */
   labels?: string[];
+  /** The worker: the task is assigned as it is made (core.CreateTaskReq); a missing reviewer is chosen as task.assign chooses one. */
+  assignee?: string;
+  reviewer?: string;
+  /** Starts the task too ("Create and start"), under task.start's checks, made before the task is: a refused start makes no task. */
+  start?: boolean;
 }
 
 /** tasks.MaxLabels and tasks.MaxLabelLen */

@@ -447,6 +447,22 @@ describe('Check settings and development flow', () => {
     expect(calls[0]).toMatchObject({ leadStallMinutes: 30 });
   });
 
+  it('the CI waits (C7): empty means 5 and 60 minutes, out of range is explained, numbers are saved', async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const grace = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Minutes to wait for CI to start'), r);
+    const running = byLabel<HTMLInputElement>(r.container, 'Minutes to wait for running checks');
+    expect([grace.value, grace.placeholder, running.value, running.placeholder]).toEqual(['', '5', '', '60']);
+    type(running, '999');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')!.textContent).toContain('360'), r);
+    type(running, '90');
+    type(grace, '10');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')).toBe(null), r);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ ciGraceMinutes: 10, ciMaxWaitMinutes: 90 });
+  });
+
   it('the context ceiling: empty means the default, out of range is explained, a number is saved', async () => {
     const calls: DevSettings[] = [];
     const r = mountDev(async (_p, x) => (calls.push(x), x));

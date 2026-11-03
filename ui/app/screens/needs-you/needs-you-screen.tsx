@@ -29,10 +29,14 @@ import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
 import { RunAgainButton } from '../shared/run-again.tsx';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
+import { GateAnswer, hasGatePanel } from '../tasks/review-panel.tsx';
+import { AskCard } from '../chats/chat-asks.tsx';
 import { MyTasksList } from './my-tasks-screen.tsx';
 import {
   answerOf,
   canAck,
+  chatAskOf,
+  pendingOf,
   clock,
   doingWords,
   LOOK_WORDS,
@@ -465,7 +469,7 @@ export function NeedsYouScreen(
               </span>
               <span class="sub" data-testid="needs-sub">{needsSubtitle(it, p?.name, summary, now)}</span>
             </span>
-            {isSel && answered?.key === r.key && answered.kind !== 'open' ? <kbd aria-hidden="true">A</kbd> : null}
+            {isSel && answered?.key === r.key && answered.kind !== 'open' && answered.kind !== 'gate' ? <kbd aria-hidden="true">A</kbd> : null}
           </button>
         </li>
       );
@@ -700,10 +704,24 @@ function NeedsDetail(
     enabled: () => !!handle.props.item.approvalId,
     when: (e) => starts(e, 'approval.', 'run.', 'permission.'),
   });
+  // a chat's waiting tool call (chat-ask:<id>): answered here with the chat's own card (C3)
+  const asks = query(handle, {
+    load: () => s.client.chatAsks(chatAskOf(handle.props.item)!.chatId),
+    enabled: () => !!chatAskOf(handle.props.item),
+    when: (e) => starts(e, 'chat.permission'),
+  });
   const act = action(handle);
   let sent = false;
 
-  const answer = (): Answer => (detail.data ? answerOf(detail.data) : { kind: 'open' });
+  const ask = () => {
+    const c = chatAskOf(handle.props.item);
+    return c ? asks.data?.find((x) => x.id === c.askId) : undefined;
+  };
+  const answer = (): Answer => {
+    if (detail.data) return answerOf(detail.data, hasGatePanel);
+    const c = chatAskOf(handle.props.item);
+    return c && ask() ? { kind: 'chat', ...c } : { kind: 'open' };
+  };
   const readOnly = () => s.workspace.license.readOnly;
   const respond = (label: string, fn: () => Promise<void>) =>
     void act.run(label, async () => {
@@ -712,16 +730,40 @@ function NeedsDetail(
       // the item leaves the list when the core says so; the counts and the list read again now
       await s.workspace.needs.reload();
     });
-  const approve = (once = false) => {
+  // a chat's request: Allow once (exactly that call), Allow in this chat (its rule recorded), Deny
+  const answerChat = (how: 'allow' | 'deny' | 'remember') => {
+    const a = answer();
+    if (a.kind !== 'chat' || act.busy || sent || (how !== 'deny' && readOnly())) return;
+    respond(how, async () => {
+      if (how === 'remember') await s.client.chatAllowAndRemember(a.chatId, a.askId);
+      else await s.client.chatAnswer(a.chatId, a.askId, how === 'allow');
+    });
+  };
+  // a gate's panel answers on the request's run, as on the task page
+  const respondGate = async (decision: string, data?: unknown) => {
     const a = answer();
     const d = detail.data;
+    if (!d || a.kind !== 'gate' || act.busy || sent) return;
+    await act.run('gate', async () => {
+      await s.client.runRespond(a.runId, d.id, decision, data);
+      sent = true;
+      await s.workspace.needs.reload();
+      return true;
+    });
+  };
+  const approve = (once = false) => {
+    const a = answer();
+    if (a.kind === 'chat') return answerChat('allow');
+    const d = detail.data;
     // an answer already sent is not sent again by a second key while the item waits to leave the list (audit 2026-10-27)
-    if (!d || a.kind === 'open' || readOnly() || act.busy || sent) return;
+    // a gate's answers are its panel's buttons (a waiver keeps its second click): no key answers it
+    if (!d || a.kind === 'open' || a.kind === 'gate' || readOnly() || act.busy || sent) return;
     if (a.kind === 'permission' && a.forTask && !once) respond('approve', () => s.client.runApproveForTask(a.runId, d.id));
     else respond(once ? 'once' : 'approve', () => s.client.runRespond(a.runId, d.id, 'approved'));
   };
   const deny = () => {
     const a = answer();
+    if (a.kind === 'chat') return answerChat('deny');
     const d = detail.data;
     if (!d || (a.kind !== 'permission' && a.kind !== 'approval') || act.busy || sent) return;
     respond('deny', () => s.client.runRespond(a.runId, d.id, 'rejected'));
@@ -750,7 +792,7 @@ function NeedsDetail(
     const d: ApprovalDetail | undefined = detail.data;
     const a = answer();
     const busy = !!act.busy || sent;
-    if (d) handle.queueTask(() => handle.props.onAnswer?.(a.kind));
+    if (d || a.kind === 'chat') handle.queueTask(() => handle.props.onAnswer?.(a.kind));
     const ro = readOnly();
     const title = needsRowTitle(it, summary);
     // a budget item's detail is what to do: it is the hint below, not said twice
@@ -810,7 +852,7 @@ function NeedsDetail(
           </h2>
           {description ? <p data-testid="detail-description">{visible(description)}</p> : null}
           {/* what to do where it is decided, for what is not answered here */}
-          {(!d || a.kind === 'open') && hint ? <p data-testid="needs-hint">{hint}</p> : null}
+          {(!d || a.kind === 'open') && a.kind !== 'chat' && hint ? <p data-testid="needs-hint">{hint}</p> : null}
           {/* a request answered here keeps its page one step away, under what it is about */}
           {answerHere ? <div mix={openRow}>{openLink}</div> : null}
         </div>
@@ -932,6 +974,34 @@ function NeedsDetail(
           <p mix={statusCss} role="status">
             Answer sent. It leaves the inbox when the core confirms.
           </p>
+        ) : null}
+        {a.kind === 'gate' && d ? (
+          <div data-testid="detail-gate">
+            <GateAnswer
+              p={pendingOf(d)}
+              runId={a.runId}
+              busy={busy}
+              readOnly={ro}
+              onRespond={respondGate}
+              onDone={() => {
+                sent = true;
+                void s.workspace.needs.reload();
+                void handle.update();
+              }}
+            />
+          </div>
+        ) : null}
+        {a.kind === 'chat' && ask() ? (
+          <div data-testid="detail-chat-ask">
+            <AskCard
+              ask={ask()!}
+              cli="The chat's agent"
+              busy={act.busy ? `${act.busy}:${a.askId}` : sent ? 'sent' : ''}
+              readOnly={ro}
+              onAnswer={(allow) => answerChat(allow ? 'allow' : 'deny')}
+              onRemember={() => answerChat('remember')}
+            />
+          </div>
         ) : null}
         <div mix={actionsCss} data-testid="detail-actions">
           {a.kind === 'permission' || a.kind === 'approval' ? (

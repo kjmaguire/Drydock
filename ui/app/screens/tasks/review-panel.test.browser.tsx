@@ -209,6 +209,14 @@ describe('Merge gates of a pull request', () => {
     }
   });
 
+  it("the CI gate's primary is Keep waiting for the project's wait (C7), the same answer as checking again", async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={ciQuestion({ ...noCI, reason: 'running', running: ['e2e'], waitMinutes: 60 })} onChanged={() => undefined} />, svc({ runRespond }));
+    expect(buttons(r.container)).toEqual(['Keep waiting another 60 minutes', 'Merge without CI this time', 'Stop']);
+    await r.act(() => byText(r.container, 'button', 'Keep waiting another 60 minutes').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'ci-1', 'answered', {}]]), r);
+  });
+
   it('the CI gate names the missing required checks, the running ones, and what Drydock did not accept', () => {
     const r = mount(
       <ReviewPanel
@@ -280,7 +288,35 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-1', 'answered', {}]]), r);
   });
 
-  const repoConfig = (changed: unknown = ['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
+  it('a GitHub failure is Try again with its fix and Stop, not a free-text answer (C4)', async () => {
+    const runRespond = recorder(() => undefined);
+    const d = detail({
+      pending: [
+        {
+          id: 'gh-1',
+          nodeId: 'push_pr',
+          step: 9,
+          spec: {
+            kind: 'question',
+            title: 'Could not open the pull request on GitHub: github 401 on /pulls: Bad credentials. Fix the cause, then try again, or stop.',
+            payload: { gate: 'github', step: 'open the pull request', error: 'github 401 on /pulls: Bad credentials', fix: 'gh_signin' },
+          },
+        },
+      ],
+    });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ runRespond }));
+    const gate = r.$('[data-testid="github-trouble"]')!;
+    expect(gate.getAttribute('data-fix')).toBe('gh_signin');
+    expect(gate.textContent).toContain('Could not open the pull request: github 401 on /pulls: Bad credentials');
+    expect(r.$('[data-testid="github-trouble-fix"]')!.textContent).toContain('gh auth login');
+    expect(r.$('[data-testid="github-trouble-signin"]')!.getAttribute('href')).toBe('/github');
+    expect(r.container.querySelector('textarea')).toBeNull();
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+    await r.act(() => byText(r.container, 'button', 'Try again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'gh-1', 'answered', {}]]), r);
+  });
+
+  const repoConfig = (changed: unknown =['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
     detail({
       pending: [
         {
