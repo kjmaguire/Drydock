@@ -90,7 +90,7 @@ export function SecuritySchedulePanel(handle: Handle<{ projectId: string }>) {
                 <ErrorNote error={act.error} what="Not saved" />
               </div>
             ) : null}
-            <ToggleRow label="After a task is merged" description="Scans the project's folder once a task's work is merged." checked={v.afterMerge} disabled={busy} onChange={(x) => void setRule({ afterMerge: x })} />
+            <ToggleRow label="After a task is merged" description="Scans the project's folder once a task's work is merged. For a pull request merged on GitHub, it runs once Sync now brings the merge in." checked={v.afterMerge} disabled={busy} onChange={(x) => void setRule({ afterMerge: x })} />
             <ToggleRow label="After a sync brings new commits" description="Scans once Sync now has updated the branch." checked={v.afterSync} disabled={busy} onChange={(x) => void setRule({ afterSync: x })} />
             <ToggleRow
               label="Once a week"

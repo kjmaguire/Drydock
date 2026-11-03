@@ -13,12 +13,12 @@ import (
 	"github.com/kjmaguire/drydock/internal/scan/scantest"
 )
 
-func scheduleCore(t *testing.T) (*Core, *securityExt, Project) {
+func scheduleCore(t *testing.T, opts ...string) (*Core, *securityExt, Project) {
 	t.Helper()
 	ctx := context.Background()
 	exe := os.Args[0]
 	c, err := Open(ctx, Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
-		ScanTools: scan.Paths{OSV: scan.Tool{Path: exe, Args: scantest.Args("osv-scanner")}, Opengrep: scan.Tool{Path: exe, Args: scantest.Args("opengrep")}}})
+		ScanTools: scan.Paths{OSV: scan.Tool{Path: exe, Args: scantest.Args("osv-scanner", opts...)}, Opengrep: scan.Tool{Path: exe, Args: scantest.Args("opengrep", opts...)}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,5 +147,110 @@ func TestNextWeeklyAndTheAgentsNoteSayTheRule(t *testing.T) {
 	}
 	if w := scheduleWords(ScanRule{AfterMerge: true, Weekly: true}); !strings.Contains(w, "after a merge, weekly") {
 		t.Fatal(w)
+	}
+}
+
+// H5 review: a tick while the weekly scan runs does not mark it due again (the running scan is not stored yet), and a weekly
+// scan that waited is dropped when another scan started after it was marked: one scan, not two in a row.
+func TestTheWeeklyRuleDoesNotRunTwiceWhileItsScanRuns(t *testing.T) {
+	ctx := context.Background()
+	c, s, p := scheduleCore(t, "--sleep-ms=700")
+	if _, err := s.setSchedule(ctx, p.ID, ScanRule{Weekly: true}, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	s.tick(ctx, time.Now())
+	s.mu.Lock()
+	_, running := s.running[p.ID]
+	s.mu.Unlock()
+	if !running {
+		t.Fatal("the weekly scan did not start")
+	}
+	s.tick(ctx, time.Now()) // a minute later on a big repository: the scan still runs
+	s.mu.Lock()
+	waiting := s.pending[p.ID]
+	s.mu.Unlock()
+	if waiting != "" {
+		t.Fatalf("the weekly scan was marked due while it ran: %q", waiting)
+	}
+	if list := waitScans(t, s, p.ID, 1); len(list) != 1 || list[0].Trigger != TriggerWeekly {
+		t.Fatalf("%+v", list)
+	}
+	time.Sleep(200 * time.Millisecond) // a follow-up after the scan ended would have started by now
+	if list := waitScans(t, s, p.ID, 1); len(list) != 1 {
+		t.Fatalf("a second weekly scan: %+v", list)
+	}
+
+	// the weekly scan waits for an agent; meanwhile the person starts their own scan: the weekly one is no longer due
+	if _, err := c.DB.Writer().Exec(`INSERT INTO chats(id,project_id,adapter,status,created_at,updated_at) VALUES('chat_busy',?,'claude','running',0,0)`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DB.Writer().Exec(`UPDATE security_scans SET started_at=? WHERE project_id=?`, time.Now().Add(-scanWeek-time.Hour).UnixMilli(), p.ID); err != nil {
+		t.Fatal(err)
+	}
+	s.tick(ctx, time.Now())
+	s.mu.Lock()
+	waiting = s.pending[p.ID]
+	s.mu.Unlock()
+	if waiting != TriggerWeekly {
+		t.Fatalf("%q", waiting)
+	}
+	if _, err := s.startAs(ctx, scanTarget{ProjectID: p.ID}, "human:kyle", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DB.Writer().Exec(`UPDATE chats SET status='idle' WHERE id='chat_busy'`); err != nil {
+		t.Fatal(err)
+	}
+	list := waitScans(t, s, p.ID, 2)
+	s.tick(ctx, time.Now()) // the agent stopped: a tick would start a weekly scan that is still due
+	time.Sleep(200 * time.Millisecond)
+	if list = waitScans(t, s, p.ID, 2); len(list) != 2 || list[0].Trigger != "" {
+		t.Fatalf("the weekly scan ran after the person's: %+v", list)
+	}
+	s.mu.Lock()
+	waiting = s.pending[p.ID]
+	s.mu.Unlock()
+	if waiting != "" {
+		t.Fatalf("%q", waiting)
+	}
+}
+
+// H5 review: a weekly scan that cannot start (the repository folder is gone) is not tried again at every tick; it tries
+// again after weeklyRetry and runs once the folder is back.
+func TestAWeeklyScanThatCannotStartWaitsBeforeTryingAgain(t *testing.T) {
+	ctx := context.Background()
+	_, s, p := scheduleCore(t)
+	if _, err := s.setSchedule(ctx, p.ID, ScanRule{Weekly: true}, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	away := p.RepoPath + "-away"
+	if err := os.Rename(p.RepoPath, away); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if s.tick(ctx, now); len(waitScans(t, s, p.ID, 0)) != 0 {
+		t.Fatal("scanned a missing folder")
+	}
+	s.mu.Lock()
+	failedAt := s.weekly[p.ID].failedAt
+	s.mu.Unlock()
+	if failedAt == 0 {
+		t.Fatal("the failure was not kept")
+	}
+	if err := os.Rename(away, p.RepoPath); err != nil {
+		t.Fatal(err)
+	}
+	s.tick(ctx, now.Add(time.Minute))
+	if list := waitScans(t, s, p.ID, 0); len(list) != 0 {
+		t.Fatalf("tried again a minute later: %+v", list)
+	}
+	s.tick(ctx, time.UnixMilli(failedAt).Add(weeklyRetry+time.Minute))
+	if list := waitScans(t, s, p.ID, 1); len(list) != 1 || list[0].Trigger != TriggerWeekly {
+		t.Fatalf("%+v", list)
+	}
+	s.mu.Lock()
+	failedAt = s.weekly[p.ID].failedAt
+	s.mu.Unlock()
+	if failedAt != 0 {
+		t.Fatal("the failure outlived the scan that started")
 	}
 }

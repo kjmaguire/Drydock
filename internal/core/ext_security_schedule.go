@@ -18,7 +18,8 @@ import (
 )
 
 // Scheduled security scans (lane B batch B7, item H5): a person sets, per project, a rule by which the project's scan starts
-// without the Scan button: after a task's work is merged (task.completed), after Sync now brings new commits into the working
+// without the Scan button: after a task's work is merged (task.completed; for a pull request merged on GitHub, at the next sync
+// that brings new commits, since only then is the merge in the folder), after Sync now brings new commits into the working
 // tree (repo.synced with the outcome "updated"), and once a week. Every rule is off by default: the scan's dependency engine
 // sends package names and versions to osv.dev, which the person agrees to by turning a rule on. The rule is stored with the
 // person who set it, and a scan it starts is started in that person's name (scan.Report.By) with the rule in Trigger, so "only a
@@ -27,8 +28,9 @@ import (
 // A rule's scan waits while an agent works in the project's folder (agentWorksIn, the rule Sync now follows) or while a scan
 // of the project runs, and starts at the next tick (scheduleTick) or when that scan ends. Nothing leaves the PC but the disclosed
 // osv.dev query, and a finding never makes a task. A rule's scan that finds high or critical findings the scan before did not
-// have puts one item in the Inbox (scanFindingItems); dismissing those findings, a later scan without them, or marking the item
-// done clears it.
+// have puts one item in the Inbox (scanFindingItems); a later rule's scan that still has them keeps it. Dismissing those
+// findings, a scan the person starts, a later scan without them, or marking the item done clears it. The weekly rule counts a
+// scan that is running as the last scan, and one whose scan could not start tries again after weeklyRetry.
 
 const (
 	settingScanSchedule = "security:schedule:"     // + project id: the rule (ScanRule as JSON)
@@ -47,6 +49,16 @@ const scanWeek = 7 * 24 * time.Hour
 
 // scheduleTick is how often waiting scans and the weekly rule are looked at.
 var scheduleTick = time.Minute
+
+// weeklyRetry is how long the weekly rule waits after its scan could not start (the repository folder is gone, say) before it
+// tries again, so a missing folder is not tried, and logged, at every tick.
+var weeklyRetry = time.Hour
+
+// weeklyState is the weekly rule's memory of a project (securityExt.weekly): when it last marked the scan as due, and when
+// its start last failed (unix ms; 0: never).
+type weeklyState struct {
+	markedAt, failedAt int64
+}
 
 // ScanRule is a project's rule as stored.
 type ScanRule struct {
@@ -133,6 +145,10 @@ func (s *securityExt) setSchedule(ctx context.Context, projectID string, r ScanR
 	if w, ok := s.pending[projectID]; ok && !r.wants(w) {
 		delete(s.pending, projectID) // the rule that waited was turned off
 	}
+	delete(s.weekly, projectID) // a rule set again tries at once, even after a scan that could not start
+	if !r.AfterMerge {
+		delete(s.awaitSync, projectID)
+	}
 	s.mu.Unlock()
 	s.c.publish(ctx, "security.schedule", projectID, map[string]any{"afterMerge": r.AfterMerge, "afterSync": r.AfterSync, "weekly": r.Weekly, "by": by})
 	return s.scheduleView(ctx, projectID)
@@ -200,7 +216,7 @@ func nextWeekly(lastAt int64, now time.Time) int64 {
 func (s *securityExt) watchSchedule(ctx context.Context) {
 	events.Watch(ctx, s.c.Bus, events.Filter{Types: []string{"task.completed", "repo.synced"}}, func(e events.Event) {
 		if trigger := triggerOf(e); trigger != "" && e.ProjectID != "" {
-			s.due(ctx, e.ProjectID, trigger)
+			s.onTrigger(ctx, e, trigger)
 		}
 	})
 	safe.Go("security.schedule", func() {
@@ -233,6 +249,39 @@ func triggerOf(e events.Event) string {
 	return ""
 }
 
+// onTrigger handles a merge or a sync. A task merged through a pull request was merged on GitHub: the project's folder does
+// not have the change yet, so the rule "after a merge" waits for the next sync that brings new commits and scans then.
+func (s *securityExt) onTrigger(ctx context.Context, e events.Event, trigger string) {
+	pid := e.ProjectID
+	switch trigger {
+	case TriggerAfterMerge:
+		if e.TaskID != "" && s.mergedOnGitHub(ctx, e.TaskID) {
+			if s.rule(ctx, pid).AfterMerge {
+				s.mu.Lock()
+				s.awaitSync[pid] = true
+				s.mu.Unlock()
+			}
+			return
+		}
+	case TriggerAfterSync:
+		s.mu.Lock()
+		merged := s.awaitSync[pid]
+		delete(s.awaitSync, pid)
+		s.mu.Unlock()
+		if merged && s.rule(ctx, pid).AfterMerge {
+			trigger = TriggerAfterMerge // the sync brought the merge in: one scan, for the merge
+		}
+	}
+	s.due(ctx, pid, trigger)
+}
+
+// mergedOnGitHub reports whether the task's work was merged through a pull request (github.pr_merged, pipeline/prflow.go).
+func (s *securityExt) mergedOnGitHub(ctx context.Context, taskID string) bool {
+	var one int
+	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT 1 FROM events WHERE task_id=? AND type='github.pr_merged' LIMIT 1`, taskID).Scan(&one)
+	return err == nil
+}
+
 // due marks the rule's scan as waiting when the project's rule wants it, then tries to start it.
 func (s *securityExt) due(ctx context.Context, projectID, trigger string) {
 	if !s.rule(ctx, projectID).wants(trigger) {
@@ -252,8 +301,13 @@ func (s *securityExt) tick(ctx context.Context, now time.Time) {
 			continue
 		}
 		s.mu.Lock()
-		if _, ok := s.pending[pid]; !ok {
+		_, running := s.running[pid] // a running scan is not in lastScanAt yet: it is the last scan
+		w := s.weekly[pid]
+		retry := w.failedAt != 0 && now.UnixMilli() < w.failedAt+weeklyRetry.Milliseconds()
+		if _, ok := s.pending[pid]; !ok && !running && !retry {
 			s.pending[pid] = TriggerWeekly
+			w.markedAt = now.UnixMilli()
+			s.weekly[pid] = w
 		}
 		s.mu.Unlock()
 	}
@@ -308,14 +362,40 @@ func (s *securityExt) runScheduled(ctx context.Context, projectID string) bool {
 		}
 		s.mu.Unlock()
 	}
+	// failed drops a weekly scan that could not start and holds the rule back for weeklyRetry; it says whether this is the
+	// first failure in a row (only that one is logged)
+	failed := func() bool {
+		drop()
+		if trigger != TriggerWeekly {
+			return true
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		w := s.weekly[projectID]
+		first := w.failedAt == 0
+		w.failedAt = time.Now().UnixMilli()
+		s.weekly[projectID] = w
+		return first
+	}
 	r := s.rule(ctx, projectID)
 	if !r.wants(trigger) || !isPerson(r.SetBy) {
 		drop()
 		return false
 	}
+	if trigger == TriggerWeekly {
+		// a scan that started after the rule marked this one (a person's, or the weekly one itself while it ran) is the week's
+		// scan: this one is no longer due
+		s.mu.Lock()
+		marked := s.weekly[projectID].markedAt
+		s.mu.Unlock()
+		if at, err := s.lastScanAt(ctx, projectID); err != nil || (marked != 0 && at >= marked) {
+			drop()
+			return false
+		}
+	}
 	p, err := s.c.GetProject(ctx, projectID)
 	if err != nil || p.RepoPath == "" {
-		drop()
+		failed()
 		return false
 	}
 	if busy, err := s.c.agentWorksIn(ctx, projectID, p.RepoPath); err != nil || busy {
@@ -328,15 +408,24 @@ func (s *securityExt) runScheduled(ctx context.Context, projectID string) bool {
 		if running {
 			return false // another scan started a moment ago: this one starts when it ends
 		}
-		s.c.logf("security: the %s scan of %s did not start: %v", trigger, projectID, err)
-		drop()
+		if failed() {
+			s.c.logf("security: the %s scan of %s did not start: %v", trigger, projectID, err)
+		}
 		return false
 	}
 	drop()
+	if trigger == TriggerWeekly {
+		s.mu.Lock()
+		w := s.weekly[projectID]
+		w.failedAt = 0
+		s.weekly[projectID] = w
+		s.mu.Unlock()
+	}
 	return true
 }
 
-// newFindings is what a rule's scan found that the scan before it did not: the high and critical findings not dismissed.
+// newFindings is what the rules' scans found that the scan before each did not: the high and critical findings not dismissed.
+// A later rule's scan that still reports them, not dismissed, keeps them.
 type newFindings struct {
 	ScanID       string   `json:"scanId"`
 	Trigger      string   `json:"trigger"`
@@ -344,8 +433,10 @@ type newFindings struct {
 	Fingerprints []string `json:"fingerprints"`
 }
 
-// noteNewFindings keeps, for the Inbox, the new high findings of a rule's scan that finished; a person's own scan (they watch
-// its findings on the page) or a rule's scan without new ones clears the note. A scan that did not finish leaves it.
+// noteNewFindings keeps, for the Inbox, the new high findings of a rule's scan that finished, with the ones the note had that
+// this scan still reports and nobody dismissed: a merge after a merge does not clear an alert the person has not seen. A
+// person's own scan (they watch its findings on the page) clears the note, and so does a rule's scan without any of them. A
+// scan that did not finish leaves it.
 func (s *securityExt) noteNewFindings(ctx context.Context, projectID string, rep scan.Report) {
 	if rep.Status != scan.StatusDone {
 		return
@@ -366,11 +457,30 @@ func (s *securityExt) noteNewFindings(ctx context.Context, projectID string, rep
 			}
 		}
 	}
-	n := newFindings{ScanID: rep.ID, Trigger: rep.Trigger, At: rep.FinishedAt, Fingerprints: []string{}}
+	var old newFindings
+	if v := readSetting(ctx, s.c, key); v != "" {
+		_ = json.Unmarshal([]byte(v), &old)
+	}
+	noted := map[string]bool{}
+	for _, fp := range old.Fingerprints {
+		noted[fp] = true
+	}
+	var kept, fresh []string
 	for _, f := range rep.Findings {
-		if !f.Dismissed && (f.Severity == "critical" || f.Severity == "high") && !before[f.Fingerprint] {
-			n.Fingerprints = append(n.Fingerprints, f.Fingerprint)
+		if f.Dismissed || (f.Severity != "critical" && f.Severity != "high") {
+			continue
 		}
+		switch {
+		case noted[f.Fingerprint]:
+			kept = append(kept, f.Fingerprint)
+		case !before[f.Fingerprint]:
+			fresh = append(fresh, f.Fingerprint)
+		}
+	}
+	// nothing new: the earlier note stays as it was (its scan, rule and Inbox key) with the findings still there
+	n := newFindings{ScanID: old.ScanID, Trigger: old.Trigger, At: old.At, Fingerprints: kept}
+	if len(fresh) > 0 {
+		n = newFindings{ScanID: rep.ID, Trigger: rep.Trigger, At: rep.FinishedAt, Fingerprints: append(kept, fresh...)}
 	}
 	if len(n.Fingerprints) == 0 {
 		_ = s.deleteSetting(ctx, key)
@@ -442,7 +552,7 @@ func (c *Core) scanFindingItems(ctx context.Context, projectID string) []room.Ne
 		}
 		out = append(out, room.NeedsYouItem{Key: "security-findings:" + pid + ":" + n.ScanID, Kind: room.NeedsSecurityFindings, Severity: 1, ProjectID: pid,
 			Title:   inboxLine(fmt.Sprintf("%d %s in %s", left, what, p.Name), 160),
-			Detail:  "Found by " + triggerWords(n.Trigger) + ". Open Security to read them; dismissing them or a scan without them clears this.",
+			Detail:  "Found by " + triggerWords(n.Trigger) + ". Open Security to read them; dismissing them, a scan you start, or a scan without them clears this.",
 			Subject: n.ScanID, CreatedAt: time.UnixMilli(n.At).UTC()})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })

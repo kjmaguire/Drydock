@@ -115,6 +115,74 @@ func TestARuleStartsTheScanAfterAMergeAndItsNewHighFindingsReachTheInbox(t *test
 	}
 }
 
+// H5 review: a second rule's scan that still reports the new high findings, not dismissed, keeps the Inbox item (the same
+// one) instead of clearing an alert the person has not seen; a scan the person starts clears it.
+func TestARulesScanWithTheSameHighFindingsKeepsTheInboxItem(t *testing.T) {
+	a, _ := securityCore(t)
+	repo := newRepo(t)
+	os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("key = "+plantedKey+"\n"), 0o644)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	var sch core.ScanSchedule
+	a.call("security.schedule.set", map[string]any{"projectId": p.ID, "afterMerge": true}, &sch)
+	ctx := context.Background()
+	var list []scan.Summary
+	scans := func(n int) {
+		a.waitFor("the scans", func() bool {
+			a.call("security.scan.list", map[string]any{"projectId": p.ID}, &list)
+			return len(list) == n && list[0].Status == scan.StatusDone
+		})
+	}
+	a.c.Bus.Publish(ctx, events.Event{Type: "task.completed", ProjectID: p.ID, Data: json.RawMessage(`{}`)})
+	scans(1)
+	var items []room.NeedsYouItem
+	a.waitFor("the Inbox item", func() bool { items = scanFindingItems(a, p.ID); return len(items) == 1 })
+	first := items[0]
+
+	a.c.Bus.Publish(ctx, events.Event{Type: "task.completed", ProjectID: p.ID, Data: json.RawMessage(`{}`)})
+	scans(2)
+	if items = scanFindingItems(a, p.ID); len(items) != 1 || items[0].Key != first.Key || items[0].Title != first.Title {
+		t.Fatalf("the second merge's scan cleared the alert: %+v (was %+v)", items, first)
+	}
+	if !strings.Contains(first.Detail, "a scan you start") {
+		t.Fatal(first.Detail)
+	}
+
+	// the person's own scan clears it: they watch its findings on the page
+	a.call("security.scan.start", map[string]any{"projectId": p.ID}, nil)
+	scans(3)
+	if items = scanFindingItems(a, p.ID); len(items) != 0 {
+		t.Fatalf("%+v", items)
+	}
+}
+
+// H5 review: a task merged through a pull request was merged on GitHub, so the rule "after a merge" scans after the next sync
+// that brings new commits (the merge in the folder), not at once on the old tree.
+func TestAPullRequestMergeIsScannedAfterTheNextSync(t *testing.T) {
+	a, _ := securityCore(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var sch core.ScanSchedule
+	a.call("security.schedule.set", map[string]any{"projectId": p.ID, "afterMerge": true}, &sch)
+	ctx := context.Background()
+	a.c.Bus.Publish(ctx, events.Event{Type: "github.pr_merged", ProjectID: p.ID, TaskID: "tsk_pr", Data: json.RawMessage(`{"number":7}`)})
+	a.c.Bus.Publish(ctx, events.Event{Type: "task.completed", ProjectID: p.ID, TaskID: "tsk_pr", Data: json.RawMessage(`{}`)})
+	time.Sleep(500 * time.Millisecond) // the watcher handles the event on its own goroutine
+	var list []scan.Summary
+	a.call("security.scan.list", map[string]any{"projectId": p.ID}, &list)
+	if len(list) != 0 {
+		t.Fatalf("scanned the tree without the merge: %+v", list)
+	}
+	a.c.Bus.Publish(ctx, events.Event{Type: "repo.synced", ProjectID: p.ID, Data: json.RawMessage(`{"outcome":"updated"}`)})
+	a.waitFor("the scan after the sync", func() bool {
+		a.call("security.scan.list", map[string]any{"projectId": p.ID}, &list)
+		return len(list) == 1 && list[0].Status == scan.StatusDone
+	})
+	if list[0].Trigger != core.TriggerAfterMerge {
+		t.Fatalf("%+v", list)
+	}
+}
+
 // H5: the sync rule starts a scan only for a sync that brought new commits.
 func TestTheSyncRuleScansOnlyWhenTheSyncBroughtNewCommits(t *testing.T) {
 	a, _ := securityCore(t)

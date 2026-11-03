@@ -642,8 +642,8 @@ opens by itself for a rule the pickers cannot say. A save refused because the ru
 again, puts the edit on the newer version and says so above the list; any other refusal is shown as the core wrote it.
 
 **Security scan rules (as built, lane B batch B7, H5).** Project settings has **Security scan rules** (`scan-schedule`,
-`screens/project/project-security-schedule.tsx`, for a project with a repository): **After a task is merged**, **After a sync
-brings new commits** and **Once a week**, each a switch that saves at once (`security.schedule.set`), all off until the person
+`screens/project/project-security-schedule.tsx`, for a project with a repository): **After a task is merged** (for a pull request merged on
+GitHub, the description says it runs once Sync now brings the merge in), **After a sync brings new commits** and **Once a week**, each a switch that saves at once (`security.schedule.set`), all off until the person
 turns them on (the description says the dependency check sends package names and versions to osv.dev), then a line with who set
 them and when; a rule's scan that waits (an agent works in the project's folder, or a scan runs) and the last scan a rule started
 are said under them. **Also run the scan on every task's change** turns on the Verification checks' Security scan of the change in

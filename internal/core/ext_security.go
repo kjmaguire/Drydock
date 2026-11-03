@@ -30,7 +30,7 @@ import (
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}, jobs: map[string]*toolJob{}, latest: map[string]string{},
-			inst: scan.NewInstaller(filepath.Join(c.cfg.DataDir, "tools")), pending: map[string]string{}}
+			inst: scan.NewInstaller(filepath.Join(c.cfg.DataDir, "tools")), pending: map[string]string{}, weekly: map[string]weeklyState{}, awaitSync: map[string]bool{}}
 		// a release becomes the one in use only once it ran the way a scan runs it (decision P95)
 		s.inst.Check = func(ctx context.Context, tool string, t scan.Tool) error {
 			return scan.SelfCheck(ctx, scan.Options{Procs: c.Deps.PM, Redact: c.Scanner.Redact, Env: checks.CommandEnv}, tool, t)
@@ -67,6 +67,8 @@ func init() {
 			s.mu.Lock()
 			delete(s.unstored, projectID)
 			delete(s.pending, projectID)
+			delete(s.weekly, projectID)
+			delete(s.awaitSync, projectID)
 			r := s.running[projectID]
 			s.mu.Unlock()
 			s.forgetSchedule(context.Background(), projectID)
@@ -195,6 +197,11 @@ type securityExt struct {
 	// pending holds, by project id, the rule whose scan waits: an agent works in the project's folder or a scan of it runs
 	// (under mu, ext_security_schedule.go)
 	pending map[string]string
+	// weekly holds, by project id, when the weekly rule last marked its scan as due and when its start last failed (under mu)
+	weekly map[string]weeklyState
+	// awaitSync holds the projects whose task was merged on GitHub: the merge reaches the folder with the next sync that
+	// brings new commits, and the rule "after a merge" scans then (under mu)
+	awaitSync map[string]bool
 }
 
 // toolsMemoTTL is how long a tools answer serves the reads that follow one change.
