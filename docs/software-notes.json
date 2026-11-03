@@ -66,7 +66,7 @@
     },
     "go:github.com/wailsapp/wails/v3": {
       "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
-      "hold": "Still a beta: beta.34, published on 2026-10-20 and taken the same day at the owner's instruction (no 14-day cooldown). The risk was accepted in the brief; it is isolated in app/. The Windows exe builds with it (CGO, MinGW) and CI's app job builds and checks it."
+      "note": "v3.1.0, the newest stable release (2026-11-01; v3.0.0 was the first non-beta), taken on 2026-11-03 at the owner's request without the 14-day cooldown. Since beta.34 it changes, on Windows, only fixes (menu bar painting, applyDarkMode, the updater's staged swap, the tray's restart debounce); the icon resource 3 and window class behaviour docs/windows-identity.md relies on is unchanged. Isolated in app/. The Windows exe builds with it (CGO, MinGW) and CI's app job builds and checks it. Its Windows notifications service brings in git.sr.ht/~jackmordaunt/go-toast/v2."
     },
     "go:github.com/zalando/go-keyring": {
       "role": "Stores secrets in the Windows Credential Manager."

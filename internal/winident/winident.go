@@ -22,7 +22,7 @@ import (
 )
 
 // IconResourceID is the icon group Wails gives every window (application.NewIconFromResource(module, 3) in
-// webview_window_windows.go of Wails v3.0.0-beta.34) and that app/icon_windows.go loads at the window's DPI. It is also the
+// webview_window_windows.go of Wails v3.0.0-beta.34, unchanged in v3.1.0) and that app/icon_windows.go loads at the window's DPI. It is also the
 // executable's only icon group, so Explorer, the Start menu, shortcuts and the taskbar of a pinned app show it.
 const IconResourceID = 3
 

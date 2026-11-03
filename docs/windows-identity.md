@@ -50,7 +50,7 @@ the FileVersion and ProductVersion strings. CI builds the default version (there
 
 ## 3. The title bar and the taskbar (what Wails needed)
 
-Read from Wails v3.0.0-beta.34 (`pkg/application/webview_window_windows.go`, `application_windows.go`):
+Read from Wails v3.0.0-beta.34 and checked again in v3.1.0 (`pkg/application/webview_window_windows.go`, `application_windows.go`):
 
 - Every window gets the icon group with **resource ID 3** of the executable (`NewIconFromResource(GetModuleHandle(""), 3)`),
   falling back to the bytes of `application.Options.Icon` only when there is no such resource. That is why the group is ID 3
