@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { Skill } from '../../api/extTypes.ts';
 import type { AgentLane, RunSpan, WaitSpan } from '../../api/inboxClient.ts';
 import type { AgentTemplate, ClaudePractices } from '../../api/libraryClient.ts';
-import type { AdapterInfo, Agent, PrebuiltAgent, PresenceState, Project, TaskSummary } from '../../api/types.ts';
+import type { AdapterInfo, Agent, Connection, PrebuiltAgent, PresenceState, Project, TaskSummary } from '../../api/types.ts';
 import { SKIP_CONFIRM_LABEL } from '../../lib/permission.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, drain, fromMenu, menuItems, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
@@ -937,6 +937,33 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     const l = await waitAgent(r, 'Local helper');
     await waitFor(() => expect(l.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Models on this PC · backend'), r);
     await waitFor(() => expect(l.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Editing format.go.'), r);
+  });
+
+  it("Drydock's own background check (connection.checked) updates the CLI name from its kept answer, without reading the agents or probing every CLI again", async () => {
+    const wsl = agent({ id: 'agt_w', name: 'Linux', runMode: 'wsl', wslDistro: 'Ubuntu', model: '' });
+    const install = (key: string, at?: string) => ({ adapter: 'claude', key, runMode: key.includes('@wsl:') ? 'wsl' : 'native', distro: key.split('@wsl:')[1], installed: true, status: 'ready', usable: true, platform: 'windows', at }) as Connection;
+    const calls = { fresh: 0, cached: 0, adapters: 0, extras: 0 };
+    let kept: Connection[] = [];
+    const { r, s, listed } = showCrew(
+      {
+        agentTimeline: async (since) => ({ since, until: NOW, agents: [lane(wsl)] }),
+        taskSummaries: async () => ({ summaries: [], total: 0, partial: false }),
+        connectionList: async (cached) => (cached ? (calls.cached++, kept) : (calls.fresh++, [install('claude'), install('claude@wsl:Ubuntu')])),
+        adapterList: async () => (calls.adapters++, [{ ...claude, capabilities: { ...claude.capabilities, runModes: ['native', 'wsl'] } }]),
+        crewExtras: async () => (calls.extras++, { skills: [], rooms: [] }),
+      },
+      [wsl],
+    );
+    const w = await waitAgent(r, 'Linux');
+    await waitFor(() => expect(calls).toEqual({ fresh: 1, cached: 1, adapters: 1, extras: 1 }), r);
+    expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · backend');
+    const agents = listed();
+    // the check found Claude Code in a second distro too: the card names the distro it runs in
+    kept = [install('claude@wsl:Debian', new Date(Date.now() + 1000).toISOString())];
+    await r.act(() => s.emit({ type: 'connection.checked' }));
+    await waitFor(() => expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL (Ubuntu) · backend'), r);
+    expect(calls).toEqual({ fresh: 1, cached: 2, adapters: 1, extras: 1 });
+    expect(listed()).toBe(agents);
   });
 
   it('N opens New agent, but not while typing, with a modifier, or with the palette open', async () => {

@@ -53,6 +53,8 @@ import {
 } from './crew.ts';
 import { crewFigures, runsWhereTitle, sortAdapters } from './team.ts';
 import { AddReviewerNote, AddSuggestedTeam, aloneInCrew } from '../shared/add-reviewer.tsx';
+import { withCheckedConnections } from '../agents/agents.ts';
+import { withChecked } from '../workspace/start.ts';
 
 /** A task's identifier: "GOC-41" with the project's key, "#41" without one (an older core). */
 const keyText = (seq: number, projectKey?: string): string => (projectKey ? `${projectKey}-${seq}` : `#${seq}`);
@@ -375,8 +377,40 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     }, { ids: [] as string[], providerId: '' }),
     when: (e) => e.type === 'local.changed',
   });
-  const adapters = query(handle, { load: () => orElse(() => s.client.adapterList(), [] as AdapterInfo[]), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
-  const conns = query(handle, { load: () => orElse(() => s.client.connectionList(), [] as Connection[]), when: (e) => e.type.startsWith('connection.') });
+  // adapter.list and connection.list start every CLI: Drydock's own background check (connection.checked, A2) is read from its
+  // kept answers instead (connection.list {cached}), which start nothing, and laid over the last reads (withChecked)
+  const fresh = (e: { type: string }) => e.type.startsWith('connection.') && e.type !== 'connection.checked' && e.type !== 'connection.sign_in_started';
+  let adaptersAt = 0;
+  const adapterRows = query(handle, {
+    load: () => orElse(async () => {
+      const at = Date.now();
+      const r = await s.client.adapterList();
+      adaptersAt = at;
+      return r;
+    }, [] as AdapterInfo[]),
+    when: (e) => fresh(e) || e.type.startsWith('adapter.'),
+  });
+  let connsAt = 0;
+  const connRows = query(handle, {
+    load: () => orElse(async () => {
+      const at = Date.now();
+      const r = await s.client.connectionList();
+      connsAt = at;
+      return r;
+    }, [] as Connection[]),
+    when: fresh,
+  });
+  const checked = query(handle, { load: () => orElse(() => s.client.connectionList(true), [] as Connection[]), when: (e) => e.type === 'connection.checked' });
+  const adapters = {
+    get data() {
+      return withChecked(adapterRows.data, checked.data, adaptersAt);
+    },
+  };
+  const conns = {
+    get data() {
+      return withCheckedConnections(connRows.data, checked.data, connsAt);
+    },
+  };
   // every project's run mode in one request (project.runModes), however many projects there are; a failed read leaves an empty
   // answer, and an agent that follows its project is then drawn as on Windows
   const runModes = query(handle, {

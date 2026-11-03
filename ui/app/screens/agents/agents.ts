@@ -70,6 +70,22 @@ export function reportMeta(r: ConnectionReport): string {
 /** An install's key: the Windows install is the adapter id, one inside a WSL distro has its own (decision P41). */
 export const connectionKey = (c: Pick<Connection, 'adapter' | 'key'>): string => c.key || c.adapter;
 
+/**
+ * connection.list with what Drydock's own checks found since it was read (A2): an install's newest check (connection.list
+ * {cached}) made after `since` replaces it, and an install only such a check found is added, so the page follows a background
+ * check (connection.checked) without probing every CLI again.
+ */
+export function withCheckedConnections(fresh: readonly Connection[] | undefined, checked: readonly Connection[] | undefined, since: number): Connection[] | undefined {
+  if (!fresh || !checked?.length) return fresh as Connection[] | undefined;
+  const newer = checked.filter((c) => (c.at ? Date.parse(c.at) : 0) > since);
+  if (newer.length === 0) return fresh as Connection[];
+  const byKey = new Map(newer.map((c) => [connectionKey(c), c]));
+  const out = fresh.map((c) => byKey.get(connectionKey(c)) ?? c);
+  const known = new Set(fresh.map(connectionKey));
+  for (const c of newer) if (!known.has(connectionKey(c))) out.push(c);
+  return out;
+}
+
 export const isWSL = (c: Pick<Connection, 'runMode'>): boolean => c.runMode === 'wsl';
 
 /** The CLI's program was found (a CLI blocked by a missing prerequisite is found too: its detail says what it needs). */

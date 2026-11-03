@@ -12,6 +12,7 @@ import {
   cellText,
   checkedWords,
   connectionKey,
+  withCheckedConnections,
   defaultAgent,
   distroBrand,
   gatewayState,
@@ -254,5 +255,17 @@ describe('the card matrix and the history in words (decision P132)', () => {
     expect(runLine({ id: 2, ok: false, prompt: false, passed: 0, failed: 1, skipped: 4, elapsedMs: 0, at: now })).toBe('0 passed, 1 failed, 4 skipped');
     expect(shortReason('T2: timeout')).toBe('T2: timeout');
     expect(shortReason('x'.repeat(300)).length).toBe(160);
+  });
+
+  it('withCheckedConnections lays a background check made after the read over it, and adds an install only it found (A2)', () => {
+    const c = (key: string, status: string, at?: string): Connection => ({ adapter: key.split('@')[0]!, key, status, installed: true, usable: status === 'ready', platform: 'windows', at }) as Connection;
+    const fresh = [c('claude', 'unauthenticated'), c('codex', 'ready')];
+    const later = new Date(3000).toISOString();
+    const earlier = new Date(1000).toISOString();
+    expect(withCheckedConnections(fresh, [c('claude', 'ready', later)], 2000)!.map((x) => x.status)).toEqual(['ready', 'ready']);
+    expect(withCheckedConnections(fresh, [c('claude', 'ready', earlier)], 2000)).toBe(fresh);
+    expect(withCheckedConnections(fresh, [c('claude@wsl:Ubuntu', 'ready', later)], 2000)!.map(connectionKey)).toEqual(['claude', 'codex', 'claude@wsl:Ubuntu']);
+    expect(withCheckedConnections(undefined, [c('claude', 'ready', later)], 0)).toBeUndefined();
+    expect(withCheckedConnections(fresh, undefined, 0)).toBe(fresh);
   });
 });

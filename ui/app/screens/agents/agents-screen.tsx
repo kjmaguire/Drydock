@@ -41,6 +41,7 @@ import {
   agentSub,
   cellText,
   connectionKey,
+  withCheckedConnections,
   defaultAgent,
   distroBrand,
   gatewayState,
@@ -916,7 +917,17 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // connection.list probes every CLI and distro afresh ("Check all again" reads it again); a started sign-in changes nothing
   // yet, its end (connection.sign_in_finished) does
   // connection.checked is Drydock's own background check (A2): it changes the cached read below, not this one
-  const q = query(handle, { load: () => s.client.connectionList(), when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started' && e.type !== 'connection.checked' });
+  // when the read now on the page was asked for: a background check made after it overrides its install (withCheckedConnections)
+  let freshAt = 0;
+  const q = query(handle, {
+    load: async () => {
+      const at = Date.now();
+      const r = await s.client.connectionList();
+      freshAt = at;
+      return r;
+    },
+    when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started' && e.type !== 'connection.checked',
+  });
   // the last check of each CLI (Drydock's own, every half hour and after a sign-in or a failed start), answered at once: the page
   // opens on it, "checked N min ago", while the fresh probe above runs (it can take up to half a minute), then swaps it in (A2)
   const cached = query(handle, { load: () => orElse(() => s.client.connectionList(true), [] as Connection[]), when: (e) => e.type === 'connection.checked' });
@@ -927,7 +938,8 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // the adapters with the run modes each declares. No fallback here: a first read that fails leaves no answer, so the detail
   // says so while "Used by" goes by the installs found; a re-read that fails keeps the last answer (the query does), and the
   // note says the re-read failed
-  const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // (the run modes do not change with a check: Drydock's own background check, connection.checked, does not read them again)
+  const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => (e.type.startsWith('connection.') && e.type !== 'connection.checked') || e.type.startsWith('adapter.') });
   // the person's own CLIs (decision P115): the folder, and a file that did not load with why; an older core has none
   const customs = query(handle, { load: () => orElse(() => s.client.connectionCustomList(), { dir: '', files: [] } as CustomCLIs), when: (e) => e.type.startsWith('connection.custom') });
   let adding = false;
@@ -1029,7 +1041,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     }
     // until the fresh probe answers, the last check (A2), with when it was made
     const fromCache = !q.data && (cached.data?.length ?? 0) > 0;
-    const list = q.data ?? (fromCache ? cached.data! : []);
+    const list = q.data ? withCheckedConnections(q.data, cached.data, freshAt)! : fromCache ? cached.data! : [];
     const cachedAt = fromCache ? Math.min(...list.map((c) => (c.at ? Date.parse(c.at) : Date.now()))) : 0;
     const { installed, missing } = agentGroups(list);
     // the chosen row; until one is chosen (or when the chosen one is gone) the first that needs attention, else the first. It

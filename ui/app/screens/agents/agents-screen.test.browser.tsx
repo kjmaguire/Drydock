@@ -708,6 +708,33 @@ describe('Agents page', () => {
     expect(r.$('[data-testid="agents-cached"]')).toBeNull();
   });
 
+  it("Drydock's own background check (connection.checked) changes a CLI's chip from its kept answer, without probing every CLI or reading the agents again", async () => {
+    const calls = { fresh: 0, cached: 0, agents: 0, adapters: 0 };
+    let kept: Connection[] = [];
+    const r = show({
+      connectionList: async (cached) => {
+        if (cached) return (calls.cached++, kept);
+        calls.fresh++;
+        return [conn({ key: 'claude', usable: false, status: 'unauthenticated', authenticated: false, gates: [], prereqs: [], warnings: [] }), ready({ adapter: 'codex', key: 'codex' })];
+      },
+      agentListAll: async () => (calls.agents++, [agent('a1')]),
+      adapterList: async () => (calls.adapters++, [adapterWith('claude', ['native', 'wsl'])]),
+    });
+    await waitFor(() => expect(row(r, 'claude').dataset.state).not.toBe('ready'), r);
+    await waitFor(() => expect(calls).toEqual({ fresh: 1, cached: 1, agents: 1, adapters: 1 }), r);
+    // the check signed Claude Code in after the page read the list: its kept answer is newer than that read
+    kept = [ready({ key: 'claude', at: new Date(Date.now() + 1000).toISOString() })];
+    await r.act(() => r.s.emit({ type: 'connection.checked' }));
+    await waitFor(() => expect(row(r, 'claude').dataset.state).toBe('ready'), r);
+    expect(row(r, 'codex').dataset.state).toBe('ready');
+    expect(calls).toEqual({ fresh: 1, cached: 2, agents: 1, adapters: 1 });
+    // a kept answer older than the page's own read changes nothing
+    kept = [conn({ key: 'codex', adapter: 'codex', usable: false, status: 'unauthenticated', at: new Date(0).toISOString() })];
+    await r.act(() => r.s.emit({ type: 'connection.checked' }));
+    await waitFor(() => expect(calls.cached).toBe(3), r);
+    expect(row(r, 'codex').dataset.state).toBe('ready');
+  });
+
   it('Install and update opens a terminal with the command typed and not run, then checks again when it ends; prerequisites link their download page (A5)', async () => {
     const opened: [string, string | undefined][] = [];
     const checks: string[] = [];
