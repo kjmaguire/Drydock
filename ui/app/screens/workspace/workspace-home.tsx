@@ -110,7 +110,6 @@ function PickCard(handle: Handle<{ item: PickUp; onNavigate?: (href: string) => 
 export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
-  // a note the previous page left (a project was deleted, what a start could not do)
   let all = false;
   let newOpen = false;
   let newWhere: NewProjectWhere | undefined;

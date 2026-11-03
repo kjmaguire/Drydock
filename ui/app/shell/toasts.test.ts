@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { DrydockEvent, NeedsYouItem } from '../api/types.ts';
-import { chatToast, NeedsDiff, needsToast, taskToast } from './toasts.ts';
+import { chatToast, hereWithWork, NeedsDiff, needsToast, taskToast } from './toasts.ts';
 
 const item = (key: string, extra: Partial<NeedsYouItem> = {}): NeedsYouItem =>
   ({ key, kind: 'approval', severity: 0, title: 'Permission request: Bash rm -rf build', createdAt: '2026-11-03T10:00:00Z', ...extra }) as NeedsYouItem;
@@ -38,6 +38,23 @@ describe('what a toast says (G2)', () => {
     expect(t.detail).toBe('gocalc · GOC-41 Add subtract');
     expect(JSON.stringify(t)).not.toContain('rm -rf');
     expect(t.action!.label).toBe('Open');
+  });
+
+  it('keeps the names in a kind: only its first letter is lowered', () => {
+    expect(needsToast(item('a', { kind: 'connection' }), away)!.text).toBe('Needs you: agent CLI');
+    expect(needsToast(item('a', { kind: 'pr_review' }), away)!.text).toBe('Needs you: changes asked on GitHub');
+  });
+
+  it("on Work, the item it has open is here, named or opened by default", () => {
+    const work = { inbox: false, work: true };
+    expect(hereWithWork(work, { kind: 'task', id: 't1' }).taskId).toBe('t1');
+    expect(hereWithWork(work, { kind: 'chat', id: 'c1' }).chatId).toBe('c1');
+    expect(taskToast(ev('task.completed', { taskId: 't1' }), hereWithWork(work, { kind: 'task', id: 't1' }))).toBe(undefined);
+    expect(needsToast(item('a', { taskId: 't1' }), hereWithWork(work, { kind: 'task', id: 't1' }))).toBe(undefined);
+    expect(chatToast(ev('chat.turn', { data: { chatId: 'c1', status: 'done' } }), hereWithWork(work, { kind: 'chat', id: 'c1' }))).toBe(undefined);
+    expect(needsToast(item('a', { chatId: 'c1' }), hereWithWork(work, { kind: 'chat', id: 'c1' }))).toBe(undefined);
+    // not on Work: what Work had open last is not here
+    expect(hereWithWork(away, { kind: 'task', id: 't1' }).taskId).toBe(undefined);
   });
 
   it('is not shown where the person already looks', () => {

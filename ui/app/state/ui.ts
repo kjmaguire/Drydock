@@ -6,6 +6,7 @@ import { useBindings } from '../lib/keys.ts';
 import { applyTheme, loadTheme, type ThemeChoice } from '../lib/theme.ts';
 import type { SkillPick } from '../api/extTypes.ts';
 import { isRecord } from '../api/guards.ts';
+import type { WorkItemRef } from '../lib/route.ts';
 import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'room' | 'task' | 'thread' | 'inspector';
@@ -343,6 +344,13 @@ export class UiModel extends Model {
 
   #toasts: Toast[] = [];
   #toastSeq = 0;
+
+  /**
+   * The item the project's Work page has open (named by ?item= or, with none, the one it opens by default), set by Work as it
+   * draws and cleared when it leaves. The toasts read it so nothing is said about what the person is looking at (G2). Not
+   * watched: setting it changes nothing on screen.
+   */
+  workOpen: WorkItemRef | undefined;
 
   /** The toasts on screen, oldest first (the shell's <Toasts/> draws them). */
   get toasts(): readonly Toast[] {

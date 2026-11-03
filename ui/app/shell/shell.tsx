@@ -264,7 +264,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
           ) : null}
         </div>
         </div>
-        <Toasts here={{ inbox: route.name === 'needs-you', taskId: taskContext, chatId: route.name === 'chat' ? route.id : undefined }} onNavigate={handle.props.onNavigate} />
+        <Toasts here={{ inbox: route.name === 'needs-you', taskId: taskContext, chatId: route.name === 'chat' ? route.id : undefined, work: route.name === 'home' && !!project }} onNavigate={handle.props.onNavigate} />
         <CommandPalette onMessage={(id) => void openDM(id)} taskId={inProject ? taskContext : undefined} dock={inProject} />
       </div>
     );

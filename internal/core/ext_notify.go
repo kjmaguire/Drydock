@@ -122,7 +122,7 @@ func (c *Core) SetNotifyPrefs(ctx context.Context, p NotifyPrefs) (NotifyPrefs, 
 // that add stateItems). agent.output streams and never adds an item, so it is not among them.
 var needsWatchTypes = []string{"approval.*", "workflow.request*", "task.*", "watchdog.*", "room.message_posted", "room.archived",
 	"chat.permission*", "run.*", "agent.state*", "agent.failed", "agent.needs_attention", "agent.waiting", "agent.stopped", "agent.completed",
-	"connection.*", "budget.*", "join.*", "github.*", "needsyou.acked"}
+	"connection.*", "budget.*", "room.join_requested", "room.join_answered", "github.*", "needsyou.acked"}
 
 // needsWatcher reads the Inbox after the events that can change it and publishes needsyou.added for each new key. The first read
 // only learns what is there: what waited before Drydock started is the Inbox's count, not news.

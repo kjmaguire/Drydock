@@ -3,6 +3,7 @@
 // (Open); the window's own notification (G1) is the core's and the shell's, not these.
 
 import type { DrydockEvent, NeedsYouItem, TaskSummary } from '../api/types.ts';
+import type { WorkItemRef } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { KIND_LABEL, needsTarget } from '../screens/needs-you/needs-you.ts';
 import type { ToastInit } from '../state/ui.ts';
@@ -35,6 +36,14 @@ export interface Here {
   taskId?: string;
   /** The chat open. */
   chatId?: string;
+  /** The project's Work page is the page: the item it has open (UiModel.workOpen) is here too. */
+  work?: boolean;
+}
+
+/** Where the person is, with the item Work has open when Work is the page (its default item has no ?item= in the address). */
+export function hereWithWork(here: Here, open: WorkItemRef | undefined): Here {
+  if (!here.work || !open) return here;
+  return open.kind === 'task' ? { ...here, taskId: open.id } : { ...here, chatId: open.id };
 }
 
 /** The project and task a toast names: never the item's own words (a request's text can hold a command or a prompt). */
@@ -56,7 +65,7 @@ export function needsToast(it: NeedsYouItem, here: Here, where: Where = {}): Toa
   if (it.chatId && it.chatId === here.chatId) return undefined;
   const kind = KIND_LABEL[it.kind] ?? 'Something';
   return {
-    text: `Needs you: ${kind.toLowerCase()}`,
+    text: `Needs you: ${kind.charAt(0).toLowerCase()}${kind.slice(1)}`,
     detail: [where.projectName, taskName(where.task)].filter(Boolean).join(' · ') || undefined,
     tone: 'warn',
     action: { label: 'Open', href: needsTarget(it) },

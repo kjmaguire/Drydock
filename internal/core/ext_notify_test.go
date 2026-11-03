@@ -9,6 +9,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
@@ -80,5 +81,32 @@ func TestANewInboxItemIsAnnouncedOnceWithoutItsText(t *testing.T) {
 	time.Sleep(700 * time.Millisecond) // past the watcher's settle time: a read happened
 	if n := len(r.eventsOf(core.EventNeedsYouAdded)); n != 2 {
 		t.Fatalf("a restart announced the old items again: %d", n)
+	}
+}
+
+// An agent's request to join a channel is published as room.join_requested: the watcher reads the Inbox after it and announces
+// the item, with no other event needed (review of G1: it watched "join.*", which no event is named).
+func TestAJoinRequestIsAnnounced(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	sec := a.agent(p.ID, "Sec", "security")
+	if _, err := a.c.Room.CreateChannel(context.Background(), p.ID, "architecture", "", room.Human("kyle")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(700 * time.Millisecond) // past the watcher's settle time: what is there now is known, not news
+	before := len(a.eventsOf(core.EventNeedsYouAdded))
+	if _, err := a.c.TestRequestJoin(context.Background(), p.ID, sec.ID, "#architecture", "I record security decisions"); err != nil {
+		t.Fatal(err)
+	}
+	a.waitFor("the join request announced", func() bool { return len(a.eventsOf(core.EventNeedsYouAdded)) > before })
+	ev := a.eventsOf(core.EventNeedsYouAdded)[before]
+	if ev["kind"] != string(room.NeedsJoinRequest) || ev["title"] != "An agent asks to join" {
+		t.Fatalf("event %v", ev)
+	}
+	for k, v := range ev {
+		if s, ok := v.(string); ok && strings.Contains(s, "security decisions") {
+			t.Fatalf("%s carries the request's text: %q", k, s)
+		}
 	}
 }

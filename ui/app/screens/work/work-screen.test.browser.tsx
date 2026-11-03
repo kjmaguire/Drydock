@@ -5,6 +5,7 @@ import type { Task } from '../../api/types.ts';
 import { budgetStatus } from '../../test/fixtures.ts';
 import { cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
 import { closeAgentEditor } from '../team/agent-panel.tsx';
+import { Toasts } from '../../shell/toasts-host.tsx';
 import { WorkScreen } from './work-screen.tsx';
 
 afterEach(cleanup);
@@ -197,5 +198,40 @@ describe('Work (decision P141)', () => {
     await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(4), r);
     await new Promise((res) => setTimeout(res, 50));
     expect(r.$('[data-testid="repo-sync"]')).toBeNull();
+  });
+
+  it('the shell says nothing about the item Work has open, named or opened by default (G2)', async () => {
+    const texts = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="toast-text"]')).map((n) => n.textContent);
+    // no ?item: Work opens the task that needs you (t9), and the address does not name it
+    const s = svc();
+    const r = mount(
+      <>
+        <WorkScreen />
+        <Toasts here={{ inbox: false, work: true }} lifeMs={60_000} />
+      </>,
+      s,
+    );
+    await waitFor(() => expect(r.$('[data-testid="work-centre"]')!.getAttribute('data-item')).toBe('task:t9'), r);
+    await r.act(() => s.emit({ type: 'task.completed', projectId: 'prj_1', taskId: 't9' }));
+    expect(texts(r)).toEqual([]);
+    await r.act(() => s.emit({ type: 'task.completed', projectId: 'prj_1', taskId: 't12' }));
+    await waitFor(() => expect(texts(r)).toEqual(['Task finished']), r);
+    cleanup();
+    // a chat open on Work: its answer says nothing, another chat's does
+    const c = svc();
+    const rc = mount(
+      <>
+        <WorkScreen item="chat:c1" />
+        <Toasts here={{ inbox: false, work: true }} lifeMs={60_000} />
+      </>,
+      c,
+    );
+    await waitFor(() => expect(rc.$('[data-testid="work-centre"]')!.getAttribute('data-item')).toBe('chat:c1'), rc);
+    await rc.act(() => c.emit({ type: 'chat.turn', projectId: 'prj_1', data: { chatId: 'c1', status: 'done' } }));
+    expect(texts(rc)).toEqual([]);
+    await rc.act(() => c.emit({ type: 'chat.turn', projectId: 'prj_1', data: { chatId: 'c2', status: 'done' } }));
+    await waitFor(() => expect(texts(rc)).toEqual(['A chat answered']), rc);
+    cleanup();
+    expect(c.ui.workOpen).toBe(undefined); // Work left: what it had open is no longer here
   });
 });

@@ -10,7 +10,7 @@ import type { Toast } from '../state/ui.ts';
 import { IconButton } from '../ui/button.tsx';
 import { Icon } from '../ui/icon.tsx';
 import { t, tone } from '../ui/tokens.ts';
-import { chatToast, NeedsDiff, needsToast, taskToast, type Here } from './toasts.ts';
+import { chatToast, hereWithWork, NeedsDiff, needsToast, taskToast, type Here } from './toasts.ts';
 
 /** How long a toast stays. */
 export const TOAST_MS = 8000;
@@ -70,6 +70,9 @@ export function Toasts(handle: Handle<{ here: Here; lifeMs?: number; onNavigate?
   const taskOf = (id: string | undefined) => (id ? s.workspace.summaries.data?.summaries.find((x) => x.taskId === id) : undefined);
 
   // a new Inbox item: the workspace's own list (every project), told apart from the last one it read
+  // where the person is now, with the item Work has open when Work is the page
+  const here = () => hereWithWork(handle.props.here, s.ui.workOpen);
+
   const diff = new NeedsDiff();
   let lastNeeds: unknown;
   const onWorkspace = () => {
@@ -77,7 +80,7 @@ export function Toasts(handle: Handle<{ here: Here; lifeMs?: number; onNavigate?
     if (!items || items === lastNeeds) return;
     lastNeeds = items;
     for (const it of diff.next(items, s.store.getSnapshot().epoch)) {
-      const init = needsToast(it, handle.props.here, { projectName: projectName(it.projectId), task: taskOf(it.taskId) });
+      const init = needsToast(it, here(), { projectName: projectName(it.projectId), task: taskOf(it.taskId) });
       if (init) s.ui.toast(init);
     }
   };
@@ -86,8 +89,8 @@ export function Toasts(handle: Handle<{ here: Here; lifeMs?: number; onNavigate?
 
   // a task that ended and a chat that answered, as the events arrive
   const off = s.store.onEvent((e) => {
-    const here = handle.props.here;
-    const init = e.type === 'chat.turn' ? chatToast(e, here, projectName(e.projectId)) : taskToast(e, here, taskOf(e.taskId));
+    const now = here();
+    const init = e.type === 'chat.turn' ? chatToast(e, now, projectName(e.projectId)) : taskToast(e, now, taskOf(e.taskId));
     if (init) s.ui.toast(init);
   });
   handle.signal.addEventListener('abort', off);

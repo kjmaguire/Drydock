@@ -152,7 +152,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
   const evals = query(handle, { load: () => s.client.evalsReport({ projectId: pid()!, sinceMs: Date.now() - WEEK_MS }), when: (e) => e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const scan = query(handle, { load: () => s.client.securityScanGet(pid()!), when: (e) => e.type.startsWith('security.'), ...on_ });
   const act = action(handle);
-  // a note the page before left (what a start from Home could not do, P142), shown once as one line
+  handle.signal.addEventListener('abort', () => (s.ui.workOpen = undefined));
   let search = '';
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href).catch(() => {}));
 
@@ -191,6 +191,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
     const named = parseWorkItem(handle.props.item);
     const open: WorkItemRef | undefined = openItem(rows, named);
     const openKey = open ? workItemKey(open) : undefined;
+    s.ui.workOpen = open; // the shell's toasts say nothing about it (G2)
     const spend = budget.data ? spendLine(budget.data.usage['project'], budget.data.statuses) : undefined;
     const first = evals.data ? firstCheckText(evals.data.report) : undefined;
     const lastScan = scan.data && scan.data.status !== 'running' ? scan.data : undefined;
