@@ -139,6 +139,11 @@ export class WailsTransport implements Transport {
     this.#timers = opts.timers ?? defaultTimers;
   }
 
+  /** Listens for another Wails event the shell sends (a notification's click, lib/shell-open.ts); returns the unsubscribe. */
+  onShellEvent(name: string, cb: (ev: { data: unknown }) => void): () => void {
+    return this.events.On(name, cb);
+  }
+
   static fromRuntime(rt: WailsRuntimeModule, opts?: WailsTransportOptions): WailsTransport {
     return new WailsTransport(bridgeFromRuntime(rt), rt.Events, opts);
   }

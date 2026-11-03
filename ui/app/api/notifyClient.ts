@@ -3,9 +3,13 @@
 
 import type { Transport } from './transport.ts';
 
-/** notify.get and notify.set: whether the taskbar button asks for attention when something new needs the person. */
+/**
+ * notify.get and notify.set: whether the taskbar button asks for attention and a Windows notification shows when something new
+ * needs the person, and whether that notification plays a sound.
+ */
 export interface NotifyPrefs {
   needsYou: boolean;
+  sound: boolean;
 }
 
 export interface NotifyClient {
@@ -13,8 +17,8 @@ export interface NotifyClient {
   notifySet(prefs: NotifyPrefs): Promise<NotifyPrefs>;
 }
 
-// a core that answers nothing kept: on, as the core's own default
-const clean = (v: Partial<NotifyPrefs> | null | undefined): NotifyPrefs => ({ needsYou: v?.needsYou ?? true });
+// a core that answers nothing kept: on, as the core's own defaults
+const clean = (v: Partial<NotifyPrefs> | null | undefined): NotifyPrefs => ({ needsYou: v?.needsYou ?? true, sound: v?.sound ?? true });
 
 export function createNotifyClient(t: Transport): NotifyClient {
   return {

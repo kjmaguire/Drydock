@@ -16,8 +16,8 @@ import (
 
 // Telling the person outside the window that something needs them (decision G1). The core watches its own Inbox (NeedsYou, every
 // project) and publishes needsyou.added once for each item that was not in it before: the desktop shell turns that into taskbar
-// attention while the window is not in front, as the person's switch in Settings > General says (notify.get, notify.set; on by
-// default). An event carries the item's key, its kind, and the project and task it is in, never the request's own words: a
+// attention and a Windows notification while the window is not in front, as the person's switches in Settings > General say
+// (notify.get, notify.set; both on by default: "Tell me when something needs me", and under it "Play a sound"). An event carries the item's key, its kind, and the project and task it is in, never the request's own words: a
 // request's text can hold a command, a path or a prompt, and what leaves the window must not. Free and local: a read of the
 // inbox after the events that can change it, nothing sent anywhere.
 
@@ -33,8 +33,18 @@ const (
 
 // NotifyPrefs is the person's choice of being told outside the window.
 type NotifyPrefs struct {
-	// NeedsYou: tell me when something needs me (the taskbar button asks for attention while the window is not in front).
+	// NeedsYou: tell me when something needs me (the taskbar button asks for attention and a Windows notification shows while
+	// the window is not in front).
 	NeedsYou bool `json:"needsYou"`
+	// Sound: the notification plays Windows's notification sound; off, it shows silently. On when it was never set (a choice
+	// kept before the switch existed reads as on).
+	Sound bool `json:"sound"`
+}
+
+// notifySetParams is notify.set's input: a call that leaves sound out (a window from before the switch) keeps the kept sound.
+type notifySetParams struct {
+	NeedsYou bool  `json:"needsYou"`
+	Sound    *bool `json:"sound,omitempty"`
 }
 
 // NeedsYouNote is what a needsyou.added event says of a new Inbox item: what kind of request it is and where, never its text.
@@ -88,14 +98,15 @@ func needsNote(it room.NeedsYouItem, projectName, projectKey string) NeedsYouNot
 	return n
 }
 
-// NotifyPrefs is the person's switch (on when it was never set, or what is kept does not read).
+// NotifyPrefs is the person's switches (on when never set, or when what is kept does not read; a field kept before it existed
+// keeps its default).
 func (c *Core) NotifyPrefs(ctx context.Context) NotifyPrefs {
-	out := NotifyPrefs{NeedsYou: true}
+	out := NotifyPrefs{NeedsYou: true, Sound: true}
 	var v string
 	if err := c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingNotify).Scan(&v); err != nil {
 		return out
 	}
-	var kept NotifyPrefs
+	kept := out
 	if json.Unmarshal([]byte(v), &kept) != nil {
 		return out
 	}
@@ -114,7 +125,7 @@ func (c *Core) SetNotifyPrefs(ctx context.Context, p NotifyPrefs) (NotifyPrefs, 
 	}); err != nil {
 		return NotifyPrefs{}, err
 	}
-	c.publish(ctx, EventNotifyChanged, "", map[string]any{"needsYou": p.NeedsYou, "by": c.Human()})
+	c.publish(ctx, EventNotifyChanged, "", map[string]any{"needsYou": p.NeedsYou, "sound": p.Sound, "by": c.Human()})
 	return p, nil
 }
 
@@ -206,7 +217,13 @@ func init() {
 		})
 		return map[string]Method{
 			"notify.get": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.NotifyPrefs(ctx), nil }),
-			"notify.set": bind(func(ctx context.Context, p NotifyPrefs) (any, error) { return c.SetNotifyPrefs(ctx, p) }),
+			"notify.set": bind(func(ctx context.Context, p notifySetParams) (any, error) {
+				next := NotifyPrefs{NeedsYou: p.NeedsYou, Sound: c.NotifyPrefs(ctx).Sound}
+				if p.Sound != nil {
+					next.Sound = *p.Sound
+				}
+				return c.SetNotifyPrefs(ctx, next)
+			}),
 		}, func() {
 			cancel()
 			<-watched

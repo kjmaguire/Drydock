@@ -110,3 +110,44 @@ func TestAJoinRequestIsAnnounced(t *testing.T) {
 		}
 	}
 }
+
+// G1's sound switch: on by default, kept by notify.set and across a restart; a choice kept before the switch existed reads as on,
+// and a notify.set that leaves sound out (a window from before the switch) keeps the kept sound.
+func TestTheNotificationSoundSwitchRoundTrips(t *testing.T) {
+	a := open(t, "")
+	var prefs core.NotifyPrefs
+	a.call("notify.get", nil, &prefs)
+	if !prefs.NeedsYou || !prefs.Sound {
+		t.Fatalf("the defaults are %+v, want both on", prefs)
+	}
+	// what an earlier version kept: only the first switch
+	if err := a.c.DB.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO settings(key,value) VALUES('notify.prefs','{"needsYou":true}')`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.call("notify.get", nil, &prefs)
+	if !prefs.Sound {
+		t.Fatalf("a choice kept before the sound switch reads %+v", prefs)
+	}
+	a.call("notify.set", map[string]any{"needsYou": true, "sound": false}, &prefs)
+	if !prefs.NeedsYou || prefs.Sound {
+		t.Fatalf("set %+v", prefs)
+	}
+	evs := a.eventsOf(core.EventNotifyChanged)
+	if len(evs) != 1 || evs[0]["sound"] != false {
+		t.Fatalf("notify.changed %v", evs)
+	}
+	a.call("notify.set", map[string]any{"needsYou": false}, &prefs)
+	if prefs.NeedsYou || prefs.Sound {
+		t.Fatalf("a set without sound turned it back on: %+v", prefs)
+	}
+	dir := a.dataDir()
+	a.c.Close()
+	r := openAt(t, dir)
+	r.call("notify.get", nil, &prefs)
+	if prefs.NeedsYou || prefs.Sound {
+		t.Fatalf("after a restart %+v", prefs)
+	}
+}

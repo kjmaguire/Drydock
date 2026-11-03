@@ -328,6 +328,14 @@ Controls:
 
 Every release states which phase is active. The UI shows the isolation level in the Agent Inspector.
 
+**What the app writes outside its data folder (G1, 2026-11-03).** Besides the installer's own entries (HKCU only, the Apps &
+features entry and the Start menu shortcut), the running app's Windows notifications (Wails's notifications service,
+`app/notify_windows.go`) register, per user and without administrator rights, `HKCU\Software\Classes\AppUserModelId\Drydock`
+(DisplayName, IconUri, CustomActivator) and `HKCU\Software\Classes\CLSID\{GUID}\LocalServer32` (drydock.exe, so a click on a
+notification can start it), and write the icon to `%TEMP%\Drydock{GUID}.png`. Nothing under HKLM. The uninstaller removes them
+(`packaging/windows/drydock.nsi`). A notification carries only the Inbox item's kind, project and task key, never a request's
+text, code, a prompt or a secret; the route a click opens comes back from Windows and is checked (the Inbox or one task's page).
+
 ## 15. Tests that prove it (written with each slice, run on the Windows runner)
 
 Approval consume/mismatch/expiry/lineage-cancel; descriptor canonical JSON golden vectors; path guard fixture suite (junction, symlink, UNC, `\\?\`, ADS, 8.3 names, reserved names, trailing dot, case, long paths, TOCTOU swap); analyzer golden corpus per flavor (POSIX, PowerShell phase A, cmd) including obfuscations that must come out `Opaque`; secrets redaction across every scan point; data_class refusal in router, Context Engine, LLMClient, config writer; environment dump shows no production/Cloudflare/GitHub tokens; agent-edited instruction file never reaches memory without a human accept; hook/config drift detection; consent gate blocks Antigravity start without a current acknowledgement; audit chain verification detects a modified row.

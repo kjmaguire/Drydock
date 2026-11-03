@@ -66,7 +66,15 @@
     },
     "go:github.com/wailsapp/wails/v3": {
       "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
-      "note": "v3.1.0, the newest stable release (2026-11-01; v3.0.0 was the first non-beta), taken on 2026-11-03 at the owner's request without the 14-day cooldown. Since beta.34 it changes, on Windows, only fixes (menu bar painting, applyDarkMode, the updater's staged swap, the tray's restart debounce); the icon resource 3 and window class behaviour docs/windows-identity.md relies on is unchanged. Isolated in app/. The Windows exe builds with it (CGO, MinGW) and CI's app job builds and checks it. Its Windows notifications service brings in git.sr.ht/~jackmordaunt/go-toast/v2."
+      "note": "v3.1.0, the newest stable release (2026-11-01; v3.0.0 was the first non-beta), taken on 2026-11-03 at the owner's request without the 14-day cooldown. Since beta.34 it changes, on Windows, only fixes (menu bar painting, applyDarkMode, the updater's staged swap, the tray's restart debounce); the icon resource 3 and window class behaviour docs/windows-identity.md relies on is unchanged. Isolated in app/. The Windows exe builds with it (CGO, MinGW) and CI's app job builds and checks it. Its notifications service (pkg/services/notifications) raises Drydock's Windows notifications since G1 (2026-11-03, app/notify_windows.go, Windows build only) and brings in git.sr.ht/~jackmordaunt/go-toast/v2."
+    },
+    "go:git.sr.ht/~jackmordaunt/go-toast/v2": {
+      "role": "Windows toast notifications for Wails's notifications service: the WinRT toast call, the per-user AppUserModelId registry entry and the COM activation class that reports a click (G1, app/notify_windows.go). Windows build only.",
+      "note": "v2.0.3 (2025-01-17), the newest release and the version Wails v3.1.0's go.mod names; approved by the owner on 2026-11-03. Indirect (only Wails imports it). Licence: Unlicense OR MIT. Its own requirements, github.com/go-ole/go-ole v1.3.0 and golang.org/x/sys, were already in the module graph (Wails); go.sum gained only go-toast."
+    },
+    "go:github.com/go-ole/go-ole": {
+      "role": "COM calls on Windows, for Wails's WebView2 shell and go-toast's notification activation class (G1).",
+      "note": "v1.3.0, the newest release; indirect, required by Wails and by go-toast."
     },
     "go:github.com/zalando/go-keyring": {
       "role": "Stores secrets in the Windows Credential Manager."

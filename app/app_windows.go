@@ -99,6 +99,8 @@ func Run(assets fs.FS) error {
 	var wa *application.App
 	var window *application.WebviewWindow
 	bridge := &Bridge{}
+	// Windows notifications (G1, notify_windows.go); a click opens the item in the window
+	toast := newToasts()
 	// The application object comes before the core: its single-instance check hands a second launch over to the first and exits
 	// the process inside application.New, so a second launch never opens a core on the first one's data (audit 2026-10-16, H10).
 	var browserArgs []string
@@ -108,9 +110,9 @@ func Run(assets fs.FS) error {
 	}
 	wa = application.New(application.Options{
 		Windows:     application.WindowsOptions{AdditionalBrowserArgs: browserArgs},
-		Name:        "Drydock",
+		Name:        AppName,
 		Description: "A team of AI coding agents you can watch and approve.",
-		Services:    []application.Service{application.NewService(bridge)},
+		Services:    []application.Service{application.NewService(bridge), application.NewService(toast)},
 		Assets:      application.AssetOptions{Handler: uiassets.Fallback(assets, application.AssetFileServerFS(assets))},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.drydock.app",
@@ -232,9 +234,11 @@ func Run(assets fs.FS) error {
 	keepWindowPlacement(wa, c, window, kept)
 	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
 	attachWindowIcons(window)
-	// something new needs the person while the window is behind: the taskbar button asks for attention (G1, notify_windows.go)
+	// something new needs the person while the window is behind: the taskbar button asks for attention and a Windows notification
+	// shows; a click on it brings the window to the front on the item (G1, notify_windows.go)
+	toast.onClick(func(route string) { openFromNotification(wa, window, bridge, route) })
 	notifyCtx, stopNotify := context.WithCancel(context.Background())
 	defer stopNotify()
-	watchNeedsYou(notifyCtx, c, window)
+	watchNeedsYou(notifyCtx, c, window, toast)
 	return wa.Run()
 }
