@@ -99,7 +99,9 @@ describe('Work (decision P141)', () => {
   it('the rail names the next milestone due, with its progress, and says when it is overdue (X411)', async () => {
     const m = (id: string, title: string, dueAt: string, overdue = false, percent = 60) =>
       ({ id, projectId: 'prj_1', title, dueAt, overdue, status: 'open', created: '', updated: '', taskIds: [], progress: { total: 5, completed: 3, inProgress: 0, blocked: 0, open: 2, cancelled: 0, failed: 0, percent } }) as never;
-    const due = new Date(now + 3 * 86_400_000 + 3_600_000).toISOString();
+    // midday three calendar days from today: "due in 3 days" counts calendar days, so a time near midnight must not tip it
+    const today = new Date(now);
+    const due = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 3, 12).toISOString();
     const r = mount(<WorkScreen />, svc({ milestoneList: async () => [m('m2', 'GA', new Date(now + 30 * 86_400_000).toISOString()), m('m1', 'Beta', due)] }));
     const link = await waitFor(() => {
       const a = r.$('[data-testid="work-milestone"]');
