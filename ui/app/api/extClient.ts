@@ -389,7 +389,7 @@ export function createExtClient(t: Transport): ExtClient {
     },
     sandboxForwards: async (taskId) => {
       const r = await call<SandboxForwards>('sandbox.forward.list', { taskId });
-      return { ...r, forwards: arr(r.forwards) };
+      return { ...r, forwards: arr(r.forwards), viewing: arr(r.viewing) };
     },
     sandboxForwardOpen: (taskId, port) => call('sandbox.forward.open', { taskId, port }),
     sandboxForwardClose: (taskId, port) => voidCall('sandbox.forward.close', { taskId, port }),

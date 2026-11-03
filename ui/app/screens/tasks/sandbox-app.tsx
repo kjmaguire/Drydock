@@ -77,6 +77,9 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
     const ro = s.workspace.license.readOnly;
     const value = shownPort(v);
     const atMax = v.forwards.length >= v.max;
+    // a port whose window is open: Open brings that window to the front (X314)
+    const viewing = (port: number) => (v.viewing ?? []).includes(port);
+    const fieldShown = value !== '' && viewing(Number(value));
     // a port already forwarded opens again at the limit; a new one does not
     const canSubmit = v.canView || !atMax;
     return (
@@ -108,7 +111,7 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
                 )}
               </Field>
               <Button type="submit" variant="primary" icon={v.canView ? ExternalLink : undefined} disabled={ro || value === '' || !!act.busy} data-testid="sandbox-forward-add">
-                {act.busy === 'open' ? (v.canView ? 'Opening...' : 'Forwarding...') : v.canView ? 'Open the app' : 'Forward port'}
+                {act.busy === 'open' ? (v.canView ? 'Opening...' : 'Forwarding...') : v.canView ? (fieldShown ? 'Show the app' : 'Open the app') : 'Forward port'}
               </Button>
             </form>
           ) : null}
@@ -126,11 +129,14 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
                       size="sm"
                       icon={ExternalLink}
                       disabled={ro || !v.canView || !!act.busy}
-                      title={v.canView ? undefined : 'Only the Drydock desktop window can open it'}
+                      title={v.canView ? (viewing(f.port) ? 'Bring its window to the front' : undefined) : 'Only the Drydock desktop window can open it'}
                       data-testid={`sandbox-forward-open-${f.port}`}
-                      mix={on('click', () => void act.run(`view${f.port}`, () => s.client.sandboxForwardView(taskId, f.port)))}
+                      mix={on('click', async () => {
+                        await act.run(`view${f.port}`, () => s.client.sandboxForwardView(taskId, f.port));
+                        q.reload();
+                      })}
                     >
-                      Open
+                      {viewing(f.port) ? 'Show' : 'Open'}
                     </Button>
                     <Button
                       size="sm"

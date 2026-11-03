@@ -171,6 +171,7 @@ describe('Work (decision P141)', () => {
     const s = svc({
       repoSyncState: async () => state,
       repoSync: async (id) => (synced.push(id), { ...state, behind: 1, outcome: 'local_changes' }),
+      projectList: async () => [{ id: 'prj_1', name: 'calculator', hasRepo: true, repoPath: 'C:\\code\\calculator' }] as never,
     });
     const r = mount(<WorkScreen />, s);
     const line = await waitFor(() => {
@@ -179,6 +180,8 @@ describe('Work (decision P141)', () => {
       return el;
     }, r);
     expect(line.textContent).toBe('2 behind');
+    // the folder outside Drydock, beside Sync now (X26)
+    await waitFor(() => expect(r.$('[data-testid="repo-open"]')!.getAttribute('aria-label')).toBe('More ways to open the repository'), r);
     // under the list, which every width keeps: not in the crew rail, which leaves under 1180 px
     expect(r.$('[data-testid="repo-sync"]')!.closest('aside[data-crew]')).toBeNull();
     expect(r.$('[data-testid="repo-sync"]')!.closest('section')!.querySelector('[data-testid="work-list"]')).not.toBeNull();

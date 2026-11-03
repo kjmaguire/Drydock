@@ -1,7 +1,7 @@
-// The raw patch of a task as plain text lines (never interpreted), loaded on request. The rich view is the dock's DiffViewer.
+// The raw patch of a task as plain text lines (never interpreted), the Diff viewer's Raw view (X212).
 //
-// The patch on the page is the one the task's card is about (audit 2026-10-16, L36). DiffView is keyed on the id of the task's newest
-// diff evidence and asks the core for exactly that one. A newer patch is recorded when the task goes round again, and the Approve
+// The patch shown is the one the task's card is about (audit 2026-10-16, L36). DiffView is keyed on the id of the task's newest
+// diff evidence (task.diffFiles names it: diffId) and asks the core for exactly that one. A newer patch is recorded when the task goes round again, and the Approve
 // button beside this one acts on the newest work: so when the id changes the text it held is dropped and the page says so. The lines
 // are never swapped under the reader's eyes.
 //
@@ -99,11 +99,11 @@ export function UnifiedDiff(handle: Handle<{ text: string }>) {
 }
 
 /**
- * "Show the raw patch": reads task.diff once on request, for the task's newest diff evidence (`diffId`); offered only when a diff
+ * "Show the raw patch" (the dock's Raw view, which reads it once as it opens: auto): reads task.diff once on request, for the task's newest diff evidence (`diffId`); offered only when a diff
  * was recorded. When a newer patch is recorded the text shown is dropped and the person is told, never given the newer text
  * without asking.
  */
-export function DiffView(handle: Handle<{ taskId: string; diffId: number | undefined }>) {
+export function DiffView(handle: Handle<{ taskId: string; diffId: number | undefined; auto?: boolean }>) {
   const s = services(handle);
   const act = action(handle);
   let text: string | undefined;
@@ -124,6 +124,9 @@ export function DiffView(handle: Handle<{ taskId: string; diffId: number | undef
     shownId = diffId;
     void handle.update();
   };
+  // the dock's Raw view (X212): choosing it is the request, so the patch is read once on mounting; a newer patch still waits for
+  // the person's click
+  if (handle.props.auto) handle.queueTask(() => void show());
 
   return () => {
     const { diffId } = handle.props;

@@ -263,7 +263,10 @@ app on 127.0.0.1, cookies are not separated by port, and the page is code an age
   what the page stores (cookies, local storage, cache) is its own and ends with it; the profile is why it is a process and not a
   second window of the app (WebView2 takes one profile folder per process). The title ends "- Drydock isolated window". It accepts
   only `http://127.0.0.1:<port>/` (no other host, name, scheme, credentials or path), at most four are open, and it is a child
-  of the app's Job Object so it dies with the app. A window of the browser harness has no viewer: the page says so and never
+  of the app's Job Object so it dies with the app. One forwarded address has one window (effort review X314): opening it again
+  brings that window to the front (by the viewer's process id, from the app, never through the page), `sandbox.forward.list`
+  says which ports have one (`viewing`, so the page's button reads Show), and Stop on the forward ends its window. A window the
+  person closes is known at the next read of the list. Raising the window is proven only by the release workflow's install-test. A window of the browser harness has no viewer: the page says so and never
   falls back to a browser.
 - **Limits:** the page can still navigate away from 127.0.0.1 inside that window (it is not a browser with an address bar, but
   it does not stop a link); it holds nothing of Drydock's, and what it stores goes when it closes. A forwarder is not a security

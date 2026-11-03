@@ -5,6 +5,7 @@ import type { Agent, Project, UsageRow } from '../../api/types.ts';
 import { lic } from '../../test/fixtures.ts';
 import { byText, cleanup, drain, mount, testServices, waitFor } from '../../test/render.tsx';
 import { ActivityPanel } from './activity-panel.tsx';
+import { DiffSummary } from './diff-files.tsx';
 import { DiffViewer } from './diff-viewer.tsx';
 import { LogsPanel } from './logs-panel.tsx';
 import { TerminalPanel } from './terminal-panel.tsx';
@@ -100,6 +101,10 @@ afterEach(() => {
 });
 
 const text = (el: Element | null | undefined) => el?.textContent ?? '';
+function need<T>(v: T | null | undefined): T {
+  if (!v) throw new Error('not yet');
+  return v;
+}
 const has = (root: Element, s: string | RegExp) => {
   const tc = root.textContent ?? '';
   if (typeof s === 'string' ? !tc.includes(s) : !s.test(tc)) throw new Error(`no ${String(s)} in ${tc.slice(0, 300)}`);
@@ -187,9 +192,26 @@ describe('the diff viewer', () => {
     await r.act(() => second.click());
     await waitFor(() => expect(text(r.$('[data-testid="mod"]'))).toContain('new internal/x/y.go'), r);
     has(r.$('[aria-label="Changes in internal/x/y.go"]')!, 'old/y.go → internal/x/y.go');
+    // no worktree named, nothing to open outside Drydock (X26)
+    expect(r.$('[data-testid="diff-file-open"]')).toBeNull();
     expect(editors.created).toBe(2);
     expect(editors.disposed).toBe(1);
     expect(r.$$('[data-testid="monaco-diff"]').length).toBe(1);
+  });
+
+  it("offers the shown file outside Drydock while the worktree is there, as the file's path in it (X26)", async () => {
+    const s = testServices({
+      taskDiffFiles: async () => files({ worktree: '/w/t1', files: [{ path: 'internal/calc.go', status: 'modified', additions: 1, deletions: 0 }, { path: 'gone.go', status: 'deleted', additions: 0, deletions: 3 }] }),
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+      shellEditors: async () => ({ available: false, editors: [] }),
+    });
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    const more = await waitFor(() => need(r.$('[data-testid="diff-file-open"]')), r);
+    expect(more.getAttribute('aria-label')).toBe('More ways to open internal/calc.go');
+    // a deleted file is not in the worktree
+    await r.act(() => byText(r.container, 'button', /gone\.go/).click());
+    await waitFor(() => need(r.$('[aria-label="Changes in gone.go"]')), r);
+    expect(r.$('[data-testid="diff-file-open"]')).toBeNull();
   });
 
   it('takes room of its own on a page and fits the dock inside it', async () => {
@@ -325,6 +347,201 @@ describe('the diff viewer', () => {
   });
 });
 
+describe('the raw patch in the diff viewer (X212, L36)', () => {
+  const PATCHES: Record<number, string> = {
+    3: 'diff --git a/a.go b/a.go\n-old\n+FIRST PATCH\n',
+    9: 'diff --git a/a.go b/a.go\n-old\n+SECOND PATCH\n',
+  };
+
+  it('Raw shows the recorded patch as text lines classed by kind, read for the diff evidence the list is of', async () => {
+    const calls: [string, number | undefined][] = [];
+    const s = testServices({
+      taskDiffFiles: async () => files({ diffId: 3, files: [files().files[0]!] }),
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+      taskDiff: async (id, evidenceId) => {
+        calls.push([id, evidenceId]);
+        return PATCHES[evidenceId ?? 0] ?? '';
+      },
+    });
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => expect(r.$('[data-testid="monaco-stub"]')).toBeTruthy(), r);
+    expect(calls).toEqual([]);
+    await r.act(() => byText(r.container, 'button', 'Raw').click());
+    await waitFor(() => expect(text(r.$('[data-testid="diff-raw"] .diff-add'))).toBe('+FIRST PATCH'), r);
+    expect(text(r.$('.diff-del'))).toBe('-old');
+    expect(calls).toEqual([['t1', 3]]);
+    expect(byText(r.container, 'button', 'Raw').getAttribute('aria-pressed')).toBe('true');
+    expect(byText(r.container, 'button', 'Side by side').getAttribute('aria-pressed')).toBe('false');
+    // the editor is gone while the patch shows; a file of the list brings it back on that file
+    expect(r.$('[data-testid="monaco-diff"]')).toBeNull();
+    await r.act(() => byText(r.container, 'button', /calc\.go/).click());
+    await waitFor(() => expect(r.$('[data-testid="monaco-stub"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="diff-raw"]')).toBeNull();
+  });
+
+  it('drops the text when a newer patch is recorded, says so, and shows the new one only when asked', async () => {
+    let id = 3;
+    const calls: [string, number | undefined][] = [];
+    const s = testServices({
+      taskDiffFiles: async () => files({ diffId: id, files: [files().files[0]!] }),
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+      taskDiff: async (tid, evidenceId) => {
+        calls.push([tid, evidenceId]);
+        return PATCHES[evidenceId ?? 0] ?? 'the core would refuse this id';
+      },
+    });
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => need(byText(r.container, 'button', 'Raw')), r);
+    await r.act(() => byText(r.container, 'button', 'Raw').click());
+    await waitFor(() => expect(text(r.$('.diff-add'))).toBe('+FIRST PATCH'), r);
+    expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
+
+    // the task goes round again and a second patch is recorded: the first is no longer shown, the viewer says why
+    id = 9;
+    s.emit({ type: 'task.evidence', taskId: 't1' });
+    const note = await waitFor(() => need(r.$('[data-testid="raw-diff-changed"]')), r);
+    expect(note.textContent).toBe('The patch changed since you opened it. Show it again.');
+    expect(note.getAttribute('role')).toBe('status');
+    expect(r.container.textContent).not.toContain('FIRST PATCH');
+    // nothing was fetched or swapped in on its own
+    expect(calls).toEqual([['t1', 3]]);
+    expect(r.container.textContent).not.toContain('SECOND PATCH');
+
+    await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
+    await waitFor(() => expect(text(r.$('.diff-add'))).toBe('+SECOND PATCH'), r);
+    expect(calls).toEqual([['t1', 3], ['t1', 9]]);
+    expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
+  });
+
+  it('does not show a patch that was read while a newer one was recorded', async () => {
+    let id = 3;
+    let reads = 0;
+    let release: (text: string) => void = () => undefined;
+    const calls: [string, number | undefined][] = [];
+    const s = testServices({
+      taskDiffFiles: async () => {
+        reads++;
+        return files({ diffId: id, files: [files().files[0]!] });
+      },
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+      taskDiff: async (tid, evidenceId) => {
+        calls.push([tid, evidenceId]);
+        return evidenceId === 3 ? new Promise<string>((res) => (release = res)) : (PATCHES[evidenceId ?? 0] ?? '');
+      },
+    });
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => need(byText(r.container, 'button', 'Raw')), r);
+    await r.act(() => byText(r.container, 'button', 'Raw').click());
+    await waitFor(() => expect(calls).toEqual([['t1', 3]]), r);
+    id = 9;
+    s.emit({ type: 'task.evidence', taskId: 't1' });
+    // the first patch is still being read when the list names the second
+    await waitFor(() => expect(reads).toBe(2), r);
+    await drain();
+    release(PATCHES[3]!);
+    await waitFor(() => need(r.$('[data-testid="raw-diff-changed"]')), r);
+    expect(r.container.textContent).not.toContain('FIRST PATCH');
+    await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
+    await waitFor(() => expect(text(r.$('.diff-add'))).toBe('+SECOND PATCH'), r);
+    expect(calls).toEqual([['t1', 3], ['t1', 9]]);
+  });
+
+  it('leaves Raw when an agent works again, and reads the newer patch only when asked', async () => {
+    let active = false;
+    let id = 3;
+    const calls: (number | undefined)[] = [];
+    const s = testServices({
+      taskDiffFiles: async (_id, live) => files(live ? { source: 'live', head: undefined, runActive: active } : { runActive: active, diffId: id }),
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+      taskDiff: async (_t, evidenceId) => {
+        calls.push(evidenceId);
+        return PATCHES[evidenceId ?? 0] ?? '';
+      },
+    });
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => need(byText(r.container, 'button', 'Raw')), r);
+    await r.act(() => byText(r.container, 'button', 'Raw').click());
+    await waitFor(() => expect(text(r.$('.diff-add'))).toBe('+FIRST PATCH'), r);
+    active = true;
+    s.emit({ type: 'task.updated', taskId: 't1' });
+    await waitFor(() => has(r.container, 'Live worktree'), r);
+    expect(byText(r.container, 'button', 'Raw').getAttribute('aria-pressed')).toBe('false');
+    active = false;
+    id = 9;
+    s.emit({ type: 'task.updated', taskId: 't1' });
+    await waitFor(() => has(r.container, 'Recorded with the last attempt'), r);
+    await waitFor(() => expect(r.$('[data-testid="monaco-stub"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="diff-raw"]')).toBeNull();
+    expect(calls).toEqual([3]);
+  });
+
+  it('offers no raw patch for the live worktree or when nothing is recorded', async () => {
+    const live = mount(
+      <DiffViewer taskId="t1" />,
+      testServices({
+        taskDiffFiles: async (_id, isLive) => files(isLive ? { source: 'live', head: undefined, runActive: true } : { runActive: true, diffId: 3 }),
+        taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+      }),
+    );
+    await waitFor(() => has(live.container, 'Live worktree'), live);
+    expect(byText<HTMLButtonElement>(live.container, 'button', 'Raw').disabled).toBe(true);
+    cleanup();
+    const none = mount(<DiffViewer taskId="t1" />, testServices({ taskDiffFiles: async () => files({ source: 'none', files: [], liveAvailable: false }) }));
+    await waitFor(() => has(none.container, /No diff has been recorded yet/), none);
+    expect(byText<HTMLButtonElement>(none.container, 'button', 'Raw').disabled).toBe(true);
+    expect(none.container.textContent).not.toContain('Show the raw patch');
+  });
+});
+
+describe("Work's file list (X212)", () => {
+  it('lists the changed files with their counts, no editor, and a row opens the dock on that file', async () => {
+    const s = testServices({ taskDiffFiles: async () => files({ diffId: 3 }) });
+    const r = mount(<DiffSummary taskId="t1" />, s);
+    await waitFor(() => expect(r.$$('[data-testid="diff-summary"] li').length).toBe(3), r);
+    has(r.$('[data-testid="diff-totals"]')!, '3 files+3-2');
+    has(r.container, 'Recorded with the last attempt');
+    expect(text(r.$$('[data-testid="diff-summary"] li')[0])).toMatch(/M.*calc\.go.*\+2.*-1/);
+    expect(r.$('[data-testid="monaco-diff"]')).toBeNull();
+    expect(editors.created).toBe(0);
+    await r.act(() => byText(r.container, 'button', /big\.txt/).click());
+    expect(s.ui.dock).toMatchObject({ open: true, tab: 'diff' });
+    expect(s.ui.dockView('t1').file).toBe('big.txt');
+  });
+
+  it('follows the run as the viewer does, and says when nothing is recorded', async () => {
+    const calls: (boolean | undefined)[] = [];
+    const r = mount(
+      <DiffSummary taskId="t1" />,
+      testServices({
+        taskDiffFiles: async (_id, live) => {
+          calls.push(live);
+          return live ? files({ source: 'live', head: undefined, runActive: true }) : files({ runActive: true });
+        },
+      }),
+    );
+    await waitFor(() => has(r.container, 'Live worktree'), r);
+    expect(calls).toEqual([false, true]);
+    cleanup();
+    const none = mount(<DiffSummary taskId="t1" />, testServices({ taskDiffFiles: async () => files({ source: 'none', files: [] }) }));
+    await waitFor(() => has(none.container, 'No diff has been recorded yet.'), none);
+  });
+
+  it('the viewer opens on the asked file, mounted or already showing', async () => {
+    const s = testServices({
+      taskDiffFiles: async () => files(),
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: `old ${path}`, modified: `new ${path}` }),
+    });
+    s.ui.openDiff('t1', 'big.txt');
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => expect(text(r.$('[data-testid="mod"]'))).toContain('new big.txt'), r);
+    expect(s.ui.takeDiffAsk('t1')).toBe(undefined);
+    // already showing, it moves to the asked file
+    await r.act(() => s.ui.openDiff('t1', 'calc.go'));
+    await waitFor(() => expect(text(r.$('[data-testid="mod"]'))).toContain('new calc.go'), r);
+    expect(byText(r.container, 'button', /calc\.go/).getAttribute('aria-current')).toBe('true');
+  });
+});
+
 describe('the logs panel', () => {
   it('lists check logs and agent streams, opens the failed check at its tail, and reads earlier output on request', async () => {
     const reads: [string, { from?: number; limit?: number; tail?: boolean } | undefined][] = [];
@@ -383,6 +600,34 @@ describe('the logs panel', () => {
     cleanup();
     const other = mount(<LogsPanel taskId="t2" />, s);
     await waitFor(() => expect(text(other.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), other);
+  });
+
+  it('a Logs button beside one log opens that log, in a panel that shows already or mounts next (X24)', async () => {
+    const s = testServices({
+      logsList: async () => [
+        { id: 'ev:1', kind: 'check', title: 'test', size: 10, passed: false, created: 1 },
+        { id: 'nx:r|work|2|1', kind: 'agent', title: 'work (step 2)', size: 10, created: 2, running: true },
+        { id: 'ev:2', kind: 'check', title: 'lint', size: 10, passed: false, created: 3 },
+      ],
+      logsRead: async (_t, id) => ({ text: `tail of ${id}\n`, start: 0, next: 10, size: 10 }),
+    });
+    const r = mount(<LogsPanel taskId="t1" />, s);
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), r);
+    // the Failed filter would hide an agent stream: the ask shows the whole list
+    await r.act(() => byText(r.container, 'button', /^Failed/).click());
+    await r.act(() => s.ui.openLogs('t1', 'ev:1'));
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of ev:1'), r);
+    await r.act(() => s.ui.openLogs('t1', 'nx:r|work|2|1'));
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), r);
+    // a later ask for another task is not this panel's
+    await r.act(() => s.ui.openLogs('t2', 'ev:2'));
+    await drain();
+    r.root.flush();
+    expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1');
+    cleanup();
+    const other = mount(<LogsPanel taskId="t2" />, s);
+    await waitFor(() => expect(text(other.$('[data-testid="log-text"]'))).toContain('tail of ev:2'), other);
+    expect(s.ui.takeLogAsk('t2')).toBe(undefined);
   });
 
   it('stays on the stream it opened when the stream stops, not moving to an older failed check (X23)', async () => {

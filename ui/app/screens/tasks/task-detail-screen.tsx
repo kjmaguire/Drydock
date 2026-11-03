@@ -22,6 +22,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
+import { DiffSummary } from '../dock/diff-files.tsx';
 import { DiffViewer } from '../dock/diff-viewer.tsx';
 import { TaskDecisions } from '../shared/explain.tsx';
 import { UsageTable } from '../shared/usage.tsx';
@@ -32,14 +33,13 @@ import { EndedCard } from './ended-card.tsx';
 import { EvidenceList, ReviewList } from './evidence.tsx';
 import { PreviewControls } from './preview-controls.tsx';
 import { SandboxApp } from './sandbox-app.tsx';
-import { DiffView } from './raw-diff.tsx';
 import { AllowRules, ReviewPanel } from './review-panel.tsx';
 import { SteerBox } from './steer-box.tsx';
 import { TaskControls } from './task-controls.tsx';
 import { criteriaRows, statusDot, statusPill } from './task-page.ts';
 import { TaskProperties } from './task-properties.tsx';
 import { TaskTools } from './task-tools.tsx';
-import { isWaitingForTask, newestDiffId } from './tasks.ts';
+import { isWaitingForTask } from './tasks.ts';
 
 // the page: the work and the properties side by side, each column scrolling on its own (the bar stays on top of the work and the
 // steer box at its foot); on a narrower window the properties go under the work and the page scrolls as one.
@@ -297,15 +297,17 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                   title="Diff"
                   testId="task-diff"
                   actions={
-                    <Button size="sm" variant="ghost" icon={Columns2} mix={on('click', () => s.ui.openDock('diff'))}>
-                      Open in the dock
-                    </Button>
+                    handle.props.embedded ? null : (
+                      <Button size="sm" variant="ghost" icon={Columns2} mix={on('click', () => s.ui.openDock('diff'))}>
+                        Open in the dock
+                      </Button>
+                    )
                   }
                 >
-                  {/* embedded in Work (P141) the Monaco diff stays in the dock ("Open in the dock"): each Monaco diff editor leaves
-                      about 3,000 detached nodes behind when it is disposed, and Work opens one task after another */}
-                  {handle.props.embedded ? null : <DiffViewer taskId={task.id} />}
-                  <DiffView key={task.id} taskId={task.id} diffId={newestDiffId(d.evidence)} />
+                  {/* embedded in Work (P141) the Monaco diff stays in the dock: each Monaco diff editor leaves about 3,000 detached
+                      nodes behind when it is disposed, and Work opens one task after another. Work lists the changed files with
+                      their counts instead, a row opening the dock on that file (X212); the raw patch is the viewer's Raw view. */}
+                  {handle.props.embedded ? <DiffSummary key={task.id} taskId={task.id} /> : <DiffViewer taskId={task.id} />}
                 </Part>
                 <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} sandboxed={!!d.sandboxed} />
                 <SandboxApp key={`sandbox-app-${task.id}`} taskId={task.id} />

@@ -310,6 +310,9 @@ describe('RunScreen', () => {
 
     await r.act(() => byText(panel, 'button', 'Open its stream in the Logs tab').click());
     expect(s.ui.dock).toMatchObject({ open: true, tab: 'logs' });
+    // on that node's own stream, not whichever log the tab would pick (X24)
+    expect(s.ui.dockView('t1').log).toBe('nx:run_1|work|2|1');
+    expect(s.ui.takeLogAsk('t1')).toBe('nx:run_1|work|2|1');
 
     // its turn opens in the Turns tab
     await r.act(() => byText(panel, 'button', 'Open the turn at step 2').click());

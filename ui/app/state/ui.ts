@@ -441,6 +441,51 @@ export class UiModel extends Model {
     this.setDock({ open: true, tab });
   }
 
+  #logAsk: { taskId: string; logId: string } | undefined;
+
+  /**
+   * Open the dock's Logs tab on one log of a task (effort review X24: a failed check in the Checks grid, a turn's stream on the run
+   * page). The log becomes the task's remembered one, so a Logs panel that mounts opens it; one already showing takes the ask once
+   * (takeLogAsk). Without a log id it is the plain Logs tab.
+   */
+  openLogs(taskId: string, logId?: string): void {
+    if (logId) {
+      this.setDockView(taskId, { log: logId });
+      this.#logAsk = { taskId, logId };
+    }
+    this.openDock('logs');
+  }
+
+  /** The log openLogs asked for, once, when it is of this task (the Logs panel of another task leaves it). */
+  takeLogAsk(taskId: string): string | undefined {
+    const a = this.#logAsk;
+    if (!a || a.taskId !== taskId) return undefined;
+    this.#logAsk = undefined;
+    return a.logId;
+  }
+
+  #diffAsk: { taskId: string; file: string } | undefined;
+
+  /**
+   * Open the dock's Diff tab on one file of a task (effort review X212: a row of Work's file list). The file becomes the task's
+   * remembered one, so a Diff viewer that mounts opens it; one already showing takes the ask once (takeDiffAsk).
+   */
+  openDiff(taskId: string, file?: string): void {
+    if (file) {
+      this.setDockView(taskId, { file });
+      this.#diffAsk = { taskId, file };
+    }
+    this.openDock('diff');
+  }
+
+  /** The file openDiff asked for, once, when it is of this task. */
+  takeDiffAsk(taskId: string): string | undefined {
+    const a = this.#diffAsk;
+    if (!a || a.taskId !== taskId) return undefined;
+    this.#diffAsk = undefined;
+    return a.file;
+  }
+
   #terminalAsk: TerminalAsk | undefined;
 
   /**

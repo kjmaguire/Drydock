@@ -11,7 +11,9 @@ afterEach(cleanup);
 function double(opts: { running?: boolean; canView?: boolean; max?: number } = {}) {
   const forwards: SandboxForward[] = [];
   const calls: string[] = [];
-  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards].sort((a, b) => a.port - b.port), canView: opts.canView ?? true, max: opts.max ?? 5 });
+  /** The ports whose window is open (X314): the viewer's one window per forward. */
+  const windows = new Set<number>();
+  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards].sort((a, b) => a.port - b.port), canView: opts.canView ?? true, max: opts.max ?? 5, viewing: [...windows] });
   const client: Partial<Client> = {
     sandboxForwards: async () => view(),
     sandboxForwardOpen: async (taskId, port) => {
@@ -22,6 +24,7 @@ function double(opts: { running?: boolean; canView?: boolean; max?: number } = {
     },
     sandboxForwardView: async (_t, port) => {
       calls.push(`view ${port}`);
+      windows.add(port);
     },
     // sandbox.forward.show: forwards (the same forward for a port already forwarded), then opens the viewer
     sandboxForwardShow: async (taskId, port) => {
@@ -31,17 +34,45 @@ function double(opts: { running?: boolean; canView?: boolean; max?: number } = {
         f = { taskId, port, hostPort: 49000 + port, address: `127.0.0.1:${49000 + port}` };
         forwards.push(f);
       }
+      windows.add(port);
       return f;
     },
     sandboxForwardClose: async (_t, port) => {
       calls.push(`close ${port}`);
+      windows.delete(port);
       forwards.splice(0, forwards.length, ...forwards.filter((f) => f.port !== port));
     },
   };
-  return { client, calls };
+  return { client, calls, windows };
 }
 
 describe("A task's sandbox app (P134)", () => {
+  it('a port whose window is open says Show, Open brings it to the front, and Stop closes it (X314)', async () => {
+    const { client, calls, windows } = double();
+    const r = mount(<SandboxApp taskId="t1" />, testServices(client));
+    await waitFor(() => expect(r.$('[data-testid="sandbox-app"]')).not.toBe(null), r);
+    const add = () => r.$('[data-testid="sandbox-forward-add"]') as HTMLButtonElement;
+    const input = byLabel<HTMLInputElement>(r.container, 'Port in the sandbox');
+    await r.act(() => {
+      input.value = '3000';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await r.act(() => add().click());
+    // the window is open: the field's port and its row say Show
+    await waitFor(() => expect(add().textContent).toBe('Show the app'), r);
+    const open = () => r.$('[data-testid="sandbox-forward-open-3000"]') as HTMLButtonElement;
+    expect(open().textContent).toBe('Show');
+    expect(open().getAttribute('title')).toBe('Bring its window to the front');
+    // a window the person closed is known at the next read: Show then opens it again
+    windows.delete(3000);
+    await r.act(() => open().click());
+    await waitFor(() => expect(calls).toEqual(['show 3000', 'view 3000']), r);
+    await waitFor(() => expect(open().textContent).toBe('Show'), r);
+    await r.act(() => (r.$('[data-testid="sandbox-forward-stop-3000"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$('[data-testid="sandbox-forwards"]')).toBe(null), r);
+    expect(windows.size).toBe(0);
+  });
+
   it('shows nothing for a task with no running sandbox', async () => {
     const { client } = double({ running: false });
     const r = mount(<SandboxApp taskId="t1" />, testServices(client));

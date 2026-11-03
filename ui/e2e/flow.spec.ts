@@ -34,7 +34,8 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     // evidence with pass/fail, the reviewer verdict and a diff
     await expect(page.getByTestId('evidence').filter({ hasText: 'test' }).first()).toHaveAttribute('data-result', 'pass');
     await expect(page.getByTestId('review').first()).toHaveAttribute('data-verdict', 'SHIP');
-    await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    // the raw patch is the Diff viewer's Raw view (X212)
+    await page.getByTestId('task-diff').getByRole('button', { name: 'Raw' }).click();
     await expect(page.locator('.diff-add', { hasText: 'return a - b' })).toBeVisible();
 
     // Activity (P87, P97): the worker's and the reviewer's processes, each a line in the feed with its steps after it (every row
@@ -99,7 +100,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
       // task.diff itself; the dock's task.diffFiles and task.diffFile are other calls
       if (/\/rpc\/task\.diff(\?|$)/.test(req.url())) diffAsks.push(JSON.parse(req.postData() ?? '{}'));
     });
-    await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    await page.getByTestId('task-diff').getByRole('button', { name: 'Raw' }).click();
     await expect(page.getByTestId('diff')).toBeVisible();
     expect(diffAsks).toHaveLength(1);
     expect(typeof diffAsks[0]!.evidenceId).toBe('number');
@@ -115,11 +116,19 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
       expect(id).not.toBe(firstRequest);
     }).toPass({ timeout: 90_000 });
 
-    // the patch the rework recorded is not swapped in under the reader's eyes: the old text is gone, the page says so, and the
-    // button asks for the newer evidence (L36)
-    await expect(page.getByTestId('raw-diff-changed')).toHaveText('The patch changed since you opened it. Show it again.');
+    // the patch the rework recorded is not swapped in under the reader's eyes: the old text is gone and nothing newer was read on
+    // its own. The viewer either still shows Raw and says the patch changed, or it went to the live worktree while the worker
+    // reworked and is back on the editor; either way the person asks for the newer evidence (L36)
+    const raw = page.getByTestId('task-diff').getByRole('button', { name: 'Raw' });
+    await expect(async () => {
+      const changed = await page.getByTestId('raw-diff-changed').count();
+      const pressed = await raw.getAttribute('aria-pressed', { timeout: 1000 });
+      expect(changed === 1 || pressed === 'false').toBe(true);
+    }).toPass({ timeout: 30_000 });
     await expect(page.getByTestId('diff')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    expect(diffAsks).toHaveLength(1);
+    if ((await page.getByTestId('raw-diff-changed').count()) === 1) await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    else await raw.click();
     await expect(page.locator('.diff-add', { hasText: 'Subtract returns a minus b' })).toBeVisible();
     expect(diffAsks).toHaveLength(2);
     expect(diffAsks[1]!.evidenceId!).toBeGreaterThan(diffAsks[0]!.evidenceId!);

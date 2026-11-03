@@ -249,7 +249,7 @@ describe('typed client', () => {
       json({ result: url.endsWith('list') ? { running: true, forwards: null, canView: true, max: 5 } : url.endsWith('open') ? { taskId: 't', port: 3000, hostPort: 49153, address: '127.0.0.1:49153' } : {} }),
     );
     const c = createClient(transport(f as unknown as typeof fetch));
-    expect(await c.sandboxForwards('t')).toEqual({ running: true, forwards: [], canView: true, max: 5 });
+    expect(await c.sandboxForwards('t')).toEqual({ running: true, forwards: [], canView: true, max: 5, viewing: [] });
     expect(await c.sandboxForwardOpen('t', 3000)).toMatchObject({ port: 3000, hostPort: 49153 });
     await c.sandboxForwardView('t', 3000);
     await c.sandboxForwardShow('t', 3000);

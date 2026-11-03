@@ -96,10 +96,20 @@ type Config struct {
 	// does not open inside the app. The desktop app sets it (app/app_windows.go); the address has passed ExternalURL by then. Without
 	// it (the browser harness) the page uses the browser's own link.
 	OpenURL func(ctx context.Context, rawURL string) error
+	// OpenPath opens a task's worktree or a project's repository, or a file in it, in Explorer or a code editor (effort review X26):
+	// the path is one the core resolved and confined (Core.OpenPath), the editor a program of its allowlist found on PATH. The desktop
+	// app sets it (app/app_windows.go); without it the page offers Copy path only. The e2e harness sets a labelled stand-in.
+	OpenPath func(ctx context.Context, p PathOpen) error
+	// LookPath finds an editor's command on PATH for OpenPath. Default: exec.LookPath; tests and the e2e harness set a stand-in.
+	LookPath func(file string) (string, error)
 	// OpenSandboxApp shows a forwarded port of a task's sandbox in a window of Drydock's own, in a process of its own with a
 	// storage partition of its own (decision P134). The desktop app sets it (app/sandboxview_windows.go); without it (the browser
 	// harness) the page says the viewer is not available, and never opens the address in a browser.
 	OpenSandboxApp func(ctx context.Context, app SandboxApp) error
+	// SandboxAppShown says whether Drydock's viewer shows the address now, and CloseSandboxApp ends that viewer (effort review X314:
+	// a second Open brings the window to the front, Stop closes it). The desktop app sets both with OpenSandboxApp.
+	SandboxAppShown func(url string) bool
+	CloseSandboxApp func(url string) error
 	// Restart starts Drydock again and quits this one: "Restart now" after a staged restore (decision P116). The desktop app sets
 	// it (app/restart_windows.go); without it (the browser harness) the page says to quit and reopen.
 	Restart func(ctx context.Context) error

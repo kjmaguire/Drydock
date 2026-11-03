@@ -754,6 +754,8 @@ export interface SummaryCheck {
   reason?: string;
   /** What failed (tests, findings), at most 10. */
   failing?: string[];
+  /** The Logs tab's id of the result's output ("ev:<evidence id>"), when it wrote one: ui.openLogs(taskId, logId) opens it. */
+  logId?: string;
 }
 
 /** A request waiting for a person; answer it with runRespond(runId, requestId, ...). */

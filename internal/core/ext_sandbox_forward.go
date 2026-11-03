@@ -45,6 +45,28 @@ type SandboxForwards struct {
 	CanView bool   `json:"canView"`
 	Max     int    `json:"max"`
 	Error   string `json:"error,omitempty"`
+	// Viewing are the ports whose window is open now (effort review X314): Open brings that window to the front, so the page
+	// says Show.
+	Viewing []int `json:"viewing"`
+}
+
+// sandboxAppURL is the address Drydock's viewer shows a forward at.
+func sandboxAppURL(f sandbox.Forward) string {
+	return "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(f.HostPort)) + "/"
+}
+
+// withViewing fills in which forwards have their window open; it is asked at every list (the list itself is cached).
+func (c *Core) withViewing(v SandboxForwards) SandboxForwards {
+	v.Viewing = []int{}
+	if c.cfg.SandboxAppShown == nil {
+		return v
+	}
+	for _, f := range v.Forwards {
+		if f.HostPort != 0 && c.cfg.SandboxAppShown(sandboxAppURL(f)) {
+			v.Viewing = append(v.Viewing, f.Port)
+		}
+	}
+	return v
 }
 
 // forwardTask returns the task, or an error for one that does not exist.
@@ -105,13 +127,13 @@ func (c *Core) SandboxForwardList(ctx context.Context, taskID string) (SandboxFo
 		return out, err
 	}
 	if v, ok := c.fwdCache.get(taskID, time.Now()); ok {
-		return v, nil
+		return c.withViewing(v), nil
 	}
 	v, err := c.listForwards(ctx, taskID, out)
 	if err == nil && v.Error == "" {
 		c.fwdCache.put(taskID, time.Now(), v) // an engine that did not answer is asked again at the next view
 	}
-	return v, err
+	return c.withViewing(v), err
 }
 
 func (c *Core) listForwards(ctx context.Context, taskID string, out SandboxForwards) (SandboxForwards, error) {
@@ -172,8 +194,24 @@ func (c *Core) SandboxForwardClose(ctx context.Context, taskID string, port int,
 	cctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	defer c.fwdCache.drop(taskID)
+	// the window that shows this forward would show nothing once it stops: it closes with it (X314)
+	var url string
+	if c.cfg.CloseSandboxApp != nil {
+		if fw, err := c.sandboxes().Forwards(cctx, taskID); err == nil {
+			for _, f := range fw {
+				if f.Port == port && f.HostPort != 0 {
+					url = sandboxAppURL(f)
+				}
+			}
+		}
+	}
 	if err := c.sandboxes().CloseForward(cctx, taskID, port); err != nil {
 		return err
+	}
+	if url != "" {
+		if err := c.cfg.CloseSandboxApp(url); err != nil {
+			c.logf("sandbox app window: close: %v", err)
+		}
 	}
 	c.recordForward(ctx, EventForwardClosed, t, by, sandbox.Forward{TaskID: taskID, Port: port})
 	return nil
@@ -202,7 +240,7 @@ func (c *Core) SandboxForwardView(ctx context.Context, taskID string, port int, 
 		if f.Port != port {
 			continue
 		}
-		app := SandboxApp{URL: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(f.HostPort)) + "/", Title: fmt.Sprintf("Port %d of the task's sandbox", f.Port), TaskID: taskID, Port: f.Port}
+		app := SandboxApp{URL: sandboxAppURL(f), Title: fmt.Sprintf("Port %d of the task's sandbox", f.Port), TaskID: taskID, Port: f.Port}
 		if err := c.cfg.OpenSandboxApp(ctx, app); err != nil {
 			return err
 		}

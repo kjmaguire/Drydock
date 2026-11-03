@@ -1,7 +1,7 @@
 // A task's check logs and agent streams (docs/ui.md 2, the Logs tab). Read by range: the tail first, then whatever is
 // appended while the source is written; earlier output on request. It opens on the log that matters (pickLogSource: the running
 // stream, else the newest failed check) and stays there, moving only when another source starts running (autoLogSource), until
-// the person picks one, which is remembered per task (X22, X23); the list shows
+// the person picks one, which is remembered per task (X22, X23), or a Logs button beside one log opens it (ui.openLogs, X24); the list shows
 // every log or only the failed checks (X25), and an agent stream is named by its agent (X210).
 
 import { css, on, ref, type Handle } from 'remix/component';
@@ -53,6 +53,10 @@ export function logTitle(l: LogSource, agentName: (id: string) => string | undef
 export function LogsPanel(handle: Handle<{ taskId: string }>) {
   const s = services(handle);
   watch(handle, s.project);
+  watch(handle, s.ui);
+  // the log another page asked for (ui.openLogs) is the remembered one when this panel mounts; it is taken here so it is not
+  // taken again later
+  s.ui.takeLogAsk(handle.props.taskId);
   let selected = s.ui.dockView(handle.props.taskId).log;
   let filter: LogFilter = 'all';
   // what the tab chose by itself (not remembered): it stays there until another source starts running
@@ -66,6 +70,12 @@ export function LogsPanel(handle: Handle<{ taskId: string }>) {
 
   return () => {
     const taskId = handle.props.taskId;
+    // a Logs button beside one log (X24) while this panel shows: open that log, in the whole list
+    const asked = s.ui.takeLogAsk(taskId);
+    if (asked) {
+      selected = asked;
+      filter = 'all';
+    }
     if (list.loading && !list.data) return <Loading label="Loading logs..." />;
     const all = list.data ?? [];
     const logs = filterLogs(all, filter);

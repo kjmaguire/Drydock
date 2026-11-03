@@ -21,6 +21,10 @@ export interface DiffFiles {
   liveAvailable: boolean;
   /** An agent works on the task now: the viewer opens on the live diff (until the run stops, unless the person chose). */
   runActive?: boolean;
+  /** The recorded diff's evidence id: task.diff with it reads that exact patch (the viewer's Raw view, L36). */
+  diffId?: number;
+  /** The task's worktree folder while it is there (Copy path, X26). */
+  worktree?: string;
 }
 
 export interface DiffFileContent {

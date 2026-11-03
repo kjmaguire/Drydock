@@ -1528,6 +1528,8 @@ export interface SandboxForwards {
   max: number;
   /** Why the sandbox could not be asked (no container engine answers). */
   error?: string;
+  /** The ports whose window is open now: Open brings that window to the front (X314). */
+  viewing?: number[];
 }
 export interface SandboxTestStep {
   name: string;

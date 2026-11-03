@@ -108,7 +108,7 @@ describe('handing the task to another agent', () => {
     const trigger = await waitFor(() => byText(r.container, 'button', 'Hand to another agent'), r);
     await r.act(() => trigger.click());
     await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'), r);
-    return Array.from(r.$$('[role="menuitem"]')) as HTMLElement[];
+    return Array.from(r.$$('[popover]:popover-open [role="menuitem"]')) as HTMLElement[];
   };
 
   it("offers the project's other agents and assigns without naming a reviewer (the core picks one)", async () => {
@@ -177,6 +177,8 @@ describe('Open the worktree (O)', () => {
     const button = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', /^Open the worktree/), r);
     expect(button.querySelector('kbd')!.textContent).toBe('O');
     expect(button.disabled).toBe(false);
+    // beside it, Explorer, an editor and Copy path (X26)
+    expect(r.$('[data-testid="worktree-open"]')!.getAttribute('aria-label')).toBe('More ways to open the worktree');
     await r.act(() => button.click());
     expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
     expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1', reuse: true });
@@ -199,6 +201,7 @@ describe('Open the worktree (O)', () => {
     const button = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', /^Open the worktree/), r);
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('title')).toBe('The task has no worktree yet: it gets one when it starts');
+    expect(r.$('[data-testid="worktree-open"]')).toBeNull();
     await r.act(() => key(document.body, 'o'));
     expect(s.ui.takeTerminalAsk()).toBe(undefined);
   });
