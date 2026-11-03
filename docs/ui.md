@@ -641,6 +641,18 @@ the workspace's roles, tiers, efforts and action keys). The CEL condition and th
 opens by itself for a rule the pickers cannot say. A save refused because the rule changed since it was opened reads the rule
 again, puts the edit on the newer version and says so above the list; any other refusal is shown as the core wrote it.
 
+**Security scan rules (as built, lane B batch B7, H5).** Project settings has **Security scan rules** (`scan-schedule`,
+`screens/project/project-security-schedule.tsx`, for a project with a repository): **After a task is merged**, **After a sync
+brings new commits** and **Once a week**, each a switch that saves at once (`security.schedule.set`), all off until the person
+turns them on (the description says the dependency check sends package names and versions to osv.dev), then a line with who set
+them and when; a rule's scan that waits (an agent works in the project's folder, or a scan runs) and the last scan a rule started
+are said under them. **Also run the scan on every task's change** turns on the Verification checks' Security scan of the change in
+one click (`checks.settings.set`, which now announces `checks.settings_changed` so both panels agree). The project's Security page
+says under its header whether the scan also runs by a rule, with a link to Project settings (`scan-rules-note`), and a history
+chip's tooltip names the rule that started it. A rule's scan with new high or critical findings is an Inbox item (kind
+`security_findings`, **Open Security**, can be marked done) that goes when they are dismissed or a later scan does not have them
+([`security-scan.md`](security-scan.md) section 11).
+
 **As built (2026-10-15, decision P65).** The page opens with **Models on this PC** (`ui/app/screens/providers/local-models.tsx`
 over `local.*`, `docs/local-models.md`): the llama.cpp build (install with a source and a backend, the suggested backend
 preselected, the TurboQuant fork behind a warning; progress of the download; the build's tag, backend and the devices it

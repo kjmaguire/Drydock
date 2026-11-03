@@ -18,7 +18,9 @@ export const needsChanged = (e: DrydockEvent): boolean =>
   // what went wrong in the background, and its fix (B6, F14 and H7): a service's sync and key, a provider's health, an MCP
   // sign-in, an agent CLI's output, a scan tool's install, a crash (and its report deleted)
   starts(e, 'integration.sync.failed', 'integration.sync.completed', 'integration.auth_expired', 'integration.schema_drift', 'integration.connected', 'integration.disconnected',
-    'provider.up', 'provider.down', 'provider.degraded', 'mcp.server_oauth', 'adapter.drift', 'security.settings', 'app.crashed', 'app.crash_deleted');
+    'provider.up', 'provider.down', 'provider.degraded', 'mcp.server_oauth', 'adapter.drift', 'security.settings', 'app.crashed', 'app.crash_deleted',
+    // a rule's scan with new high findings, and the findings dismissed or restored (B7, H5)
+    'security.scan.finished', 'security.finding.');
 
 /** The project's tasks as one read: the newest ones the core lists, and how many the project has in all (when the count answered). */
 export interface TaskPage {

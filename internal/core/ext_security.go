@@ -16,6 +16,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/ids"
+	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
@@ -29,7 +30,7 @@ import (
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}, jobs: map[string]*toolJob{}, latest: map[string]string{},
-			inst: scan.NewInstaller(filepath.Join(c.cfg.DataDir, "tools"))}
+			inst: scan.NewInstaller(filepath.Join(c.cfg.DataDir, "tools")), pending: map[string]string{}}
 		// a release becomes the one in use only once it ran the way a scan runs it (decision P95)
 		s.inst.Check = func(ctx context.Context, tool string, t scan.Tool) error {
 			return scan.SelfCheck(ctx, scan.Options{Procs: c.Deps.PM, Redact: c.Scanner.Redact, Env: checks.CommandEnv}, tool, t)
@@ -43,6 +44,7 @@ func init() {
 		wctx, stopWatch := context.WithCancel(context.Background())
 		s.stopWatch = stopWatch
 		s.watchUpdates(wctx)
+		s.watchSchedule(wctx) // the scans a person's rule starts: after a merge, after a sync with new commits, weekly (H5)
 		// the built-in rules (decision P77) are written once per version under the app's data; every scan runs them. A folder
 		// that cannot be written leaves them out, and the page and the scan say so.
 		if dir, err := scan.WriteBuiltinRules(filepath.Join(c.cfg.DataDir, "rules")); err != nil {
@@ -64,8 +66,10 @@ func init() {
 		c.onProjectDeleted(func(_ context.Context, projectID string, _ []string) {
 			s.mu.Lock()
 			delete(s.unstored, projectID)
+			delete(s.pending, projectID)
 			r := s.running[projectID]
 			s.mu.Unlock()
+			s.forgetSchedule(context.Background(), projectID)
 			if r != nil {
 				r.Cancel()
 			}
@@ -150,6 +154,10 @@ func init() {
 				return s.report(ctx, p.ID)
 			}),
 		}
+		// the rule by which scans start without the button (ext_security_schedule.go, H5)
+		for name, m := range s.scheduleMethods() {
+			methods[name] = m
+		}
 		// one finding: dismiss, restore, the code around it, a task from it (ext_security_findings.go, decision P97)
 		for name, m := range s.findingMethods() {
 			methods[name] = m
@@ -182,8 +190,11 @@ type securityExt struct {
 	builtinRules string
 	// latest is each installed tool's newest release, as the last update check read it (under mu)
 	latest map[string]string
-	// stopWatch ends the update check
+	// stopWatch ends the update check and the scheduled scans' watcher
 	stopWatch context.CancelFunc
+	// pending holds, by project id, the rule whose scan waits: an agent works in the project's folder or a scan of it runs
+	// (under mu, ext_security_schedule.go)
+	pending map[string]string
 }
 
 // toolsMemoTTL is how long a tools answer serves the reads that follow one change.
@@ -406,6 +417,12 @@ func (s *securityExt) publish(ctx context.Context, t target, typ string, data ma
 // start begins a scan of a project's working tree or of a folder (decision P61); one per project or folder at a time. Only a
 // person may start one.
 func (s *securityExt) start(ctx context.Context, p scanTarget, by string) (scan.Report, error) {
+	return s.startAs(ctx, p, by, "")
+}
+
+// startAs is start with the rule that started it (scan.Report.Trigger): empty for the person's Scan; for a rule's scan by is the
+// person who set the rule (ext_security_schedule.go).
+func (s *securityExt) startAs(ctx context.Context, p scanTarget, by, trigger string) (scan.Report, error) {
 	if !isPerson(by) {
 		return scan.Report{}, errors.New("only a person may start a security scan")
 	}
@@ -421,11 +438,15 @@ func (s *securityExt) start(ctx context.Context, p scanTarget, by string) (scan.
 	id := ids.New("scn")
 	delete(s.unstored, t.Key)
 	// the scan outlives the request; close() cancels what is still running when the core closes
-	run := scan.Start(context.Background(), scan.Options{ID: id, ProjectID: t.ProjectID, By: by, Dir: t.Dir, Procs: s.c.Deps.PM, Redact: s.c.Scanner.Redact,
+	run := scan.Start(context.Background(), scan.Options{ID: id, ProjectID: t.ProjectID, By: by, Trigger: trigger, Dir: t.Dir, Procs: s.c.Deps.PM, Redact: s.c.Scanner.Redact,
 		Env: checks.CommandEnv, Paths: s.paths(ctx), BuiltinRules: s.builtinRules, RulesDir: s.rulesDir(ctx, t.ProjectID), NoGit: t.Folder != "", OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(t, rep, e) }})
 	s.running[t.Key] = run
 	// published under the lock: changed() takes it before it can publish an engine or finished event, so started comes first
-	s.publish(ctx, t, "security.scan.started", map[string]any{"id": id, "by": by})
+	started := map[string]any{"id": id, "by": by}
+	if trigger != "" {
+		started["trigger"] = trigger
+	}
+	s.publish(ctx, t, "security.scan.started", started)
 	s.mu.Unlock()
 	return run.Snapshot(), nil
 }
@@ -463,13 +484,25 @@ func (s *securityExt) changed(t target, rep scan.Report, engine scan.EngineID) {
 		rep.StoreError = "this report could not be kept in the database (" + s.c.Scanner.Redact(err.Error()) + "); it is shown until the next scan of this " + t.noun()
 		stored = false
 	}
+	if t.ProjectID != "" {
+		s.noteNewFindings(ctx, t.ProjectID, rep) // a rule's scan: its new high findings for the Inbox (H5)
+	}
 	s.mu.Lock()
 	delete(s.running, t.Key)
 	if !stored {
 		s.unstored[t.Key] = rep
 	}
+	_, waiting := s.pending[t.Key]
 	s.mu.Unlock()
-	s.publish(ctx, t, "security.scan.finished", map[string]any{"id": rep.ID, "status": rep.Status, "counts": rep.Counts, "summary": rep.Summary, "stored": stored})
+	fin := map[string]any{"id": rep.ID, "status": rep.Status, "counts": rep.Counts, "summary": rep.Summary, "stored": stored}
+	if rep.Trigger != "" {
+		fin["trigger"] = rep.Trigger
+	}
+	s.publish(ctx, t, "security.scan.finished", fin)
+	if waiting && t.ProjectID != "" {
+		// a rule's scan waited for this one to end: it starts now if no agent works in the folder (else the next tick)
+		safe.Go("security.schedule.after-scan", func() { s.runScheduled(context.Background(), t.ProjectID) })
+	}
 }
 
 // store writes the finished report, redacted once more as a whole (nothing that looks like a secret survives, even in a
@@ -558,7 +591,7 @@ func historyLimit(limit int) int {
 }
 
 // summaryCols read a history row; a folder scan's folder is the one its report names (the key may be lower case).
-const summaryCols = `id,project_id,status,started_by,started_at,finished_at,counts_json,summary,COALESCE(json_extract(report_json,'$.dir'),'')`
+const summaryCols = `id,project_id,status,started_by,started_at,finished_at,counts_json,summary,COALESCE(json_extract(report_json,'$.dir'),''),COALESCE(json_extract(report_json,'$.trigger'),'')`
 
 func (s *securityExt) summaries(ctx context.Context, where string, args ...any) ([]scan.Summary, error) {
 	rows, err := s.c.DB.Reader().QueryContext(ctx, `SELECT `+summaryCols+` FROM security_scans WHERE `+where, args...)
@@ -570,7 +603,7 @@ func (s *securityExt) summaries(ctx context.Context, where string, args ...any) 
 	for rows.Next() {
 		var sm scan.Summary
 		var key, counts, dir string
-		if err := rows.Scan(&sm.ID, &key, &sm.Status, &sm.By, &sm.StartedAt, &sm.FinishedAt, &counts, &sm.Summary, &dir); err != nil {
+		if err := rows.Scan(&sm.ID, &key, &sm.Status, &sm.By, &sm.StartedAt, &sm.FinishedAt, &counts, &sm.Summary, &dir, &sm.Trigger); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(counts), &sm.Counts)
@@ -623,7 +656,7 @@ func (s *securityExt) runningFolderScans() []scan.Summary {
 			continue
 		}
 		rep := r.Snapshot()
-		out = append(out, scan.Summary{ID: rep.ID, Folder: rep.Dir, Status: rep.Status, By: rep.By, StartedAt: rep.StartedAt, Counts: rep.Counts})
+		out = append(out, scan.Summary{ID: rep.ID, Folder: rep.Dir, Status: rep.Status, By: rep.By, Trigger: rep.Trigger, StartedAt: rep.StartedAt, Counts: rep.Counts})
 	}
 	return out
 }
@@ -658,6 +691,7 @@ type RunningScan struct {
 	// Name is what the scan reads, as a person names it: the project's name, or the folder's last element.
 	Name      string              `json:"name"`
 	By        string              `json:"by"`
+	Trigger   string              `json:"trigger,omitempty"` // the rule that started it (H5); empty for a person's Scan
 	StartedAt int64               `json:"startedAt"`
 	Engines   []scan.EngineResult `json:"engines"`
 	Counts    scan.Counts         `json:"counts"`
@@ -680,7 +714,7 @@ func (s *securityExt) runningScans(ctx context.Context) []RunningScan {
 		if e.rep.Status != scan.StatusRunning { // finished a moment ago, about to leave the running ones
 			continue
 		}
-		rs := RunningScan{ID: e.rep.ID, ProjectID: e.rep.ProjectID, By: e.rep.By, StartedAt: e.rep.StartedAt, Engines: e.rep.Engines, Counts: e.rep.Counts}
+		rs := RunningScan{ID: e.rep.ID, ProjectID: e.rep.ProjectID, By: e.rep.By, Trigger: e.rep.Trigger, StartedAt: e.rep.StartedAt, Engines: e.rep.Engines, Counts: e.rep.Counts}
 		if strings.HasPrefix(e.key, folderPrefix) {
 			rs.Folder = e.rep.Dir
 			rs.Name = filepath.Base(e.rep.Dir)

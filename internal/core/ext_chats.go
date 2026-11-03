@@ -52,8 +52,9 @@ func (c *Core) NeedsYou(ctx context.Context, projectID string) ([]room.NeedsYouI
 		return nil, err
 	}
 	c.addNeedsContext(ctx, out)
-	out = append(out, c.stateItems(ctx, projectID)...) // agents that failed or need attention, agent CLIs that are not ready (P130)
-	out = append(out, c.problemItems(ctx)...)           // background problems with their fix: services, providers, sign-ins, drift, installs, crashes (B6)
+	out = append(out, c.stateItems(ctx, projectID)...)                        // agents that failed or need attention, agent CLIs that are not ready (P130)
+	out = append(out, c.problemItems(ctx)...)                                 // background problems with their fix: services, providers, sign-ins, drift, installs, crashes (B6)
+	out = append(out, c.ackedOut(ctx, c.scanFindingItems(ctx, projectID))...) // new high findings of a rule's scan (B7, H5)
 	svc := c.Chats()
 	if svc == nil {
 		room.SortNeedsYou(out)

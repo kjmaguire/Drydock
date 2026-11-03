@@ -52,13 +52,14 @@ describe('ProblemFix', () => {
   });
 
   it('names the Open button of each kind and has nothing in place for the kinds fixed on their own page', () => {
-    expect(['integration', 'provider', 'mcp_sign_in', 'adapter_drift', 'tool_install', 'crash'].map(problemOpenLabel)).toEqual([
+    expect(['integration', 'provider', 'mcp_sign_in', 'adapter_drift', 'tool_install', 'crash', 'security_findings'].map(problemOpenLabel)).toEqual([
       'Reconnect',
       'Open in Models',
       'Open the server',
       'Open on the Agents page',
       'Open Security',
       'Open Support',
+      'Open Security',
     ]);
     expect(problemOpenLabel('approval')).toBe('');
     const r = mount(<ProblemFix item={item({ key: 'crash:c', kind: 'crash', subject: 'crash-1.txt' })} />);

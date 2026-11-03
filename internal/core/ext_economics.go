@@ -645,7 +645,10 @@ func (e *economics) methods() map[string]Method {
 			if err := checks.SaveSettings(ctx, c.DB, p.ProjectID, p.Settings, human()); err != nil {
 				return nil, err
 			}
-			return checks.LoadSettings(ctx, c.DB, p.ProjectID), nil
+			saved := checks.LoadSettings(ctx, c.DB, p.ProjectID)
+			// every open panel with the checks re-reads: the Security scan rules turn the scan check on too (H5)
+			c.publish(ctx, "checks.settings_changed", p.ProjectID, map[string]any{"scan": saved.Scan, "by": human()})
+			return saved, nil
 		}),
 
 		// telemetry (decision D12)

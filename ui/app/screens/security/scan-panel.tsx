@@ -24,7 +24,7 @@ import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
 import { Meter } from '../budgets/meter.tsx';
 import { FindingPane, SeverityBadge } from './finding-pane.tsx';
 import { summaryKey, type ScanScope } from './scan-scope.ts';
-import {
+import { triggerWords,
   agoText,
   countsText,
   DISMISS_WORDS,
@@ -714,7 +714,7 @@ export function ScanPanel(
                           data-folder={h.folder}
                           data-project={h.projectId || undefined}
                           aria-pressed={report?.id === h.id ? 'true' : 'false'}
-                          title={`${h.folder ?? name}: ${h.status === 'running' ? 'in progress' : countsText(h.counts)}, ${formatDateTime(h.startedAt)}`}
+                          title={`${h.folder ?? name}: ${h.status === 'running' ? 'in progress' : countsText(h.counts)}, ${formatDateTime(h.startedAt)}${h.trigger ? `, started by the rule ${triggerWords(h.trigger)}` : ''}`}
                           disabled={busy}
                           mix={[chipCss, on('click', () => void open(h))]}
                         >

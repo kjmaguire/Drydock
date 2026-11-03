@@ -150,6 +150,9 @@ const (
 	NeedsAdapterDrift NeedsKind = "adapter_drift"
 	NeedsToolInstall  NeedsKind = "tool_install"
 	NeedsCrash        NeedsKind = "crash"
+	// NeedsSecurityFindings is a scan a person's rule started (after a merge, a sync, weekly; lane B batch B7, H5) that found
+	// high or critical findings the scan before did not have. Subject is the scan's id.
+	NeedsSecurityFindings NeedsKind = "security_findings"
 )
 
 // Budget states of a NeedsBudget item.

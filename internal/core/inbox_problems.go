@@ -36,6 +36,11 @@ func (c *Core) problemItems(ctx context.Context) []room.NeedsYouItem {
 	out = append(out, c.driftProblems(ctx)...)
 	out = append(out, c.toolInstallProblems()...)
 	out = append(out, c.crashProblems()...)
+	return c.ackedOut(ctx, out)
+}
+
+// ackedOut leaves out the items the person marked done.
+func (c *Core) ackedOut(ctx context.Context, out []room.NeedsYouItem) []room.NeedsYouItem {
 	if len(out) == 0 {
 		return nil
 	}

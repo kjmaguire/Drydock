@@ -349,7 +349,12 @@ func errKindOf(err error, step string) string {
 // project whose folder is in it, or an agent turn of the project outside a workflow run (runningTurns, project_delete.go).
 // Task runs work in their own worktrees and do not count.
 func (y *repoSyncer) agentBusy(ctx context.Context, projectID, folder string) (bool, error) {
-	db := y.c.DB.Reader()
+	return y.c.agentWorksIn(ctx, projectID, folder)
+}
+
+// agentWorksIn is agentBusy for any part of the core: the scheduled security scans wait on it too (ext_security_schedule.go).
+func (c *Core) agentWorksIn(ctx context.Context, projectID, folder string) (bool, error) {
+	db := c.DB.Reader()
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chats WHERE project_id=? AND status='running'`, projectID).Scan(&n); err != nil || n > 0 {
 		return n > 0, err

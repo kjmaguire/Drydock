@@ -266,6 +266,16 @@ describe('the Inbox items of P130', () => {
     ).toEqual([true, true, true, true, true, true]);
   });
 
+  it('opens the new high findings of a rule\'s scan on the Security page, as a problem that can be marked done (B7, H5)', () => {
+    const it = item({ key: 'security-findings:prj_1:scn_1', kind: 'security_findings', projectId: 'prj_1', subject: 'scn_1' });
+    expect(needsTarget(it)).toBe('/security');
+    expect(needsLook(it)).toBe('problem');
+    expect(KIND_LABEL.security_findings).toBe('Security scan');
+    expect(canAck(it)).toBe(true);
+    const ev = (type: string) => ({ type }) as DrydockEvent;
+    for (const t of ['security.scan.finished', 'security.finding.dismissed', 'security.finding.restored']) expect(needsChanged(ev(t))).toBe(true);
+  });
+
   it('reads the Inbox again when a background problem may have come or gone', () => {
     const ev = (type: string) => ({ type }) as DrydockEvent;
     for (const t of ['integration.sync.failed', 'integration.auth_expired', 'provider.down', 'provider.up', 'mcp.server_oauth_expired', 'adapter.drift', 'security.settings', 'app.crashed', 'app.crash_deleted'])

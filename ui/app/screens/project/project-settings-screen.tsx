@@ -1,5 +1,5 @@
 // Project settings: what the project is, how its work is delivered (merge locally or open a pull request), the model routing
-// level of its agent turns (P118), the extra verification checks, the development flow and, last, deleting the project
+// level of its agent turns (P118), the extra verification checks, the security scan's rules (H5), the development flow and, last, deleting the project
 // (decision P51).
 
 import { css, navigate, on, type Handle } from 'remix/component';
@@ -17,6 +17,7 @@ import { AgentConfigPanel } from './project-agent-config.tsx';
 import { CheckSettingsPanel, DevSettingsPanel } from './project-dev.tsx';
 import { RoutingLevelPanel } from './project-routing-level.tsx';
 import { RunModePanel } from './project-run-mode.tsx';
+import { SecuritySchedulePanel } from './project-security-schedule.tsx';
 import { SandboxPanel } from './project-sandbox.tsx';
 import { MODES, STRATEGIES } from './project.ts';
 import { AttachRepository, BriefPanel } from './project-repo.tsx';
@@ -222,6 +223,7 @@ export function ProjectSettingsScreen(handle: Handle) {
           <Delivery project={p} />
           <RoutingLevelPanel key={`routelevel-${p.id}`} projectId={p.id} />
           <CheckSettingsPanel key={`checks-${p.id}`} projectId={p.id} />
+          {projectHasRepo(p) ? <SecuritySchedulePanel key={`scan-rules-${p.id}`} projectId={p.id} /> : null}
           <DevSettingsPanel key={`dev-${p.id}`} projectId={p.id} />
           <RunModePanel key={`runmode-${p.id}`} projectId={p.id} />
           {projectHasRepo(p) ? <SandboxPanel key={`sandbox-${p.id}`} projectId={p.id} /> : null}

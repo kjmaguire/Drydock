@@ -274,7 +274,7 @@ func ackable(key string) error {
 		return errors.New("this leaves the inbox when what it says changes: open it to act on it")
 	case "question", "check", "watchdog", "budget", "mention", "reply", "agent":
 		return nil
-	case "integration", "provider", "mcp-sign-in", "adapter-drift", "tool-install", "crash":
+	case "integration", "provider", "mcp-sign-in", "adapter-drift", "tool-install", "crash", "security-findings":
 		// a background problem (B6): marked done it stays out; a service's or provider's comes back the next day if it lasts
 		return nil
 	default:

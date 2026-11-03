@@ -26,7 +26,12 @@ const choiceCss = css({
 
 export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
   const s = services(handle);
-  const q = query(handle, { load: () => s.client.checksSettingsGet(handle.props.projectId), key: () => handle.props.projectId, when: (e) => e.type.startsWith('project.') });
+  // checks.settings_changed: the scan check turned on from the Security scan rules panel (H5)
+  const q = query(handle, {
+    load: () => s.client.checksSettingsGet(handle.props.projectId),
+    key: () => handle.props.projectId,
+    when: (e) => e.type.startsWith('project.') || (e.type === 'checks.settings_changed' && e.projectId === handle.props.projectId),
+  });
   const act = action(handle);
   let cur: CheckSettings | undefined;
   let loaded: CheckSettings | undefined;

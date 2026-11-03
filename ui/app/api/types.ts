@@ -937,7 +937,8 @@ export type NeedsKind =
   | 'mcp_sign_in'
   | 'adapter_drift'
   | 'tool_install'
-  | 'crash';
+  | 'crash'
+  | 'security_findings';
 
 export interface NeedsYouItem {
   key: string;

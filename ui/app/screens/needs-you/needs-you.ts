@@ -24,10 +24,11 @@ export const KIND_LABEL: Record<string, string> = {
   adapter_drift: 'Agent CLI output',
   tool_install: 'Tool install',
   crash: 'Crash',
+  security_findings: 'Security scan',
 };
 
 /** The kinds of what went wrong in the background (lane B batch B6, F14 and H7): each item carries its fix in the Inbox. */
-export const PROBLEM_KINDS = ['integration', 'provider', 'mcp_sign_in', 'adapter_drift', 'tool_install', 'crash'] as const;
+export const PROBLEM_KINDS = ['integration', 'provider', 'mcp_sign_in', 'adapter_drift', 'tool_install', 'crash', 'security_findings'] as const;
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */
 export function needsTarget(it: NeedsYouItem): string {
@@ -48,6 +49,8 @@ export function needsTarget(it: NeedsYouItem): string {
   if (it.kind === 'adapter_drift') return routes.agents.href({ key: it.adapter || it.subject || undefined });
   if (it.kind === 'tool_install') return routes.security.href();
   if (it.kind === 'crash') return routes.support.href();
+  // new high findings of a scan a person's rule started (B7, H5): the project's Security page (the Inbox selects the project)
+  if (it.kind === 'security_findings') return routes.security.href();
   if (it.taskId) return routes.task.href({ id: it.taskId });
   if (it.roomId) return routes.room.href({ id: it.roomId });
   // an approval with no task is an outbound write to an integration: its exact text is on the project's Integrations page
@@ -161,6 +164,7 @@ export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
     case 'adapter_drift':
     case 'tool_install':
     case 'crash':
+    case 'security_findings':
       return 'problem';
     default:
       return 'approval';
@@ -267,7 +271,7 @@ export function needsSubtitle(it: NeedsYouItem, projectName: string | undefined,
  * changes.
  */
 export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean =>
-  /^(question|check|watchdog|budget|mention|reply|agent|integration|provider|mcp-sign-in|adapter-drift|tool-install|crash):/.test(it.key);
+  /^(question|check|watchdog|budget|mention|reply|agent|integration|provider|mcp-sign-in|adapter-drift|tool-install|crash|security-findings):/.test(it.key);
 
 /**
  * The running tasks the Needs you tab lists under its items (decision P144): those without an item of their own there. A task

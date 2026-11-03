@@ -7,11 +7,39 @@ import { type Handle } from 'remix/component';
 import { ShieldCheck } from 'lucide';
 import { projectHasRepo } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
-import { services, watch } from '../../state/services.tsx';
+import { query, services, watch } from '../../state/services.tsx';
 import { Notice } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { ScanPanel, TargetBox } from './scan-panel.tsx';
 import { projectScope } from './scan-scope.ts';
+import { rulesWords } from './security.ts';
+
+/** Whether the scan also runs by a rule the person set (H5), with the way to Project settings where the rules are set. */
+export function ScanRulesNote(handle: Handle<{ projectId: string }>) {
+  const s = services(handle);
+  const q = query(handle, {
+    load: () => s.client.securityScheduleGet(handle.props.projectId),
+    key: () => handle.props.projectId,
+    when: (e) => e.type === 'security.schedule' && e.projectId === handle.props.projectId,
+  });
+  return () => {
+    if (!q.data) return null;
+    const on = rulesWords(q.data);
+    return (
+      <p data-testid="scan-rules-note" style={{ margin: '0' }}>
+        {on ? (
+          <>
+            Also runs {on}. <a href={routes.project.href()}>Change the rules</a>
+          </>
+        ) : (
+          <>
+            Runs when you press Scan. <a href={routes.project.href()}>Run it after a merge, a sync or weekly</a>
+          </>
+        )}
+      </p>
+    );
+  };
+}
 
 export function SecurityScreen(handle: Handle) {
   const s = services(handle);
@@ -48,6 +76,8 @@ export function SecurityScreen(handle: Handle) {
             <Notice tone="warn" testId="security-no-repo">
               The scan needs a repository. <a href={routes.project.href()}>Open Project settings</a> to attach one.
             </Notice>
+          ) : project ? (
+            <ScanRulesNote key={pid} projectId={pid} />
           ) : undefined
         }
       />

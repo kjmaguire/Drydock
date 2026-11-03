@@ -29,6 +29,8 @@ export function problemOpenLabel(kind: string): string {
       return 'Open Security';
     case 'crash':
       return 'Open Support';
+    case 'security_findings':
+      return 'Open Security';
   }
   return '';
 }

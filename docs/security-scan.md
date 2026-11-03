@@ -329,3 +329,33 @@ dismiss, restore or change the rules: those stay a person's (sections 4 and 9).
 read the project's working tree, the person's own checkout, which may hold changes the person has not committed, and that text
 would go to the agent's model provider. The agent already reads the source in its own worktree with its file tools (and
 `read_range`), and the file and line are enough to find it there; a line may have moved, which the answer says.
+
+## 11. Scans by a rule the person sets (lane B batch B7, H5)
+
+The Scan button stays (decision P44). Besides it a person can set, per project, a rule by which the project's scan starts by
+itself (`internal/core/ext_security_schedule.go`): **after a merge** (a task of the project completed, `task.completed`), **after a
+sync with new commits** (`repo.synced` with the outcome `updated`: Sync now fast-forwarded the branch; a background fetch changes
+no file and starts nothing) and **weekly** (a week after the project's last scan of any kind, at once when it has none). Every rule
+is off by default, because the dependency engine sends package names and versions to osv.dev. `security.schedule.set {projectId,
+afterMerge, afterSync, weekly}` keeps the rule in the setting `security:schedule:<projectId>` with the person who set it and when;
+only a `human:` identity may set it, and each scan it starts is started in that person's name with the rule in the report's
+`trigger` (also in the history rows, the running scans and the `security.scan.started` and `security.scan.finished` events), so
+only a person starts a scan, by hand or by the rule they set. `security.schedule.get {projectId}` answers the rule, the rule whose
+scan waits and why, the newest scan a rule started and, for the weekly rule, when it is next due; a change is announced on
+`security.schedule`.
+
+A rule's scan waits while an agent works in the project's folder (the rule Sync now follows: a chat of the project mid-turn, a
+chat working in the folder, an agent turn outside a task's worktree) or while a scan of the project runs; it starts when that scan
+ends or at the next minute's tick once no agent works there. Nothing leaves the PC but the osv.dev query the person agreed to, and
+a finding never makes a task by itself.
+
+When a rule's scan finishes, the high and critical findings that are not dismissed and that the project's previous finished scan
+did not have are kept (`security:schedule-new:<projectId>`, fingerprints only). While any of them is not dismissed, the Inbox has
+one item for the project (`security_findings`, key `security-findings:<project>:<scan>`): "3 new high findings in gocalc", "Found by
+the scan after a merge", never a file, a line or a secret. Dismissing them, a person's own scan, or a later rule's scan without
+new ones clears it; it can be marked done. The agents' `security_findings` tool says, for a project never scanned, whether a rule
+is set. Tests: `ext_security_schedule_test.go` (off by default, the merge rule's scan in the person's name with its trigger, the
+Inbox item and its words, dismissing clears it, the same findings again are not new, the sync rule only for a sync with new
+commits, the checks' event), `ext_security_schedule_internal_test.go` (the weekly rule, waiting while an agent works, a rule whose
+setter is not a person starts nothing), `ui/app/screens/project/project-security-schedule.test.browser.tsx`.
+
