@@ -119,7 +119,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     // the patch the rework recorded is not swapped in under the reader's eyes: the old text is gone and nothing newer was read on
     // its own. The viewer either still shows Raw and says the patch changed, or it went to the live worktree while the worker
     // reworked and is back on the editor; either way the person asks for the newer evidence (L36)
-    const raw = page.getByTestId('task-diff').getByRole('button', { name: 'Raw' });
+    const raw = page.getByTestId('task-diff').getByRole('button', { name: 'Raw', exact: true });
     await expect(async () => {
       const changed = await page.getByTestId('raw-diff-changed').count();
       const pressed = await raw.getAttribute('aria-pressed', { timeout: 1000 });
@@ -175,8 +175,8 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
   await projectNav(page, 'nav-pulls');
   await expect(page.getByText('No task has a pull request')).toBeVisible();
-  // the open issues are read as the page opens (C11)
-  await expect(page.getByRole('alert')).toContainText('origin');
+  // the open issues are read as the page opens (C11); a repository without a GitHub origin says so and asks GitHub nothing
+  await expect(page.getByTestId('gh-issues-no-origin')).toContainText('no origin remote on GitHub');
 });
 
 test("the sidebar is keyboard navigable: New comes first, then Home, the arrows move along it, Enter opens the Inbox", async ({ page }) => {

@@ -57,6 +57,7 @@ const cardCss = css({
   '& .chip': { display: 'inline-flex', alignItems: 'center', gap: '4px', height: '20px', padding: '0 6px', border: `1px solid ${t.border}`, borderRadius: t.rSm, background: 'transparent', color: 'inherit', font: 'inherit' },
   '& button.chip': { cursor: 'pointer', minHeight: '28px' },
   '& .cli': { display: 'inline-flex', alignItems: 'center', gap: '4px' },
+  '& a.cli': { minHeight: '28px', minWidth: '24px' },
   '& .dot': { width: '6px', height: '6px', borderRadius: '50%' },
   '& .act': { marginLeft: 'auto', display: 'inline-flex', gap: '4px' },
 });
