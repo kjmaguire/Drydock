@@ -276,7 +276,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}
 	bg, cancel := context.WithCancel(context.Background())
 	c := &Core{cfg: cfg, DB: db, cancel: cancel, adapters: map[string]agents.Adapter{}, repos: map[string]*git.Repo{}}
-	c.start.r = StartReport{StartedAt: storage.Now(), Unexpected: unclean, Resumed: []StartRun{}, NotResumed: []StartRun{}}
+	c.start.r = StartReport{StartedAt: storage.Now(), Unexpected: unclean, Resumed: []StartRun{}, NotResumed: []StartRun{}, Resuming: []StartRun{}}
 	acked, err := c.loadGateAcks(ctx)
 	if err != nil {
 		cancel()
@@ -442,15 +442,21 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	c.methods.Store(&m)
 	recoverHead, _ := c.Bus.LastSeq(ctx)
 	recoverSince := storage.Now()
+	// the runs a dead owner still holds a valid lease on (killed and started again within the lease TTL): Recover cannot take
+	// them now, WatchRecover takes them once the lease expires, and the start report says so then (X511 review)
+	held, heldUntil := c.heldByOthers(ctx)
 	if n, err := c.Engine.Recover(ctx); err != nil {
 		c.logf("recover: %v", err)
 	} else if n > 0 {
 		c.logf("resumed %d interrupted run(s)", n)
 	}
-	c.noteRecovered(ctx, recoverHead, recoverSince)
+	c.noteRecovered(ctx, recoverHead, recoverSince, held)
 	// a run whose last owner's lease was still valid at start (killed and restarted within the lease TTL) is taken over
 	// as soon as that lease expires
 	safe.Go("core.Open#2", func() { c.Engine.WatchRecover(bg, 0) })
+	if len(held) > 0 {
+		safe.Go("core.Open#3", func() { c.noteTakenOver(bg, recoverHead, recoverSince, held, heldUntil) })
+	}
 	c.lock, locked = lock, true
 	return c, nil
 }

@@ -127,6 +127,11 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
   let histMore = true;
   let histLoading = false;
   let histError: Error | undefined;
+  /**
+   * How many rows past ROW_LIMIT are listed: OLDER_PAGE more per Load older events (and per remembered page). The ring can hold
+   * more matching rows than are listed, so a click first lists those, and reads from the core only when none is cut (X53 review).
+   */
+  let extra = 0;
   /** The page's first read of recent events has settled: an unscoped page reads older pages only after it. */
   let backfilled = false;
 
@@ -207,18 +212,30 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
       histMore = true;
       histLoading = false;
       histError = undefined;
+      extra = 0;
     }
     if (histStarted || pid === undefined) return;
     const scoped = hasScope(f.scope);
     if (!scoped && !backfilled) return;
     histStarted = true;
-    const pages = Math.min(DEPTH_MAX, readDepth(pid)) + (scoped ? 1 : 0);
+    const depth = Math.min(DEPTH_MAX, readDepth(pid));
+    extra = depth * OLDER_PAGE;
+    const pages = depth + (scoped ? 1 : 0);
     if (pages > 0) void readOlder(key, pages);
+  };
+  /** Every held row that matches the filter, newest first, and how many of them are listed. */
+  const matching = () => {
+    const snap = s.store.getSnapshot();
+    const held = hist.length > 0 ? mergeRows(snap.events, hist) : snap.events;
+    return { all: filterRows(held, f, s.workspace.projectId, Number.POSITIVE_INFINITY), limit: ROW_LIMIT + extra };
   };
   const loadOlder = () => {
     const pid = s.workspace.projectId;
     writeDepth(pid, Math.min(DEPTH_MAX, readDepth(pid) + 1));
-    void readOlder(histKey, 1);
+    const { all, limit } = matching();
+    extra += OLDER_PAGE;
+    // held rows below the list are listed first; the core is asked only when every held one is
+    if (all.length <= limit) void readOlder(histKey, 1);
     void handle.update();
   };
   const change = (next: Partial<ActivityFilter>) => {
@@ -329,20 +346,21 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
     sync();
     ensureHist();
     const snap = s.store.getSnapshot();
-    const held = hist.length > 0 ? mergeRows(snap.events, hist) : snap.events;
-    const limit = ROW_LIMIT + hist.length;
-    const rows = filterRows(held, f, s.workspace.projectId, limit);
+    const { all, limit } = matching();
+    const rows = all.length > limit ? all.slice(0, limit) : all;
+    /** Some held rows that match are not listed. */
+    const cut = all.length > limit;
     const scoped = scopeText(f.scope);
     const scopeLoading = !!scoped && histLoading && !histAsked;
     /** The scope was read from the core (not only the recent events the page holds). */
     const readForScope = !!scoped && histAsked;
-    const older = histMore ? (
+    const older = histMore || cut ? (
       <p mix={noteCss} data-testid="activity-older">
         <Button size="sm" disabled={histLoading} mix={on('click', loadOlder)}>
           {histLoading ? 'Loading...' : 'Load older events'}
         </Button>
       </p>
-    ) : histAsked ? (
+    ) : histAsked && !cut ? (
       <p mix={noteCss} data-testid="activity-older-end">
         That is every event the core has{scoped ? ` for ${scoped}` : f.thisProject && s.workspace.projectId ? ' for this project' : ''}.
       </p>
@@ -406,7 +424,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
             Loading the events of {scoped}...
           </p>
         ) : null}
-        {rows.length >= limit ? (
+        {cut ? (
           <p mix={noteCss} data-testid="activity-row-limit">
             Only the latest {limit} matching events are listed.
           </p>

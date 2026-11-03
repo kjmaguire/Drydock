@@ -2,6 +2,8 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/events"
@@ -56,4 +58,35 @@ func TestEventsReplayPagesBackAndFiltersByProjectRunAndAgent(t *testing.T) {
 	eq("project and workspace", types(map[string]any{"before": head0 + 100, "projectId": "px1", "withWorkspace": true}), "test.one", "test.three", "test.four")
 	eq("run", types(map[string]any{"after": head0, "runId": "rx2"}), "test.two")
 	eq("agent", types(map[string]any{"before": head0 + 100, "agentId": "ax2"}), "test.two", "test.four")
+}
+
+// events.replay with cut cuts each payload as the run explanation does (X55 review): the run page's earlier events stay as small as
+// the explanation's, while a replay without it still returns the stored payload whole.
+func TestEventsReplayCutsPayloadsWhenAsked(t *testing.T) {
+	a := open(t, "")
+	ctx := context.Background()
+	big := `{"text":"` + strings.Repeat("x", 64<<10) + `"}`
+	seq, err := a.c.Bus.Publish(ctx, events.Event{Type: "agent.output", RunID: "rcut1", Data: json.RawMessage(big)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type ev struct {
+		Seq  uint64          `json:"seq"`
+		Data json.RawMessage `json:"data"`
+	}
+	read := func(cut bool) ev {
+		var evs []ev
+		a.call("events.replay", map[string]any{"before": seq + 1, "runId": "rcut1", "limit": 10, "cut": cut}, &evs)
+		if len(evs) != 1 || evs[0].Seq != seq {
+			t.Fatalf("got %+v", evs)
+		}
+		return evs[0]
+	}
+	if whole := read(false); len(whole.Data) < 64<<10 {
+		t.Fatalf("without cut the payload is whole, got %d bytes", len(whole.Data))
+	}
+	cut := read(true)
+	if len(cut.Data) > 16<<10 || !strings.Contains(string(cut.Data), `"bytes"`) {
+		t.Fatalf("with cut the payload is a stand-in under 16 KB, got %d bytes: %.80s", len(cut.Data), cut.Data)
+	}
 }

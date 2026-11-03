@@ -92,6 +92,8 @@ export interface EventsReplayOptions {
   withWorkspace?: boolean;
   runId?: string;
   agentId?: string;
+  /** Each payload cut as the run explanation cuts it (16 KB), for a list of many; without it each comes back whole. */
+  cut?: boolean;
 }
 
 export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, KeysClient, NotifyClient, InboxClient, TaskDataClient, ControlClient, RoomClient {
@@ -330,6 +332,7 @@ export function createClient(t: Transport): Client {
       if (opts.withWorkspace) p.withWorkspace = true;
       if (opts.runId) p.runId = opts.runId;
       if (opts.agentId) p.agentId = opts.agentId;
+      if (opts.cut) p.cut = true;
       return arr(await t.call<DrydockEvent[] | null>('events.replay', p));
     },
   };

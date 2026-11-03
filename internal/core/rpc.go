@@ -53,6 +53,9 @@ type eventsReplayParams struct {
 	Agent         string   `json:"agentId,omitempty"`
 	WithWorkspace bool     `json:"withWorkspace,omitempty"`
 	Limit         int      `json:"limit"`
+	// Cut cuts each payload as the run explanation does (explainEventData), for a list that shows many of them, such as the run
+	// page's earlier events; without it each event comes back whole, as stored.
+	Cut bool `json:"cut,omitempty"`
 }
 
 // taskFilterParams are the selection task.list and task.count share: a project (empty for every project), statuses, an assignee
@@ -356,10 +359,19 @@ func (c *Core) Methods() map[string]Method {
 
 		"events.replay": bind(func(ctx context.Context, p eventsReplayParams) (any, error) {
 			f := events.Filter{Types: p.Types, TaskID: p.Task, ProjectID: p.Project, RunID: p.Run, AgentID: p.Agent, WithWorkspace: p.WithWorkspace}
+			var evs []events.Event
+			var err error
 			if p.Before > 0 {
-				return c.ReplayBefore(ctx, p.Before, f, p.Limit)
+				evs, err = c.ReplayBefore(ctx, p.Before, f, p.Limit)
+			} else {
+				evs, err = c.Replay(ctx, p.After, f, p.Limit)
 			}
-			return c.Replay(ctx, p.After, f, p.Limit)
+			if p.Cut {
+				for i := range evs {
+					evs[i] = events.ForTransport(evs[i], explainEventData)
+				}
+			}
+			return evs, err
 		}),
 	}
 	for k, v := range c.extMethods {

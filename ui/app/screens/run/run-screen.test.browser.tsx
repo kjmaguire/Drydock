@@ -132,7 +132,8 @@ describe('RunScreen', () => {
     await waitFor(() => expect(r.$$('[data-testid="run-event"]').length).toBe(3), r);
     await r.act(() => byText(r.container, 'button', 'Load earlier events').click());
     await waitFor(() => expect(r.$$('[data-testid="run-event"]').length).toBe(3 + EARLIER_PAGE), r);
-    expect(asked[0]).toEqual({ runId: 'run_1', before: 601, limit: EARLIER_PAGE });
+    // cut in the core as the explanation's payloads are (X55 review)
+    expect(asked[0]).toEqual({ runId: 'run_1', before: 601, limit: EARLIER_PAGE, cut: true });
     expect(r.$('[data-testid="run-events-truncated"]')!.textContent).toContain(`Only the latest ${3 + EARLIER_PAGE} events are listed.`);
     // the oldest is last, as the list is newest first
     const seqs = Array.from(r.$$('[data-testid="run-event"]')).map((x) => x.querySelector('td')!.textContent);
@@ -141,6 +142,28 @@ describe('RunScreen', () => {
     await waitFor(() => expect(r.$('[data-testid="run-events-all"]')!.textContent).toContain(`All ${4 + EARLIER_PAGE} events of this run are listed.`), r);
     expect((asked[1] as { before: number }).before).toBe(300);
     expect(r.$('[data-testid="run-events-truncated"]')).toBe(null);
+  });
+
+  it('keeps the events that roll off the refreshed explanation of a running run listed, so no hole opens above the earlier ones (X55 review)', async () => {
+    const ev = (seq: number) => ({ seq, ts: seq, type: 'agent.output' });
+    // the explanation keeps the newest three; the core has one more below them
+    let latest = [ev(603), ev(602), ev(601)];
+    const s = setup({
+      runExplain: async () => ({ ...explanation(), events: latest, eventsTruncated: true }),
+      eventsReplay: async () => [{ seq: 600, time: '2026-01-01T10:00:00Z', type: 'workflow.queued', runId: 'run_1' }],
+    });
+    const r = mount(<RunScreen taskId="t1" />, s);
+    await ready(r);
+    await r.act(() => tab(r, /Events/).click());
+    await waitFor(() => expect(r.$$('[data-testid="run-event"]').length).toBe(3), r);
+    await r.act(() => byText(r.container, 'button', 'Load earlier events').click());
+    await waitFor(() => expect(r.$('[data-testid="run-events-all"]')).not.toBe(null), r);
+    // the agent writes two more: the refreshed explanation drops 601 and 602
+    latest = [ev(605), ev(604), ev(603)];
+    s.emit({ type: 'workflow.node_finished', taskId: 't1', runId: 'run_1' });
+    const seqs = () => Array.from(r.$$('[data-testid="run-event"]')).map((x) => x.querySelector('td')!.textContent);
+    await waitFor(() => expect(seqs()).toEqual(['605', '604', '603', '602', '601', '600']), r, 3000);
+    expect(r.$('[data-testid="run-events-all"]')!.textContent).toContain('All 6 events of this run are listed.');
   });
 
   it('explains each turn: manifest, the exact prompt, why this model, usage; and lists checkpoints, MCP calls and events', async () => {
