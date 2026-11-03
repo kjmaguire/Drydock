@@ -5,7 +5,7 @@ import { css, on, ref, type Handle } from 'remix/component';
 import { ArrowUp, X } from 'lucide';
 import type { Message } from '../../api/types.ts';
 import { authorName, formatDateTime, roomLabel } from '../../lib/format.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { IconButton } from '../../ui/button.tsx';
 import { Avatar } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -120,7 +120,7 @@ export function ThreadPanel(handle: Handle<{ roomId: string; rootId: string; onC
           </div>
           <IconButton icon={X} label="Close" title="Close the thread" mix={[on('click', () => onClose())]} />
         </div>
-        <ErrorNote error={thread.error ?? act.error} />
+        <ErrorNote error={thread.error ?? act.error} retry={retryFor(thread, act)} />
         {thread.loading && msgs.length === 0 ? <Loading /> : null}
         <div mix={logCss} role="log" aria-live="polite" aria-label="Thread messages">
           {root ? item(root, true) : null}

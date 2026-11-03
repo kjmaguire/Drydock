@@ -216,7 +216,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
     if (!d || d.task.id !== handle.props.id) {
       return (
         <Page title="Task" icon={ClipboardList}>
-          <ErrorNote error={detail.error} what="Could not load the task" />
+          <ErrorNote error={detail.error} retry={detail.reload} what="Could not load the task" />
           {detail.loading || !detail.error ? <Loading label="Loading task..." /> : null}
         </Page>
       );
@@ -262,7 +262,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
               </header>
 
               <div mix={bodyCss}>
-                <ErrorNote error={detail.error} what="Refresh failed" />
+                <ErrorNote error={detail.error} retry={detail.reload} what="Refresh failed" />
                 <div class="lead">
                   <h1 id={titleId}>{task.title}</h1>
                   {leadStep(task.origin) === undefined ? null : (
@@ -310,7 +310,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                 <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} sandboxed={!!d.sandboxed} />
                 <SandboxApp key={`sandbox-app-${task.id}`} taskId={task.id} />
                 <Part title="Usage">
-                  <ErrorNote error={usage.error} what="Could not load usage" />
+                  <ErrorNote error={usage.error} retry={usage.reload} what="Could not load usage" />
                   <UsageTable rows={usage.data ?? []} />
                 </Part>
                 <Part title="Why these models?">

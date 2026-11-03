@@ -29,7 +29,7 @@ export function ActivityPanel(handle: Handle<{ taskId: string | undefined }>) {
           <span>{taskId ? 'Usage of this task, newest first.' : 'The most recent usage across the workspace.'}</span>
           {rows && rows.length > 0 ? <span mix={count}>{rows.length === 1 ? '1 row' : `${rows.length} rows`}</span> : null}
         </p>
-        <ErrorNote error={q.error} what="Could not load the usage" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not load the usage" />
         {rows ? <UsageTable rows={rows} /> : q.loading ? <Loading label="Loading usage..." /> : null}
       </div>
     );

@@ -6,7 +6,7 @@ import { css, on, ref, type Handle } from 'remix/component';
 import { CircleCheck, CircleSlash, FileKey, FlaskConical, KeyRound, Lock, RotateCcw, ShieldAlert, Trash2, TriangleAlert } from 'lucide';
 import type { LicenseView } from '../../api/pkgTypes.ts';
 import { starts } from '../../state/live.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, kv, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -44,7 +44,7 @@ function PageError(handle: Handle<{ error: unknown }>) {
   return () =>
     handle.props.error ? (
       <div class="error-note">
-        <ErrorNote error={handle.props.error} what="License" />
+        <ErrorNote error={handle.props.error} retry={retryFor(handle.props)} what="License" />
       </div>
     ) : null;
 }

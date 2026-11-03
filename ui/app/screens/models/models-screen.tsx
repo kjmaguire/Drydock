@@ -155,7 +155,7 @@ export function ModelsScreen(
       );
     } else if (detailSaysListFailed) {
       // say so, never wait for a list that is not coming
-      detail = <ErrorNote error={providers.error} what="Could not read this provider" />;
+      detail = <ErrorNote error={providers.error} retry={providers.reload} what="Could not read this provider" />;
     } else if (selected !== THIS_PC) {
       detail = <Loading />;
     } else {
@@ -190,7 +190,7 @@ export function ModelsScreen(
             address={handle.props.initial}
             listFooter={
               <>
-                {detailSaysListFailed ? null : <ErrorNote error={providers.error} what="Could not list providers" />}
+                {detailSaysListFailed ? null : <ErrorNote error={providers.error} retry={providers.reload} what="Could not list providers" />}
                 {providers.data && listed.length === 0 ? (
                   <Empty title="No providers yet">
                     <p>Add an aggregator, a vendor&apos;s API or a server you run.</p>

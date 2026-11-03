@@ -8,7 +8,7 @@ import { ArrowRight, BookOpen, Cpu, GitBranch, RefreshCw } from 'lucide';
 import type { LibrarySkill } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
 import { newProjectHref } from '../../shell/new.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Select } from '../../ui/select.tsx';
@@ -96,7 +96,7 @@ export function SkillLibraryScreen(handle: Handle<{ onNavigate?: (href: string) 
           </Notice>
         ) : null}
         <Section title="Registries" testId="library-skills">
-          <ErrorNote error={regs.error ?? st.error ?? lib.error ?? act.error} what="Skills" />
+          <ErrorNote error={regs.error ?? st.error ?? lib.error ?? act.error} retry={retryFor(regs, st, lib, act)} what="Skills" />
           {regs.loading && !regs.data ? <Loading /> : null}
           {regs.data && registries.length === 0 ? (
             <p mix={emptyLine} data-testid="lib-skills-empty">

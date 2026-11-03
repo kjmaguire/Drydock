@@ -552,7 +552,7 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
           </>
         }
       >
-        <ErrorNote error={agentsQ.error} what="Could not list agents" />
+        <ErrorNote error={agentsQ.error} retry={agentsQ.reload} what="Could not list agents" />
         {savedNote && savedNote !== 'Saved.' ? (
           <div style={{ padding: '12px 24px 0' }}>
             <Notice tone="ok" role="status" testId="agent-saved-note">
@@ -576,7 +576,7 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
                 <AddReviewerNote projectId={target} agents={agents} />
               </div>
             )}
-            <ErrorNote error={timeline.error} what="Could not read today's runs" />
+            <ErrorNote error={timeline.error} retry={timeline.reload} what="Could not read today's runs" />
             <TodayTimeline lanes={lanes} window={w} now={now} keyOf={(lane, seq) => keyText(seq, projectOf(lane.projectId)?.key)} />
             <section mix={agentsCss} aria-label="Agents">
               {isAll

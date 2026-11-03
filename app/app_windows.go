@@ -214,5 +214,9 @@ func Run(assets fs.FS) error {
 	keepWindowPlacement(wa, c, window, kept)
 	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
 	attachWindowIcons(window)
+	// something new needs the person while the window is behind: the taskbar button asks for attention (G1, notify_windows.go)
+	notifyCtx, stopNotify := context.WithCancel(context.Background())
+	defer stopNotify()
+	watchNeedsYou(notifyCtx, c, window)
 	return wa.Run()
 }

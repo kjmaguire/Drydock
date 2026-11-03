@@ -131,7 +131,7 @@ export function AgentInspector(handle: Handle<{ agentId: string | undefined; onN
     if (!d) {
       return (
         <div>
-          <ErrorNote error={q.error} what="Could not load the agent" />
+          <ErrorNote error={q.error} retry={q.reload} what="Could not load the agent" />
           {q.loading || !q.error ? <Loading /> : null}
         </div>
       );

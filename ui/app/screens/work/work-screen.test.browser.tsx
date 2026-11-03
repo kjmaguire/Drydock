@@ -164,15 +164,6 @@ describe('Work (decision P141)', () => {
     closeAgentEditor();
   });
 
-  it('shows once, as one line, the note a start from Home left (P142)', async () => {
-    const s = svc();
-    s.ui.flash('calculator: The GitHub repository could not be made.', 'warn');
-    const r = mount(<WorkScreen />, s);
-    await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(4), r);
-    expect(r.$('[data-testid="work-flash"]')!.textContent).toBe('calculator: The GitHub repository could not be made.');
-    expect(s.ui.takeFlash()).toBeUndefined();
-  });
-
   it('says where the folder stands against GitHub in one line, and Sync now updates it (P143)', async () => {
     const synced: string[] = [];
     const state = { projectId: 'prj_1', remote: 'origin', github: true, branch: 'main', current: 'main', tracked: true, ahead: 0, behind: 2, checkedAt: now, checking: false };

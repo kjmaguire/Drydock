@@ -19,6 +19,7 @@ import { NOT_BUILT, THEMES } from './settings.ts';
 import { Group, panel, settingsColumn, tableWrap } from './settings-kit.tsx';
 import { DiagnosticsPanel } from './diagnostics.tsx';
 import { TelemetryPanel } from './telemetry.tsx';
+import { NotifySection } from './notify.tsx';
 
 // --- theme picker: three cards, each with a small picture of the app in that theme ---
 
@@ -252,6 +253,7 @@ export function SettingsScreen(handle: Handle<{ part?: SettingsPart }>) {
           <Group title="Appearance" icon={Palette} label="Appearance" description="Choose how Drydock looks. System follows the Windows light or dark setting.">
             <ThemePicker />
           </Group>
+          <NotifySection />
           <AgentEnvSection />
           <TelemetryPanel />
           <DiagnosticsPanel />

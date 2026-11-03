@@ -503,7 +503,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             <h2>
               Skills <span>{skills.data ? `${sk.mine.length} given to ${a.name}` : ''}</span>
             </h2>
-            <ErrorNote error={skills.error} what="Skills" />
+            <ErrorNote error={skills.error} retry={skills.reload} what="Skills" />
             {skills.data && sk.mine.length === 0 ? <p class="quiet">{a.name} has no skill yet. Give it the ones its role needs.</p> : null}
             <AgentSkillList agent={a} skills={sk.accepted} limit={5} onChanged={() => skills.reload()} />
             <button
@@ -519,14 +519,14 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             <h2>
               Tools <span>MCP</span>
             </h2>
-            <ErrorNote error={servers.error} what="MCP servers" />
+            <ErrorNote error={servers.error} retry={servers.reload} what="MCP servers" />
             {servers.data ? <AgentTools projectId={a.projectId || pid()} agent={a} granted={tools} onChanged={() => servers.reload()} /> : null}
           </section>
           <section mix={panelCss} aria-label="Remembers">
             <h2>
               Remembers <span>{memory.data ? `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}` : ''}</span>
             </h2>
-            <ErrorNote error={memory.error} what="Memory" />
+            <ErrorNote error={memory.error} retry={memory.reload} what="Memory" />
             {memory.data && notes.length === 0 ? (
               <p class="quiet">
                 Nothing accepted yet. What you accept on the <a href={routes.memory.href()}>Memory</a> page reaches every agent of the crew.
@@ -559,7 +559,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
               Skills <span>{skills.data ? `${sk.mine.length} given to ${a.name}` : ''}</span>
             </h2>
             <p class="quiet">Each agent is a specialist: give it the skills its role needs, and nothing else.</p>
-            <ErrorNote error={skills.error} what="Skills" />
+            <ErrorNote error={skills.error} retry={skills.reload} what="Skills" />
             {skills.loading && !skills.data ? <Loading /> : null}
             {skills.data && sk.mine.length === 0 ? <p class="quiet">{a.name} has no skill yet.</p> : null}
             <AgentSkillList agent={a} skills={sk.accepted} full onChanged={() => skills.reload()} />
@@ -578,7 +578,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
           <p class="quiet">
             The MCP servers this agent may call, with the tools it was granted. Each call is approved on the project's <a href={routes.projectIntegrations.href()}>Integrations</a> page.
           </p>
-          <ErrorNote error={servers.error} what="MCP servers" />
+          <ErrorNote error={servers.error} retry={servers.reload} what="MCP servers" />
           {servers.loading && !servers.data ? <Loading /> : null}
           {servers.data ? <AgentTools projectId={a.projectId || pid()} agent={a} granted={tools} full onChanged={() => servers.reload()} /> : null}
         </section>
@@ -593,7 +593,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
         <p class="quiet">
           Project memory is shared by the whole crew: decisions, conventions and known issues you accepted on the <a href={routes.memory.href()}>Memory</a> page reach every agent's session.
         </p>
-        <ErrorNote error={memory.error} what="Memory" />
+        <ErrorNote error={memory.error} retry={memory.reload} what="Memory" />
         {memory.loading && !memory.data ? <Loading /> : null}
         {memory.data && notes.length === 0 ? <p class="quiet">Nothing accepted yet.</p> : null}
         <MemoryNotes entries={notes} />
@@ -658,7 +658,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
               {!a ? (
                 <div mix={panelCss}>
                   <h1 id={titleId}>Agent</h1>
-                  <ErrorNote error={detail.error} what="Could not load the agent" />
+                  <ErrorNote error={detail.error} retry={detail.reload} what="Could not load the agent" />
                   {detail.loading || (!detail.error && !s.project.agents.data) ? <Loading /> : null}
                   {s.project.agents.data && !detail.loading && !agents.some((x) => x.id === id) ? (
                     <Empty title="No such agent" icon={UserX}>
@@ -758,7 +758,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                   </div>
                   <ErrorNote error={dm.error} what="Could not open a direct message" />
                   <TaskTotalNotice>The numbers and the task list on this page are counted from these tasks only.</TaskTotalNotice>
-                  <ErrorNote error={detail.error} what="Could not load the agent's runs and usage" />
+                  <ErrorNote error={detail.error} retry={detail.reload} what="Could not load the agent's runs and usage" />
                   <Tabs
                     label={`${a.name}'s page`}
                     pills

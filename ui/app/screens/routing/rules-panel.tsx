@@ -5,7 +5,7 @@ import { css, on, type Handle } from 'remix/component';
 import { ListOrdered, Pencil, Plus, Power, Trash2 } from 'lucide';
 import type { RouteRule } from '../../api/extTypes.ts';
 import { parseInteger } from '../../lib/limits.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -188,7 +188,7 @@ export function RulesPanel(handle: Handle) {
           </Button>
         }
       >
-        <ErrorNote error={q.error ?? act.error} what="Rules" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Rules" />
         {adding ? (
           <RuleEditor
             rule={newRule()}

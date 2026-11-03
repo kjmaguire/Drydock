@@ -17,7 +17,7 @@ import { Blocks, Globe, Plug, Plus, SearchX, Webhook } from 'lucide';
 import type { IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard, McpLibraryServer } from '../../api/mcpClient.ts';
 import { routes } from '../../routes.ts';
-import { query, services } from '../../state/services.tsx';
+import { query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { faint } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
@@ -318,7 +318,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           onFilter={(f) => set(() => (filter = f))}
           listFooter={
             <>
-              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error ?? providers.error} what="Integrations" />
+              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error ?? providers.error} retry={retryFor(q, kinds, gallery, lib, providers)} what="Integrations" />
               {!loaded && !q.error && !gallery.error ? <Loading /> : null}
               {loaded && filter !== 'all' && groups.every((g) => g.items.length === 0) ? (
                 <p mix={[faint, listNote]} data-testid="list-empty">

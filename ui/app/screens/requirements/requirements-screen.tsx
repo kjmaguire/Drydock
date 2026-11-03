@@ -10,7 +10,7 @@ import { formatDateTime, plural } from '../../lib/format.ts';
 import { requirementHref } from '../../lib/route.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, StatusChip, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -406,7 +406,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
 
         <div>
           <h3>Trace</h3>
-          {trace.data ? <TraceView t={trace.data} /> : trace.error ? <ErrorNote error={trace.error} /> : <Loading />}
+          {trace.data ? <TraceView t={trace.data} /> : trace.error ? <ErrorNote error={trace.error} retry={trace.reload} /> : <Loading />}
         </div>
 
         <div mix={twoCol}>
@@ -760,7 +760,7 @@ export function RequirementsScreen(handle: Handle<RequirementsScreenProps>) {
         <p mix={muted}>
           Link criteria to tasks and see which have passing test evidence.
         </p>
-        <ErrorNote error={q.error ?? act.error} what="Requirements" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Requirements" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (
           <div mix={card}>

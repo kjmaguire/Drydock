@@ -12,7 +12,7 @@ import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
@@ -392,7 +392,7 @@ export function ProjectServers(handle: Handle<{ projectId: string; agents: reado
         title="Agent tools"
         description="The MCP servers connected for the workspace, and which of this project's agents may use each. A server nobody was granted is never reached; every tool not marked read-only waits for your approval."
       >
-        <ErrorNote error={servers.error ?? lib.error} what="Could not load the servers" />
+        <ErrorNote error={servers.error ?? lib.error} retry={retryFor(servers, lib)} what="Could not load the servers" />
         {(servers.loading && !servers.data) || (lib.loading && !lib.data) ? <Loading /> : null}
         {servers.data && lib.data && inProject.length === 0 ? (
           <p mix={emptyLine} data-testid="no-project-servers">

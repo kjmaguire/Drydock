@@ -1059,7 +1059,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
         ) : null}
         {q.error && !q.data ? (
           <div mix={padCss}>
-            <ErrorNote error={q.error} what="Could not list the agent CLIs" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not list the agent CLIs" />
           </div>
         ) : null}
         {q.loading && !q.data ? (
@@ -1083,9 +1083,9 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
             search="Filter agents"
             detail={
               <>
-                {q.error ? <ErrorNote error={q.error} what="Could not check the agent CLIs again" /> : null}
-                {adapters.error ? <ErrorNote error={adapters.error} what="Could not read the adapters' run modes" /> : null}
-                {runModes.error ? <ErrorNote error={runModes.error} what="Could not read where the projects' agents run" /> : null}
+                {q.error ? <ErrorNote error={q.error} retry={q.reload} what="Could not check the agent CLIs again" /> : null}
+                {adapters.error ? <ErrorNote error={adapters.error} retry={adapters.reload} what="Could not read the adapters' run modes" /> : null}
+                {runModes.error ? <ErrorNote error={runModes.error} retry={runModes.reload} what="Could not read where the projects' agents run" /> : null}
                 {detail}
               </>
             }

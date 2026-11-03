@@ -384,7 +384,7 @@ export function MilestonesScreen(handle: Handle) {
     const open = list.filter((m) => m.status === 'open').length;
     return (
       <Page title="Milestones" icon={Flag} subtitle={q.data ? `${open} open, ${list.length - open} closed` : undefined}>
-        <ErrorNote error={q.error} what="Milestones" />
+        <ErrorNote error={q.error} retry={q.reload} what="Milestones" />
         <TaskTotalNotice>Older tasks cannot be added to a milestone from here, and one that is already in a milestone shows by its id.</TaskTotalNotice>
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (

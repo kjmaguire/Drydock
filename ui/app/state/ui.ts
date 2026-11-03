@@ -161,10 +161,27 @@ export function parseInboxTab(raw: unknown): InboxTab {
   return raw === 'running' || raw === 'done' || raw === 'mine' ? raw : 'needs';
 }
 
-/** A one-time note one page leaves for the next. */
+/** A one-time note one page leaves for the next (a toast since decision G2). */
 export interface Flash {
   text: string;
   tone: 'ok' | 'warn';
+}
+
+/** The most toasts on screen at once: a fourth pushes the oldest out (decision G2). */
+export const TOASTS_MAX = 3;
+
+/** What a toast says: one line, a quieter second one, and at most one action. */
+export interface ToastInit {
+  text: string;
+  detail?: string | undefined;
+  tone: 'ok' | 'warn' | 'info';
+  action?: { label: string; href: string };
+  /** Stays until closed (a warning a page left for the next); the others leave by themselves. */
+  sticky?: boolean;
+}
+
+export interface Toast extends ToastInit {
+  id: number;
 }
 
 export class UiModel extends Model {
@@ -324,18 +341,32 @@ export class UiModel extends Model {
     return asked;
   }
 
-  #flash: Flash | undefined;
+  #toasts: Toast[] = [];
+  #toastSeq = 0;
 
-  /** A one-time note for the next page (the workspace Home says which project was deleted). */
-  flash(text: string, tone: Flash['tone'] = 'ok'): void {
-    this.#flash = { text, tone };
+  /** The toasts on screen, oldest first (the shell's <Toasts/> draws them). */
+  get toasts(): readonly Toast[] {
+    return this.#toasts;
   }
 
-  /** The note left for this page, once; clears it (no change event: read when the page mounts). */
-  takeFlash(): Flash | undefined {
-    const f = this.#flash;
-    this.#flash = undefined;
-    return f;
+  /** Show a toast; the oldest leaves when there would be more than TOASTS_MAX. Returns its id. */
+  toast(t: ToastInit): number {
+    const id = ++this.#toastSeq;
+    this.#toasts = [...this.#toasts, { ...t, id }].slice(-TOASTS_MAX);
+    this.changed();
+    return id;
+  }
+
+  dismissToast(id: number): void {
+    const next = this.#toasts.filter((t) => t.id !== id);
+    if (next.length === this.#toasts.length) return;
+    this.#toasts = next;
+    this.changed();
+  }
+
+  /** A note for whatever page comes next (the workspace Home says which project was deleted): a toast, a warning one stays until closed. */
+  flash(text: string, tone: Flash['tone'] = 'ok'): void {
+    this.toast({ text, tone, sticky: tone === 'warn' });
   }
 
   #picks: { projectId: string; picks: SkillPick[] } | undefined;

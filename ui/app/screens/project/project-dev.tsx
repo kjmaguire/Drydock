@@ -58,7 +58,7 @@ export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
       >
         {!c ? (
           <div mix={errorPad}>
-            <ErrorNote error={q.error} what="Could not load check settings" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not load check settings" />
             {q.error ? null : <Loading />}
           </div>
         ) : (
@@ -141,7 +141,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
       >
         {!d ? (
           <div mix={errorPad}>
-            <ErrorNote error={q.error} what="Could not load development settings" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not load development settings" />
             {q.error ? null : <Loading />}
           </div>
         ) : (

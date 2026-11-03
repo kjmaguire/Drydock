@@ -489,7 +489,7 @@ export function ChatComposer(
                   })}
                 </ul>
               )}
-              <ErrorNote error={others.error} />
+              <ErrorNote error={others.error} retry={others.reload} />
             </Popover>
             <span style={{ marginLeft: 'auto' }} />
             {running && escAt > 0 && !stopping ? (

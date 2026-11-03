@@ -105,7 +105,7 @@ export function StandupScheduleLine(handle: Handle<{ projectId: string; lead: Ag
   };
   return () => {
     const cur = q.data;
-    if (!cur) return <ErrorNote error={q.error} what="Could not read the stand-up schedule" />;
+    if (!cur) return <ErrorNote error={q.error} retry={q.reload} what="Could not read the stand-up schedule" />;
     if (!editing) {
       return (
         <p mix={scheduleCss} data-testid="standup-schedule" style={{ margin: '0' }}>
@@ -191,7 +191,7 @@ export function Interventions(handle: Handle<{ projectId: string; taskId?: strin
     const list = [...(q.data ?? [])].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
     return (
       <div data-testid="lead-interventions">
-        <ErrorNote error={q.error} what="Could not load the team lead's interventions" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not load the team lead's interventions" />
         {q.data && list.length === 0 ? (
           <Empty title="No interventions yet" icon={ClipboardCheck}>
             <p>{taskId ? 'The team lead has not stepped in on this task.' : 'When the team lead steps in on a task (a loop, a stall, a watchdog trip), it is listed here.'}</p>

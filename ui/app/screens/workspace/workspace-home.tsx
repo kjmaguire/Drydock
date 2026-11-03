@@ -9,11 +9,11 @@ import { ArrowRight, Plus } from 'lucide';
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
-import { services, watch } from '../../state/services.tsx';
+import { retryFor, services, watch } from '../../state/services.tsx';
 import { hueFor } from '../../ui/data.tsx';
 import type { NewProjectWhere } from '../../shell/new.ts';
 import { Button } from '../../ui/button.tsx';
-import { ErrorNote, Notice } from '../../ui/feedback.tsx';
+import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -111,7 +111,6 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
   const s = services(handle);
   watch(handle, s.workspace);
   // a note the previous page left (a project was deleted, what a start could not do)
-  const flash = s.ui.takeFlash();
   let all = false;
   let newOpen = false;
   let newWhere: NewProjectWhere | undefined;
@@ -151,13 +150,8 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
               </Button>
             </div>
             <p class="lead">Describe it; change the place or the crew below.</p>
-            {flash ? (
-              <Notice tone={flash.tone} role="status" testId="home-flash">
-                {flash.text}
-              </Notice>
-            ) : null}
             <StartBox onNavigate={handle.props.onNavigate} />
-            <ErrorNote error={ws.projects.error} what="Projects" />
+            <ErrorNote error={ws.projects.error} retry={retryFor(ws.projects)} what="Projects" />
             {items.length ? (
               <section mix={pickCss} aria-labelledby={`${id}-pick`} data-testid="home-projects">
                 <div class="head">

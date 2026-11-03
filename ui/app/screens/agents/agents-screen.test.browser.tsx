@@ -853,7 +853,7 @@ describe('Agents page', () => {
       if (!x) throw new Error('not yet');
       return x as HTMLElement;
     }, r);
-    expect(note.textContent).toBe("Could not read the adapters' run modes: the core is restarting");
+    expect(note.textContent).toBe("Could not read the adapters' run modes: the core is restartingRetry"); // the read's Retry follows the core's words (G5)
     // a WSL install of claude was found, so a project in WSL runs Mira there
     await r.act(() => row(r, 'claude@wsl:Ubuntu').click());
     const w = await detail(r, 'claude@wsl:Ubuntu');
@@ -884,7 +884,7 @@ describe('Agents page', () => {
       if (!x) throw new Error('not yet');
       return x as HTMLElement;
     }, r);
-    expect(note.textContent).toBe("Could not read where the projects' agents run: the database is being restored");
+    expect(note.textContent).toBe("Could not read where the projects' agents run: the database is being restoredRetry"); // the read's Retry follows the core's words (G5)
     // without the projects' defaults, Mira (who follows her project) is drawn where an agent runs unless told otherwise
     await waitFor(() => expect(usedNames(c)).toEqual(['Mira']), r);
   });

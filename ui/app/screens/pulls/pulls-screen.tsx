@@ -7,7 +7,7 @@ import { css, on, type Handle } from 'remix/component';
 import { GitPullRequest, Import, RefreshCw } from 'lucide';
 import { projectHasRepo, type GitHubIssue, type TaskCreateResult } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
-import { query, services, watch } from '../../state/services.tsx';
+import { query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { StatusChip, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -214,7 +214,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
       <Page title="Pull requests" icon={GitPullRequest} subtitle={list.length > 0 ? `${list.length} open from tasks` : undefined} guide="delivery">
         {/* said once (decision P144): the section's line while there are pull requests, the empty state's while there are none */}
         <Section title="Pull requests of tasks" description={list.length > 0 ? 'A finished task is pushed and a pull request opened. It merges after its CI passed and you approved.' : undefined}>
-          <ErrorNote error={s.project.tasks.error} what="Could not load tasks" />
+          <ErrorNote error={s.project.tasks.error} retry={retryFor(s.project.tasks)} what="Could not load tasks" />
           <TaskTotalNotice>The pull requests of older tasks are not listed here.</TaskTotalNotice>
           {list.length === 0 ? (
             <Empty title="No task has a pull request" icon={GitPullRequest}>
@@ -242,7 +242,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
                 {current ? <StatusChip status={current.status} /> : null}
                 {current ? <a href={routes.task.href({ id: current.id })}>Open the task</a> : null}
               </div>
-              <ErrorNote error={pr.error} what="Could not read the pull request from GitHub" />
+              <ErrorNote error={pr.error} retry={pr.reload} what="Could not read the pull request from GitHub" />
               {pr.loading && !pr.data ? <Loading label="Loading from GitHub..." /> : null}
               {pr.data ? <PullRequestPanel state={pr.data} /> : null}
             </>

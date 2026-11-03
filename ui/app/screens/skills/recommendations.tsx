@@ -10,7 +10,7 @@ import type { RecommendItem, SkillPick } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -190,7 +190,7 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
         description="An agent of your team reads the project's plan, tasks and team, and recommends who should get which skill, MCP server or integration. You apply or dismiss each one."
         testId="recommendations"
       >
-        <ErrorNote error={recs.error ?? act.error} what="Recommendations" />
+        <ErrorNote error={recs.error ?? act.error} retry={retryFor(recs, act)} what="Recommendations" />
         {added ? (
           <Notice tone="ok" role="status" testId="picks-added">
             {added}

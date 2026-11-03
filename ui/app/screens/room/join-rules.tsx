@@ -6,7 +6,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { Trash2 } from 'lucide';
 import type { Agent } from '../../api/types.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
@@ -55,7 +55,7 @@ export function JoinRules(handle: Handle<{ projectId: string; agents: readonly A
       <section mix={cardCss} aria-label="Join rules" data-testid="join-rules">
         <h3>Join rules</h3>
         <p class="muted">Add an agent to each new task room, or only to tasks that name a file under a folder.</p>
-        <ErrorNote error={act.error ?? rules.error} />
+        <ErrorNote error={act.error ?? rules.error} retry={retryFor(act, rules)} />
         {list.length ? (
           <ul mix={tightList}>
             {list.map((r) => (

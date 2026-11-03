@@ -8,7 +8,7 @@ import type { Message, Room } from '../../api/types.ts';
 import { authorName, roomLabel } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
@@ -51,7 +51,7 @@ export function RoomScreen(handle: Handle<{ id: string }>) {
       <Page title="Channel" icon={MessageSquare}>
         <Empty title="Channel not found" icon={MessagesSquare}>
           <p>It may belong to another project, or it was never created.</p>
-          <ErrorNote error={fetched.error} />
+          <ErrorNote error={fetched.error} retry={fetched.reload} />
         </Empty>
       </Page>
     );
@@ -378,7 +378,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
         ) : null}
         {feed.error ? (
           <div mix={notesCss} style={{ paddingTop: '12px' }}>
-            <ErrorNote error={feed.error} what="Could not load messages" />
+            <ErrorNote error={feed.error} retry={retryFor(feed)} what="Could not load messages" />
           </div>
         ) : null}
         <div mix={logWrap}>

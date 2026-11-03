@@ -98,7 +98,7 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
       if (want !== live) live = want;
     }
     const d = list.data;
-    if (!d && list.error) return <div mix={noteSlot}><ErrorNote error={list.error} what="Could not load the diff" /></div>;
+    if (!d && list.error) return <div mix={noteSlot}><ErrorNote error={list.error} retry={list.reload} what="Could not load the diff" /></div>;
     if (!d) return <Loading label="Loading the diff..." />;
     const files = d.files;
     const current = files.find((f) => f.path === selected) ?? files[0];
@@ -153,7 +153,7 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
         </div>
         {list.error ? (
           <div mix={errorSlot}>
-            <ErrorNote error={list.error} what="Could not refresh the diff" />
+            <ErrorNote error={list.error} retry={list.reload} what="Could not refresh the diff" />
           </div>
         ) : null}
         {d.source === 'none' ? (
@@ -234,7 +234,7 @@ function FilePane(handle: Handle<{ taskId: string; file: DiffFile; live: boolean
         </div>
         {c.error ? (
           <div mix={errorSlot}>
-            <ErrorNote error={c.error} what="Could not load this file" />
+            <ErrorNote error={c.error} retry={c.reload} what="Could not load this file" />
           </div>
         ) : null}
         {!v ? (

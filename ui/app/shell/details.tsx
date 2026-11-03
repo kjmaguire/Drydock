@@ -136,7 +136,7 @@ function TaskSummary(handle: Handle<{ taskId: string }>) {
   return () => {
     const v = d.data;
     // a failed read shows why (with what it had before, if anything), never an endless "Loading..."
-    if (!v) return d.error ? <ErrorNote error={d.error} what="Could not load the task" /> : <Loading />;
+    if (!v) return d.error ? <ErrorNote error={d.error} retry={d.reload} what="Could not load the task" /> : <Loading />;
     const agents = s.project.agentList;
     const passed = v.evidence.filter((e) => e.passed === true).length;
     const failed = v.evidence.filter((e) => e.passed === false).length;

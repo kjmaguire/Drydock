@@ -233,7 +233,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
               ))}
             </ul>
           ) : null}
-          <ErrorNote error={choices.error} what="Skills to add" />
+          <ErrorNote error={choices.error} retry={choices.reload} what="Skills to add" />
           {available().length > 0 ? (
             <div mix={addRow}>
               <Field label="Add a skill">

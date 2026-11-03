@@ -616,7 +616,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
         <Dialog open={dialog === 'mine'} title="My agents" onClose={() => set(() => (dialog = ''))} testId="start-mine-dialog">
           {dialog === 'mine' ? (
             <div mix={dialogBody}>
-              <ErrorNote error={templates.error} what="Your agents" />
+              <ErrorNote error={templates.error} retry={templates.reload} what="Your agents" />
               {templates.data && templates.data.length === 0 ? (
                 <p style={{ margin: '0', color: 'var(--text-muted)' }}>
                   No saved agents yet. <a href={routes.library.href()}>Agents</a>

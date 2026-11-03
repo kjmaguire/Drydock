@@ -542,7 +542,7 @@ function Repositories(handle: Handle<{ onRunCI?: (repo: string) => void }>) {
         }
         bare
       >
-        <ErrorNote error={q.error} what="Could not read the repositories" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not read the repositories" />
         {q.loading && !q.data ? <Loading label="Reading your repositories" /> : null}
         {q.data && rows.length === 0 ? (
           <div mix={tableCard} data-testid="repos-empty">

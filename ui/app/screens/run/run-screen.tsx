@@ -351,7 +351,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
           </>
         }
       >
-        <ErrorNote error={q.error} what="Could not explain the run" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not explain the run" />
         {!x ? (
           q.loading || !q.error ? <Loading /> : null
         ) : !r ? (

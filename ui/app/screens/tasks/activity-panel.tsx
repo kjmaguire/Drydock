@@ -534,7 +534,7 @@ export function TaskActivity(handle: Handle<{ taskId: string; agents: readonly A
             </span>
           ) : null}
         </div>
-        <ErrorNote error={act.error} what="Could not load the activity" />
+        <ErrorNote error={act.error} retry={act.reload} what="Could not load the activity" />
         {act.data?.truncated ? <p class="note">Only the newest activity is shown.</p> : null}
         {act.data && !threads.length ? <p class="note">No agent has worked on this task yet.</p> : null}
         {rows.length ? (

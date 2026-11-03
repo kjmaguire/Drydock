@@ -18,7 +18,7 @@ import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { starts } from '../../state/live.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import type { InboxTab } from '../../state/ui.ts';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -557,7 +557,7 @@ export function NeedsYouScreen(
             </Button>
           ) : null}
         </div>
-        <ErrorNote error={ws.needs.error} what="Could not load what needs you" />
+        <ErrorNote error={ws.needs.error} retry={retryFor(ws.needs)} what="Could not load what needs you" />
         {ws.needs.loading && !ws.needs.data ? <Loading /> : null}
         {ws.needs.data && needs.length === 0 ? <p mix={emptyCss}>Nothing is waiting for you. Approvals, spec gates, reviews and questions from every project appear here.</p> : null}
         {needs.length ? (
@@ -572,7 +572,7 @@ export function NeedsYouScreen(
         <h2 id="inbox-running" mix={groupCss} style={{ paddingTop: active === 'needs' ? '18px' : undefined }}>
           Running
         </h2>
-        <ErrorNote error={ws.summaries.error} what="Could not load the running tasks" />
+        <ErrorNote error={ws.summaries.error} retry={retryFor(ws.summaries)} what="Could not load the running tasks" />
         {ws.summaries.data && running === 0 ? <p mix={emptyCss}>No agent is working on a task and no scan runs.</p> : null}
         {runRowsHere.length ? (
           <ul mix={listCss} aria-label="Running now">
@@ -586,7 +586,7 @@ export function NeedsYouScreen(
         <h2 id="inbox-done" mix={groupCss}>
           Done today
         </h2>
-        <ErrorNote error={done.error} what="Could not load the tasks done today" />
+        <ErrorNote error={done.error} retry={done.reload} what="Could not load the tasks done today" />
         {done.loading && !done.data ? <Loading /> : null}
         {done.data && doneList.length === 0 ? <p mix={emptyCss}>No task was completed today yet.</p> : null}
         {doneList.length ? (
@@ -858,7 +858,7 @@ function NeedsDetail(
           {/* a request answered here keeps its page one step away, under what it is about */}
           {answerHere ? <div mix={openRow}>{openLink}</div> : null}
         </div>
-        <ErrorNote error={detail.error} what="Could not read the request" />
+        <ErrorNote error={detail.error} retry={detail.reload} what="Could not read the request" />
         {it.approvalId && detail.loading && !d ? <Loading /> : null}
         <dl mix={dlCss} data-testid="detail-facts">
           {agent || it.agentName ? (

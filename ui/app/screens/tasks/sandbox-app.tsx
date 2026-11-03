@@ -4,7 +4,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { ExternalLink, Square } from 'lucide';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -82,7 +82,7 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
     return (
       <section aria-label="Sandbox app" style={{ display: 'grid', gap: '12px' }} data-testid="sandbox-app">
         <h2 style={{ fontSize: 'var(--text-md)', fontWeight: '600' }}>Sandbox app</h2>
-        <ErrorNote error={act.error ?? q.error} what="Sandbox app" />
+        <ErrorNote error={act.error ?? q.error} retry={retryFor(act, q)} what="Sandbox app" />
         <div mix={[card, boxCss]}>
           <p mix={muted}>
             Show a web app a worker started in this task&apos;s sandbox. Its port is reachable from this computer only, and it opens in a Drydock window of its own that

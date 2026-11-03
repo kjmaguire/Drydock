@@ -179,7 +179,7 @@ export function RepoMapScreen(handle: Handle) {
             ) : null}
           </form>
         ) : null}
-        <ErrorNote error={q.error} what="Repo map" />
+        <ErrorNote error={q.error} retry={q.reload} what="Repo map" />
         {q.loading && !v ? <Loading label="Reading the repository..." /> : null}
         {v && !v.available ? (
           <Notice tone="warn" title="No repo map in this build" testId="repomap-unavailable">

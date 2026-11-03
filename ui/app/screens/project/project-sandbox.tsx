@@ -131,7 +131,7 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
       >
         {!st ? (
           <div mix={errorPad}>
-            <ErrorNote error={q.error} what="Could not read the sandbox status" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not read the sandbox status" />
             {q.error ? null : <Loading />}
           </div>
         ) : (

@@ -7,7 +7,7 @@ import { Check, CircleCheck, CircleX, Flag, GitBranch, ListChecks, Pencil, Play,
 import type { DevSettings, Milestone, Plan, ProposedTask, TickResult } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Notice } from '../../ui/feedback.tsx';
@@ -351,7 +351,7 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: (answer?: Plan) 
               Planned by {plan.plannedBy}
             </p>
           ) : null}
-          {plan.error ? <ErrorNote error={plan.error} what="The planner failed" /> : null}
+          {plan.error ? <ErrorNote error={plan.error} retry={retryFor(plan)} what="The planner failed" /> : null}
           {plan.proposal?.notes ? (
             <div mix={notesCss}>
               <Markdown source={plan.proposal.notes} />
@@ -580,7 +580,7 @@ export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult; s
     const waits = tick ? dependencyWaits(handle.props.plan, tick) : [];
     return (
       <div mix={afterCss} data-testid="plan-after">
-        <ErrorNote error={act.error ?? dev.error} />
+        <ErrorNote error={act.error ?? dev.error} retry={retryFor(act, dev)} />
         <div mix={row}>
           <Button
             variant="primary"
@@ -735,7 +735,7 @@ export function PlanScreen(handle: Handle) {
           ) : undefined
         }
       >
-        <ErrorNote error={q.error ?? act.error} what="Plan" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Plan" />
         <Stepper plan={current} />
         {lead ? (
           <>

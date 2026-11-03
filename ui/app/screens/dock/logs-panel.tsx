@@ -78,7 +78,7 @@ export function LogsPanel(handle: Handle<{ taskId: string }>) {
       <div mix={panel} data-testid="logs-panel">
         {list.error ? (
           <div mix={errorSlot}>
-            <ErrorNote error={list.error} what="Could not list the logs" />
+            <ErrorNote error={list.error} retry={list.reload} what="Could not list the logs" />
           </div>
         ) : null}
         {all.length > 0 ? (

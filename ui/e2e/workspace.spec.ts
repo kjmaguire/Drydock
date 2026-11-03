@@ -55,7 +55,7 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   await confirm.click();
 
   await expect(page).toHaveURL(/\/home$/);
-  await expect(page.getByTestId('home-flash')).toHaveText('ws-delete-me was deleted.');
+  await expect(page.getByTestId('toast-text').filter({ hasText: 'ws-delete-me was deleted.' })).toBeVisible(); // a toast since G2
   if (await page.getByTestId('home-all-projects').isVisible()) await page.getByTestId('home-all-projects').click();
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toHaveCount(0);
   await expect(projectItem(page, 'ws-delete-me')).toHaveCount(0);

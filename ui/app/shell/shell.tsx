@@ -15,9 +15,10 @@ import { WorkspaceHomeScreen } from '../screens/workspace/workspace-home.tsx';
 import { query, services, watch } from '../state/services.tsx';
 import { Button } from '../ui/button.tsx';
 import { ErrorBoundary } from '../ui/error-boundary.tsx';
-import { ErrorNote, Loading } from '../ui/feedback.tsx';
+import { ErrorNote, isNetworkError, Loading } from '../ui/feedback.tsx';
 import { Page } from '../ui/layout.tsx';
 import { t } from '../ui/tokens.ts';
+import { CoreActions, CoreBanner, coreDownWords } from './core-banner.tsx';
 import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
 import { RoomsRail, SectionPills, SettingsRail, SubNav } from './hubnav.tsx';
@@ -29,6 +30,7 @@ import { RepoConfigBanner } from './repo-config-banner.tsx';
 import { CommandPalette } from './palette.tsx';
 import { chatOrder, focusRegion, neighbour, REGION_OF, roomOrder } from './regions.ts';
 import { Sidebar } from './sidebar.tsx';
+import { Toasts } from './toasts-host.tsx';
 
 const rootCss = css({ display: 'flex', height: '100vh', overflow: 'hidden', background: t.bgApp });
 const columnCss = css({ display: 'flex', flexDirection: 'column', flex: '1', minWidth: '0', minHeight: '0' });
@@ -171,10 +173,13 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
     if (ws.projects.loading && !ws.projects.data) {
       center = <Loading />;
     } else if (ws.projects.error && !ws.projects.data) {
+      // the same words and buttons as the banner (decision G4), by how this window reaches the core
       center = (
         <Page title="Cannot reach the Drydock core" icon={PlugZap}>
           <ErrorNote error={ws.projects.error} />
-          <p>The page needs the core's address and token (open the link the core printed, which ends in ?token=...).</p>
+          {isNetworkError(ws.projects.error) ? <p>{coreDownWords(s.transportName)}</p> : null}
+          {s.transportName === 'http' ? <p>The page needs the core's address and token: open the link the core printed, which ends in ?token=...</p> : null}
+          <CoreActions />
         </Page>
       );
     } else if ((!project || ws.setupOpen) && !isWorkspaceRoute(route) && route.name !== 'project-new') {
@@ -217,6 +222,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
         </nav>
         <Sidebar route={route} onNavigate={handle.props.onNavigate} />
         <div mix={columnCss}>
+        <CoreBanner hidden={!!ws.projects.error && !ws.projects.data} />
         <LicenseBanner />
         <TermsNotice />
         {project || isWorkspacePage(route) ? <SubNav route={route} /> : null}
@@ -258,6 +264,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
           ) : null}
         </div>
         </div>
+        <Toasts here={{ inbox: route.name === 'needs-you', taskId: taskContext, chatId: route.name === 'chat' ? route.id : undefined }} onNavigate={handle.props.onNavigate} />
         <CommandPalette onMessage={(id) => void openDM(id)} taskId={inProject ? taskContext : undefined} dock={inProject} />
       </div>
     );

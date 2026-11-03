@@ -58,7 +58,7 @@ export function CrashReports(handle: Handle<{ onReport?: () => void }>) {
 
   return () => {
     const reports = list.data?.reports ?? [];
-    if (list.error) return <ErrorNote error={list.error} what="Crash reports" />;
+    if (list.error) return <ErrorNote error={list.error} retry={list.reload} what="Crash reports" />;
     if (reports.length === 0) return null;
     return (
       <Group
