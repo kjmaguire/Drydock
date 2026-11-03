@@ -2682,3 +2682,52 @@ Open, owner action:
   (`security/env.go` never reads secret variables). No migration and no new dependency. Tests: each item's Go or UI test next
   to the code it changed (named in the batch commits `A1`-`A7`, `B1`-`B6` and their review fixes), with the e2e specs whose
   strings or flows changed updated.
+- **P146. The effort review's bigger changes: fewer steps across the app, the rules kept (2026-11-03).** The owner said "Work on
+  the next items" (the review's 56 bigger changes), then "add go-toast for the Windows notifications" and "also upgrade Wails to
+  v3.1.0". They were built in 14 batches (A1-A7 in one checkout, B1-B7 in another, merged), each reviewed and its findings fixed.
+  The nine owner decisions were not built, even partly (H10, D1, X11, D10, X34, H8, E4, G7, W5). Every change keeps the rules:
+  nothing starts paid work without the person's click (C1's "Create and start", C11's "Import and start", X12's Ask again, each
+  on its own grant); merge stays a human action and approvals stay explicit (C3 answers a gate in the Inbox with the task page's
+  own panel; the A key never answers a gate); new background work is free and local or an opt-in that is off by default (A2's
+  CLI check, B6's health watch with one free listing request per provider every 15 minutes, H5's scan rules, all off because
+  osv-scanner sends package metadata to osv.dev); notifications and toasts carry the kind of request, the project and the task
+  key, never request text, code, prompts or chat titles. (a) **Tasks, Inbox, merge.** Create and start with the crew pair (C1,
+  checks before the task exists); every gate answered in the Inbox (C3); a GitHub failure is Retry with its fix (C4); slow CI
+  pages later, Keep waiting first, a project setting (C7); Bring the branch up to date on the merge gate (C8, a `sync_pr` node:
+  runs parked by an older build cannot resume; checks, review, push, CI and approval run again, P7); open issues load by
+  themselves and Import and start (C11, a repository without a GitHub origin says so and asks GitHub nothing); review comments
+  while a PR waits reach the Inbox (H12). (b) **Shell.** G1: when something new reaches the Inbox while Drydock is behind and
+  Settings > General's switch is on, the taskbar button flashes and Windows shows one notification through Wails v3.1.0's
+  notifications service (go-toast v2.0.3, Windows build only, wrapped so the page cannot send one); a click brings the window up
+  on the task or the Inbox, the route checked by the shell and the page; "Play a sound", on by default, off makes it silent. The
+  service writes only per-user keys (`HKCU\Software\Classes\AppUserModelId\Drydock` under the app's name, its CLSID and
+  go-toast's built-in CLSID, an icon in %TEMP%); the uninstaller removes them and the release install-test checks they are gone
+  (security.md s14, windows-identity.md s6). G2's in-window toast with Open; G4's one banner when the core stops answering, Try
+  now and Restart Drydock; G5's Retry on every failed read. (c) **Dock.** Logs opens the exact log (X24); the Diff section's
+  files inline (X212); Open the worktree through a person-only core method that opens only a task worktree or project repository
+  in Explorer or an allowlisted editor (X26); Open brings the app window forward (X314). (d) **Plans.** Plan with the crew the
+  app made (X45, planner falls back to architect, lead, anyone, read-only); plans from requirements keep their ids (X48,
+  migration 00172, linked only on the human's accept); the core proposes covering tasks (X43, local FTS); due milestones on Work
+  (X411, migration 00173). (e) **Sandbox.** Try again, Confirm and settings on "could not start" (X38); what it is doing while
+  it starts (X39); forward a detected port in one click (X31, a read-only /proc walk, forwarding still the click); the starter
+  reads compose, devcontainer and Dockerfile, only files the branch has (X35); the preview note (X311). (f) **Activity.** Paging
+  past ~1000 sequence numbers with filters (X53); one line after a restart, "closed unexpectedly" only when a marker or crash
+  report says so (X511); Report this pre-fills the support bundle (X56). (g) **Rooms and chats.** An agent's answer reaches the
+  Inbox and Work (X18); Ask again (X12, migration 00177); #decisions with an ADR task (X110); minutes by rule (X19); join rules
+  once, on the crew (X17); unread chats (D8, migration 00178; one G2 toast per chat turn, none on the chat itself); the last
+  model, effort and mode, never a mode that skips approvals (D2); allow rules for all new chats (D9); Sign in in place (A9).
+  (h) **First run.** Home says whether the builder's CLI is ready (A1); CLIs checked by Drydock (A2); one description after
+  Create project (B11); setup lines with a fix (B2); Open in a terminal here, the command typed not run (A5). (i) **Clone and
+  files.** An existing clone offered (B7); clone progress and Cancel (B12); file dialogs and Show in folder (A11); GitHub Sign in
+  in Drydock's terminal (F4). (j) **Crew and memory.** Describe knows the crew (E6); repository skills found without a button
+  (E5); prebuilt fixes (E9); the Library drafts in one step (E12); memory proposals reach the person (E10). (k) **Settings.**
+  Providers probed on save (F2); refused keys and failing syncs in the Inbox with Reconnect (F14); what the core knows went wrong
+  in the Inbox with a fix (H7); one MCP dialog (F12); routing rules with pickers (F9); scheduled scans (H5). Partly built, each
+  for a stated reason: B12 still creates the project after the clone finishes (attaching a clone that lands later is a bigger
+  change). Known and left: the chat feeds have no Retry (G5 covers query reads); the goose and Antigravity manifests carry
+  placeholder install commands; Agents reloads on every `connection.checked`; a copied command keeps its `powershell:` label.
+  Not verified on Linux, for CI's Windows jobs and the owner: the notification itself, its sound, a click (warm and cold
+  start), its registry keys and their removal, the taskbar flash, the clone's tree kill, the file dialogs and the Wails v3.1.0
+  window. Wails v3.1.0 needed no code change (icon resource 3 unchanged); go-toast is its one new module (Unlicense OR MIT).
+  Tests: each item's Go or UI test next to the code it changed (named in the batch commits and their review fixes), the e2e
+  specs whose strings or flows changed updated; the full Go, UI and e2e suites pass on the merged branch.
