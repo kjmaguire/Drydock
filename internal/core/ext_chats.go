@@ -191,6 +191,40 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		"chat.import":       bind(func(ctx context.Context, p chats.ImportReq) (any, error) { return svc.ImportClaudeCode(ctx, p) }),
 		"chat.allowTool":    bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.AllowTool(ctx, p.ID, p.Tool) }),
 		"chat.disallowTool": bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.DisallowTool(ctx, p.ID, p.Tool) }),
+		// the read cursor (D8): the UI moves it while the person sees the chat's newest message; chat.unread counts what they
+		// have not seen, for the Chats link
+		"chat.markRead": bind(func(ctx context.Context, p struct {
+			ID  string `json:"id"`
+			Seq int64  `json:"seq"`
+		}) (any, error) {
+			return svc.MarkRead(ctx, p.ID, p.Seq)
+		}),
+		"chat.unread": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return svc.Unread(ctx, p.ProjectID)
+		}),
+		// what a new chat starts with (D2): the person's last choice of model, effort and mode for the scope and CLI
+		"chat.lastChoice": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			Adapter   string `json:"adapter"`
+		}) (any, error) {
+			return svc.LastChoice(ctx, p.ProjectID, p.Adapter)
+		}),
+		// allow rules for every new chat (D9), set by the person; chats that exist keep their own
+		"chat.defaultRules": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return map[string]any{"rules": svc.DefaultRules(ctx)}, nil
+		}),
+		"chat.setDefaultRule": bind(func(ctx context.Context, p struct {
+			Tool  string `json:"tool"`
+			Allow bool   `json:"allow"`
+		}) (any, error) {
+			rules, err := svc.SetDefaultRule(ctx, p.Tool, p.Allow)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"rules": rules}, nil
+		}),
 	}
 	return m, closeFn, nil
 }

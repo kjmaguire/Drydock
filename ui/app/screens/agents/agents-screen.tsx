@@ -16,6 +16,7 @@ import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
 import { AddCustomCLI, CustomCLIPanel } from './custom-cli.tsx';
+import { ChatDefaultRules } from '../chats/default-rules.tsx';
 import { adapterLabel, cliName } from '../shared/cli-name.ts';
 import { supportsWSL } from '../team/run-mode.ts';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
@@ -585,6 +586,8 @@ function AgentDetail(handle: Handle<DetailProps>) {
           </SettingRow>
         </SettingsGroup>
         <ErrorNote error={p.gatewayError} what="MCP gateway" />
+        {/* allow rules every new Claude Code chat starts with (D9); one list for every install of it */}
+        {c.adapter === 'claude' && !inWSL ? <ChatDefaultRules readOnly={p.readOnly} /> : null}
         <SettingsGroup
           title="Used by"
           testId="used-by"

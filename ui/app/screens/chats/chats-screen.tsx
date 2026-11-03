@@ -14,7 +14,9 @@ import { t } from '../../ui/tokens.ts';
 import { ChatList, isNewChatKey } from './chat-list.tsx';
 import { ChatView } from './chat-view.tsx';
 import { NewChatDialog } from './new-chat-dialog.tsx';
-import { chatToReopen, readLastChat, writeLastChat } from './chats.ts';
+import { chatToReopen, cliRefusal, readLastChat, writeLastChat } from './chats.ts';
+import { noteFromLast } from './from-last.ts';
+import { CliFixButton } from '../shared/cli-fix.tsx';
 
 const screenCss = css({ position: 'relative', display: 'flex', height: '100%', minHeight: '0', minWidth: '0', background: t.bgApp });
 const scrimCss = css({ position: 'absolute', inset: '0', zIndex: '29', border: '0', borderRadius: '0', padding: '0', minHeight: '0', background: 'color-mix(in srgb, black 25%, transparent)', cursor: 'default' });
@@ -59,6 +61,7 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
     void handle.update();
     try {
       const c = await s.client.chatCreate({});
+      noteFromLast(c);
       const href = routes.chat.href({ id: c.id });
       if (handle.props.onNavigate) handle.props.onNavigate(href);
       else void navigate(href).catch(() => {});
@@ -128,6 +131,8 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
         {startError ? (
           <div mix={[errorCss, errorRow]} data-testid="new-chat-error">
             <ErrorNote error={startError} what="New chat" />
+            {/* the CLI refused (a notice to accept, not signed in, not installed): fixed in place (A9), beside another agent */}
+            {cliRefusal(startError) ? <CliFixButton adapter="claude" testId="new-chat-fix" /> : null}
             <Button size="sm" variant="secondary" data-testid="new-chat-choose" mix={on('click', () => ((chooseOpen = true), (startError = undefined), void handle.update()))}>
               Choose another agent
             </Button>

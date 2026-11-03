@@ -121,6 +121,10 @@ export interface ChatMessageProps {
   onRetry?: () => void;
   /** Allow the rule for the chat, then run the turn again (UI review P1-3): one step instead of two. */
   onAllowAndRetry?: (rule: string) => void;
+  /** The rules every new chat starts with (D9): a refusal whose rule is in here says so. */
+  defaultRules?: readonly string[];
+  /** Allow the rule for this chat and add it to every new chat's (D9), the person's own click. */
+  onAllowEverywhere?: (rule: string) => void;
   onFork?: (seq: number) => void;
   /** The person's own message can be changed and sent again: it and everything after it are replaced (P89). */
   onEdit?: (seq: number, text: string) => Promise<boolean>;
@@ -222,7 +226,19 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
             {role === 'tool' ? (
               <ToolCard m={m} summary={summaryOf(m)} running={running && latest} open={toolOpen} />
             ) : role === 'denied' ? (
-              <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} onAllowAndRetry={onAllowAndRetry} />
+              <DeniedCallout
+                m={m}
+                adapter={adapter}
+                allowedTools={allowedTools}
+                latest={latest}
+                running={running}
+                busy={busy}
+                onAllow={onAllow}
+                onRetry={onRetry}
+                onAllowAndRetry={onAllowAndRetry}
+                defaultRules={handle.props.defaultRules}
+                onAllowEverywhere={handle.props.onAllowEverywhere}
+              />
             ) : mine && editing ? (
               <div mix={editCss} data-testid="chat-edit">
                 <textarea
@@ -319,12 +335,15 @@ function DeniedCallout(
     onAllow?: (rule: string) => void;
     onRetry?: () => void;
     onAllowAndRetry?: (rule: string) => void;
+    defaultRules?: readonly string[];
+    onAllowEverywhere?: (rule: string) => void;
   }>,
 ) {
   return () => {
-    const { m, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onAllowAndRetry } = handle.props;
+    const { m, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onAllowAndRetry, onAllowEverywhere } = handle.props;
     const rule = m.suggestedRule ?? '';
     const allowed = !!rule && allowedTools.includes(rule);
+    const everywhere = !!rule && (handle.props.defaultRules ?? []).includes(rule);
     const tool = m.toolName || 'a tool';
     const claude = adapter === 'claude';
     return (
@@ -363,6 +382,17 @@ function DeniedCallout(
                 </Button>
               </>
             )}
+            {/* D9: the same rule for every new chat, set once by the person and listed in Settings > Agent CLIs */}
+            {everywhere ? (
+              <span class="ok" data-testid="chat-denied-everywhere">
+                <Icon icon={Check} size={14} />
+                In every new chat
+              </span>
+            ) : onAllowEverywhere ? (
+              <Button size="sm" variant="ghost" data-testid="chat-allow-everywhere" disabled={!!busy} mix={[on('click', () => onAllowEverywhere(rule))]}>
+                {allowed ? 'Also in every new chat' : '…and in every new chat'}
+              </Button>
+            ) : null}
             {allowed && latest ? (
               <Button size="sm" variant="primary" disabled={!onRetry || running || !!busy} mix={[on('click', () => onRetry?.())]}>
                 Retry

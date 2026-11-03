@@ -202,6 +202,22 @@ describe('Home is the start screen (P142)', () => {
     expect(sent).toEqual(['What is a monad?']);
   });
 
+  it("with nothing remembered here, the chips start from the person's last chat choice (chat.lastChoice, D2)", async () => {
+    const asked: unknown[][] = [];
+    const chats: ChatCreate[] = [];
+    const { r } = show({
+      chatLastChoice: async (...a: unknown[]) => (asked.push(a), { model: 'opus', effort: 'high', permissionMode: 'plan' }),
+      chatCreate: async (p) => (chats.push(p), { id: 'c1' }) as never,
+      chatSend: async () => ({ turnId: 't', version: 1 }),
+    });
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('opus · high'), r);
+    expect(chipText(r, 'start-permission')).toBe('Read only');
+    expect(asked[0]).toEqual(['', 'claude']);
+    await r.act(() => type(box(r), 'What is a monad?'));
+    await r.act(() => byText(r.container, 'button', 'Just chat').click());
+    await waitFor(() => expect(chats).toEqual([{ adapter: 'claude', model: 'opus', effort: 'high', permissionMode: 'plan' }]), r);
+  });
+
   it('the Where menu lists Recent as Pick up does: the most recently active first, with the same pill (B9)', async () => {
     // billing-api was made last, but calculator and marketing-site were active since
     const { r } = show({

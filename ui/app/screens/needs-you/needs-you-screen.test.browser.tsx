@@ -470,6 +470,25 @@ describe('the Inbox', () => {
     await r.act(() => (r.$('[data-testid="detail-let-in"]') as HTMLButtonElement).click());
     await waitFor(() => expect(answers).toEqual([['jr1', true]]), r);
   });
+
+  it("an agent CLI that is not signed in offers Sign in on the item itself (A9), for the distro it names", async () => {
+    const cli: NeedsYouItem = { key: 'connection:claude@wsl:Ubuntu', kind: 'connection', severity: 2, title: 'Claude Code WSL is not signed in', adapter: 'claude', connectionKey: 'claude@wsl:Ubuntu', createdAt: iso(NOW - 60_000) };
+    const signIns: unknown[][] = [];
+    const conn = { adapter: 'claude', key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', installed: true, status: 'unauthenticated', authenticated: false, usable: false, platform: 'linux', signIn: 'claude auth login' };
+    const { r } = await open(
+      { connectionList: async () => [conn] as never, connectionSignIn: async (...a: unknown[]) => (signIns.push(a), { id: 'term1' }) as never, terminalClose: async () => {} },
+      [cli],
+    );
+    await r.act(() => (r.$('[data-row-key="needs:connection:claude@wsl:Ubuntu"]') as HTMLButtonElement).click());
+    const btn = await waitFor(() => {
+      const b = r.$('[data-testid="cli-fix-sign-in"]');
+      if (!b) throw new Error('no Sign in yet');
+      return b as HTMLButtonElement;
+    }, r);
+    expect(btn.textContent).toBe('Sign in');
+    await r.act(() => btn.click());
+    await waitFor(() => expect(signIns).toEqual([['claude', 'Ubuntu']]), r);
+  });
 });
 
 describe('an agent that failed its task (C6)', () => {

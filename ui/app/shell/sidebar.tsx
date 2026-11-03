@@ -186,6 +186,8 @@ const engineCss = css({
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
   ':is([data-rail="true"]) &': { display: 'none' },
 });
+// the Chats link's count of chats with unseen answers (D8): the accent, not the Inbox's amber (nothing waits on the person)
+const unreadCss = css({ background: t.accent });
 const dotCss = css({ display: 'inline-block', flex: 'none', width: '7px', height: '7px', borderRadius: '50%' });
 const streamCss = css({ display: 'inline-flex', alignItems: 'center', gap: t.s2, height: '24px', padding: '0 10px', color: t.textFaint, fontSize: t.textSm, ':is([data-rail="true"]) &': { justifyContent: 'center', padding: '0', '& > .lbl': { display: 'none' } } });
 
@@ -228,6 +230,18 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
   });
   handle.signal.addEventListener('abort', off);
   const engine = query(handle, { load: () => s.client.localGet(), when: (e) => e.type === 'local.changed' });
+  // the chats with answers the person has not seen (D8), counted on the Chats link; nothing when the core cannot say
+  const chatUnread = query(handle, {
+    load: async () => {
+      try {
+        return await s.client.chatUnread('');
+      } catch {
+        return { chats: 0, messages: 0 };
+      }
+    },
+    when: (e) => e.type === 'chat.read' || e.type === 'chat.turn' || e.type === 'chat.deleted' || e.type === 'chat.updated' || e.type === 'chat.created',
+    debounceMs: 250,
+  });
 
   // "[" folds and unfolds the sidebar, as in Linear; never while typing or inside a widget that owns its keys. Ctrl+B does too
   // (decision P129), also from a field, since it types nothing there; never inside the terminal or the editor
@@ -292,6 +306,7 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
     const workspace = workspaceView(route, !!project);
     // the Inbox counts every project's (decision P97); Running and My tasks are its tabs (P140)
     const needs = ws.needsCount;
+    const unreadChats = chatUnread.data?.chats ?? 0;
     const perProject = ws.needsPerProject;
     const inbox = route.name === 'needs-you' || route.name === 'my-tasks';
     const status = s.store.getSnapshot().status;
@@ -365,7 +380,25 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                 </span>
               </a>
             </li>
-            {link({ id: 'nav-chats', label: 'Chats', icon: MessagesSquare, href: routes.chats.href(), current: is('chats') })}
+            <li style={{ position: 'relative' }}>
+              <a
+                href={routes.chats.href()}
+                mix={itemCss}
+                data-nav=""
+                data-testid="nav-chats"
+                title="Chats"
+                aria-label={unreadChats > 0 ? `Chats, ${unreadChats} unread` : 'Chats'}
+                aria-current={is('chats') ? 'page' : undefined}
+              >
+                <Icon icon={MessagesSquare} size={15} />
+                <span class="lbl">Chats</span>
+                {unreadChats > 0 ? (
+                  <span mix={[needsCss, unreadCss]} data-testid="chats-unread" aria-hidden="true">
+                    {unreadChats > 99 ? '99+' : unreadChats}
+                  </span>
+                ) : null}
+              </a>
+            </li>
           </ul>
 
           <div mix={groupHead}>

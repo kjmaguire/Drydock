@@ -5,7 +5,7 @@
 // It also takes the chat's properties (decision P60): skills from the workspace skill library and MCP servers from the
 // workspace MCP library, which reach the chat's CLI through Drydock's MCP gateway.
 
-import { on, type Handle } from 'remix/component';
+import { css, on, type Handle } from 'remix/component';
 import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -18,6 +18,13 @@ import type { ChatMcpGrant, ChatSkillRef } from '../../api/chatClient.ts';
 import { ServerPicker, SkillPicker, useMcpLibrary, useSkillLibrary } from './chat-properties.tsx';
 import { chatChoices, pickChatChoice, skipsApprovals } from './chats.ts';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
+import { noteFromLast } from './from-last.ts';
+import { CliFixButton } from '../shared/cli-fix.tsx';
+import { t } from '../../ui/tokens.ts';
+import { adapterLabel } from '../shared/cli-name.ts';
+
+// a CLI listed that cannot be used yet, with its fix (A9)
+const blockedCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', gridColumn: '1 / -1', '& > span': { color: t.textMuted, fontSize: t.textSm } });
 
 const NO_PROJECT = '';
 
@@ -76,6 +83,13 @@ export function NewChatDialog(
     wasOpen = open;
     const choices = chatChoices(adapters ?? [], conns.data ?? []);
     const chosen = pickChatChoice(choices, adapter);
+    // the first CLI listed that cannot be used yet, offered with its fix
+    // the CLI chosen is not signed in (it can still be chosen: a turn would be refused), or the first listed that cannot be used
+    const firstBlocked = choices.find((c) => !!c.why && c.adapter.detection.installed) ?? (chosen ? undefined : choices.find((c) => !!c.why));
+    const blocked =
+      chosen && !chosen.wslDistro && chosen.adapter.detection.status === 'unauthenticated'
+        ? { adapter: chosen.adapter, wslDistro: '', text: `${adapterLabel(chosen.adapter.id)} is not signed in.` }
+        : firstBlocked;
     const caps = chosen?.adapter.capabilities;
     const distro = chosen?.wslDistro ?? '';
     const models = caps?.models ?? [];
@@ -103,7 +117,10 @@ export function NewChatDialog(
         }),
       );
       // the screen closes the dialog and navigates once (closing first would race a second navigation)
-      if (c) handle.props.onCreated(c.id);
+      if (c) {
+        noteFromLast(c);
+        handle.props.onCreated(c.id);
+      }
     };
 
     return (
@@ -173,6 +190,13 @@ export function NewChatDialog(
                 />
               )}
             </Field>
+            {/* a CLI listed but not usable yet (not signed in, a notice, not installed): fixed in place (A9) */}
+            {blocked ? (
+              <div mix={blockedCss} data-testid="new-chat-blocked">
+                <span>{blocked.text}</span>
+                <CliFixButton adapter={blocked.adapter.id} distro={blocked.wslDistro || undefined} testId="new-chat-dialog-fix" />
+              </div>
+            ) : null}
             <Field label="Model">
               {(id) => (
                 <ModelField

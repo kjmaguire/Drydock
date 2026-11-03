@@ -294,4 +294,16 @@ describe('the sidebar', () => {
     // one quiet line: the build is in its title
     expect(r.$('[data-testid="engine-card"]')!.getAttribute('title')).toBe('Local engine running: TurboQuant build b10298 · Vulkan');
   });
+
+  it('counts the chats with answers the person has not seen on the Chats link (D8), and reads it again when one is read', async () => {
+    let unread = 2;
+    const s = svc({ chatUnread: async () => ({ chats: unread, messages: 5 }) });
+    const r = mount(<Sidebar route={{ name: 'workspace' }} />, s);
+    await waitFor(() => expect(r.$('[data-testid="chats-unread"]')?.textContent).toBe('2'), r);
+    expect(r.$('[data-testid="nav-chats"]')!.getAttribute('aria-label')).toBe('Chats, 2 unread');
+    unread = 0;
+    s.emit({ type: 'chat.read', data: { chatId: 'c1', lastReadSeq: 4 } } as never);
+    await waitFor(() => expect(r.$('[data-testid="chats-unread"]')).toBeNull(), r);
+    expect(r.$('[data-testid="nav-chats"]')!.getAttribute('aria-label')).toBe('Chats');
+  });
 });

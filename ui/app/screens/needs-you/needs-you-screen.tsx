@@ -30,6 +30,7 @@ import { adapterLabel } from '../shared/cli-name.ts';
 import { RunAgainButton } from '../shared/run-again.tsx';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
 import { MyTasksList } from './my-tasks-screen.tsx';
+import { CliFix, distroOfKey } from '../shared/cli-fix.tsx';
 import {
   answerOf,
   canAck,
@@ -812,6 +813,8 @@ function NeedsDetail(
           {description ? <p data-testid="detail-description">{visible(description)}</p> : null}
           {/* what to do where it is decided, for what is not answered here */}
           {(!d || a.kind === 'open') && hint ? <p data-testid="needs-hint">{hint}</p> : null}
+          {/* an agent CLI that is not ready: its fix here, Sign in first (A9); the Agents page keeps the full detail */}
+          {it.kind === 'connection' && it.adapter ? <CliFix key={it.connectionKey || it.adapter} adapter={it.adapter} distro={distroOfKey(it.connectionKey) || undefined} /> : null}
           {/* a request answered here keeps its page one step away, under what it is about */}
           {answerHere ? <div mix={openRow}>{openLink}</div> : null}
         </div>

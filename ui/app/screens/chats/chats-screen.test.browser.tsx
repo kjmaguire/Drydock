@@ -405,6 +405,32 @@ describe('New chat (decision P107)', () => {
     expect($(r, '[data-testid="new-chat-error"]')).toBeNull();
   });
 
+  it("a refusal for the CLI's notice offers its fix beside Choose another agent: the notice, a tick and Accept (A9)", async () => {
+    const acks: string[] = [];
+    const conn = { adapter: 'claude', installed: true, status: 'ready', authenticated: true, usable: false, platform: 'windows', gates: [{ id: 'terms', text: 'Read the terms.', acked: false }] } as Connection;
+    const { r } = setup({
+      chatCreate: async () => Promise.reject(new Error('claude needs your acknowledgement first (terms): Read the terms.')),
+      connectionList: async () => [conn],
+      connectionAcknowledge: async (id) => void acks.push(id),
+    });
+    await r.act(() => must$(r, '[data-testid="chat-new"]').click());
+    const fix = await waitFor(() => must$(r, '[data-testid="new-chat-fix"]'), r);
+    expect(must$(r, '[data-testid="new-chat-choose"]').textContent).toContain('Choose another agent');
+    await r.act(() => fix.click());
+    const gate = await waitFor(() => must(document.querySelector<HTMLElement>('[data-testid="cli-fix-gate"]'), 'gate'), r);
+    expect(gate.textContent).toContain('Read the terms.');
+    await r.act(() => must(gate.querySelector<HTMLInputElement>('input[type="checkbox"]'), 'tick').click());
+    await r.act(() => must(gate.querySelector<HTMLElement>('[data-testid="cli-fix-accept"]'), 'accept').click());
+    await waitFor(() => expect(acks).toEqual(['terms']), r);
+  });
+
+  it('a refusal that is not about the CLI (a read-only licence) offers no CLI fix', async () => {
+    const { r } = setup({ chatCreate: async () => Promise.reject(new Error('the license is read-only')) });
+    await r.act(() => must$(r, '[data-testid="chat-new"]').click());
+    await waitFor(() => must$(r, '[data-testid="new-chat-error"]'), r);
+    expect($(r, '[data-testid="new-chat-fix"]')).toBeNull();
+  });
+
   it('the empty Chats page is one line and New chat, no paragraph (P139)', async () => {
     const { r } = setup({});
     const btn = await waitFor(() => must$(r, '[data-testid="chats-empty-new"]'), r);
@@ -439,6 +465,14 @@ describe('New chat dialog (Home\'s Options)', () => {
     await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
   });
 
+  it('a chosen CLI that is not signed in offers its fix in the dialog (A9)', async () => {
+    const out: AdapterInfo = { ...claude, detection: { ...claude.detection, status: 'unauthenticated' } };
+    const { r } = dialogSetup({ adapterList: async () => [out, cline], connectionList: async () => [] });
+    const dlg = await waitFor(newChatDialog, r);
+    const row = await waitFor(() => must(dlg.querySelector<HTMLElement>('[data-testid="new-chat-blocked"]'), 'blocked row'), r);
+    expect(row.textContent).toContain('Claude Code is not signed in.');
+    expect(row.querySelector('[data-testid="new-chat-dialog-fix"]')).not.toBeNull();
+  });
 
   it('without a project sends the folder to the core, which decides, and shows its refusal', async () => {
     const created: { cwd?: string }[] = [];
@@ -778,7 +812,7 @@ describe('Conversation', () => {
     expect(callout.textContent).toContain('Claude was not allowed to run Bash');
     expect(callout.textContent).toContain('Bash(touch probe.txt)');
     // the newest refusal leads with Allow and retry (UI review P1-3); Only allow keeps the two steps apart
-    expect(Array.from(callout.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Allow and retry', 'Only allow']);
+    expect(Array.from(callout.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Allow and retry', 'Only allow', '…and in every new chat']);
     await openMore(r);
     expect(byText(r.container, 'button', /Allowed tools/).getAttribute('aria-label')).toBe('Allowed tools');
     await r.act(() => must$(r, '[data-testid="chat-more"]').click());
@@ -790,6 +824,30 @@ describe('Conversation', () => {
     await r.act(() => must$(r, '[data-testid="chat-more"]').click());
     await r.act(() => byText(callout, 'button', 'Retry').click());
     await waitFor(() => expect(sent).toEqual([['chat_a', RETRY_TEXT, []]]), r);
+  });
+
+  it('"…and in every new chat" allows the rule here and for every new chat, and the callout and Allowed tools say so (D9)', async () => {
+    let c = chat();
+    const calls: unknown[][] = [];
+    let defaults: string[] = [];
+    const msgs = [msg(1, 'user', 'run the tests'), msg(2, 'denied', 'Not allowed in this chat: Bash: npm test', { toolName: 'Bash', toolInput: { command: 'npm test' }, suggestedRule: 'Bash(npm test)' })];
+    const { r } = conv(c, msgs, {
+      chatAllowTool: async (id, tool) => (calls.push(['allow', id, tool]), (c = chat({ allowedTools: [tool] }))),
+      chatDefaultRules: async () => defaults,
+      chatSetDefaultRule: async (tool, allow) => (calls.push(['default', tool, allow]), (defaults = allow ? [...defaults, tool] : defaults.filter((x) => x !== tool))),
+    });
+    const callout = await waitFor(() => must$(r, '[data-testid="chat-denied"]'), r);
+    await r.act(() => must$(r, '[data-testid="chat-allow-everywhere"]').click());
+    await waitFor(() => expect(calls).toEqual([['allow', 'chat_a', 'Bash(npm test)'], ['default', 'Bash(npm test)', true]]), r);
+    await waitFor(() => expect(callout.querySelector('[data-testid="chat-denied-everywhere"]')?.textContent).toBe('In every new chat'), r);
+    expect(callout.textContent).toContain('Allowed for this chat');
+    // Allowed tools marks the rule and takes it out of every new chat with one click
+    await openMore(r);
+    await r.act(() => byText(r.container, 'button', /Allowed tools/).click());
+    const mark = await waitFor(() => must$(r, '[data-testid="rule-everywhere"][data-on="true"]'), r);
+    await r.act(() => mark.click());
+    await waitFor(() => expect(calls.at(-1)).toEqual(['default', 'Bash(npm test)', false]), r);
+    await waitFor(() => expect(must$(r, '[data-testid="rule-everywhere"]').getAttribute('data-on')).toBeNull(), r);
   });
 
   it('Allow and retry allows the rule and runs the turn again in one step; the canned retry shows as a note (P1-2, P1-3)', async () => {
@@ -1789,13 +1847,27 @@ describe('The calm chat (P139)', () => {
     expect([log.querySelectorAll('p').length, $(r, '[data-testid="chat-verbose-hint"]')]).toEqual([0, null]);
   });
 
-  it('shows one warning chip when the CLI is not signed in, which opens Properties to pick another', async () => {
+  it('shows one warning chip when the CLI is not signed in; it offers Sign in in place, and Use another CLI opens Properties (A9)', async () => {
     const out: AdapterInfo = { ...claude, detection: { ...claude.detection, status: 'unauthenticated' } };
-    const { r } = conv(chat(), [msg(1, 'user', 'hi')], { adapterList: async () => [out, gemini, cline] });
+    const signIns: unknown[][] = [];
+    const conn = { adapter: 'claude', installed: true, status: 'unauthenticated', authenticated: false, usable: false, platform: 'windows', signIn: 'claude auth login' } as Connection;
+    const { r } = conv(chat(), [msg(1, 'user', 'hi')], {
+      adapterList: async () => [out, gemini, cline],
+      connectionList: async () => [conn],
+      connectionSignIn: async (...a: unknown[]) => (signIns.push(a), { id: 'term1' }) as never,
+      terminalClose: async () => {},
+    });
     const warn = await waitFor(() => must$(r, '[data-testid="chat-cli-warning"]'), r);
     expect(warn.textContent).toBe('Claude Code not signed in');
     expect($$(r, '[data-testid="chat-cli-warning"]')).toHaveLength(1);
     await r.act(() => warn.click());
+    const fix = await waitFor(() => must(document.querySelector<HTMLElement>('[data-testid="cli-fix"][data-kind="sign-in"]'), 'the fix'), r);
+    // Sign in comes first, Use another CLI last
+    const buttons = Array.from(fix.querySelectorAll('button')).map((b) => b.textContent);
+    expect([buttons[0], buttons.at(-1)]).toEqual(['Sign in', 'Use another CLI']);
+    await r.act(() => must(fix.querySelector<HTMLElement>('[data-testid="cli-fix-sign-in"]'), 'sign in').click());
+    await waitFor(() => expect(signIns).toEqual([['claude', undefined]]), r);
+    await r.act(() => must(document.querySelector<HTMLElement>('[data-testid="cli-fix-other"]'), 'other').click());
     await waitFor(() => must(document.querySelector('[data-testid="chat-properties-form"]'), 'properties'), r);
   });
 });
@@ -2038,5 +2110,66 @@ describe('Next steps, the first seconds of a turn, coming back to Chats (B3)', (
     cleanup();
     run = setup({ chatList: async () => [] });
     await waitFor(() => expect(byText(run.r.container, 'button', 'Archived').getAttribute('aria-pressed')).toBe('true'), run.r);
+  });
+});
+
+describe('unread chats (D8)', () => {
+  it('a chat that answered while you were elsewhere shows a dot and "N unread" in its name', async () => {
+    const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'Answered', unread: 2 }), item({ id: 'c2', title: 'Seen', unread: 0 })] });
+    await waitFor(() => expect(rows(r).length).toBe(2), r);
+    expect(rows(r)[0]!.querySelector('[data-testid="chat-unread"]')).not.toBeNull();
+    expect(rows(r)[0]!.querySelector('a')!.getAttribute('aria-label')).toBe('Answered, 2 unread');
+    expect(rows(r)[1]!.querySelector('[data-testid="chat-unread"]')).toBeNull();
+  });
+
+  it('marks the chat read up to its newest message only while the window is visible, focused and at the bottom', async () => {
+    const reads: unknown[][] = [];
+    let focused = false;
+    Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => focused });
+    try {
+      const { r } = setup(
+        {
+          chatList: async () => [item({ unread: 1 })],
+          chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'where?'), msg(2, 'assistant', 'in calc.go')], hasMore: false }),
+          chatMarkRead: async (...a: unknown[]) => (reads.push(a), { chatId: 'chat_a', lastReadSeq: 2 }),
+        },
+        { id: 'chat_a' },
+      );
+      await waitFor(() => expect(messages(r).length).toBe(2), r);
+      await new Promise((ok) => setTimeout(ok, 50));
+      expect(reads).toEqual([]); // not focused: nothing is read
+      focused = true;
+      await r.act(() => window.dispatchEvent(new Event('focus')));
+      await waitFor(() => expect(reads).toEqual([['chat_a', 2]]), r);
+    } finally {
+      delete (document as unknown as { hasFocus?: unknown }).hasFocus;
+    }
+  });
+});
+
+describe('a new chat starts with the last choice (D2)', () => {
+  it('the chip popover says "From your last chat" once, for what the new chat took from it', async () => {
+    const created = chat({ id: 'c_last', projectId: '', model: 'opus', effort: 'high', permissionMode: 'acceptEdits', fromLast: ['model', 'effort'] });
+    const first = setup({ chatCreate: async () => created });
+    await first.r.act(() => must$(first.r, '[data-testid="chat-new"]').click());
+    await waitFor(() => expect(first.navigated).toEqual(['/chats/c_last']), first.r);
+    cleanup();
+    const { r } = setup({ chatList: async () => [item(created)], chatGet: async () => ({ chat: created, messages: [], hasMore: false }) }, { id: 'c_last' });
+    const open = await waitFor(() => must$(r, '[data-testid="chat-settings-open"]'), r);
+    await r.act(() => open.click());
+    await waitFor(() => expect(doc$$('[data-testid="chat-from-last"]').map((e) => e.textContent)).toEqual(['From your last chat']), r);
+    // the opener closes it again; the mode was not carried: its popover says nothing
+    await r.act(() => open.click());
+    await waitFor(() => expect(doc$$('[data-testid="chat-settings"] form').length).toBe(0), r);
+    const mode = must$(r, '[data-testid="chip-mode"]');
+    await r.act(() => mode.click());
+    await waitFor(() => expect(doc$$('[data-testid="chat-mode-settings"] *').length > 0).toBe(true), r);
+    expect(doc$$('[data-testid="chat-from-last"]')).toHaveLength(0);
+    await r.act(() => mode.click());
+    await waitFor(() => expect(doc$$('[data-testid="chat-mode-settings"] *').length).toBe(0), r);
+    // said once: opened again, the settings no longer say it
+    await r.act(() => open.click());
+    await waitFor(() => expect(doc$$('[data-testid="chat-settings"] form').length).toBe(1), r);
+    expect(doc$$('[data-testid="chat-from-last"]')).toHaveLength(0);
   });
 });

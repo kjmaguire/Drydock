@@ -12,6 +12,10 @@ import { isRecord } from '../../api/guards.ts';
 import type { Chat, ChatAsk, ChatMessage } from '../../api/chatClient.ts';
 import type { AdapterInfo, Connection } from '../../api/types.ts';
 import { needsConfirmation, skipsApprovals } from '../../lib/permission.ts';
+import { windowAttended } from '../../lib/attended.ts';
+import { forgetFromLast, tookFromLast } from './from-last.ts';
+import { useDefaultRules } from './default-rules.tsx';
+import { CliFixButton } from '../shared/cli-fix.tsx';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
@@ -195,6 +199,9 @@ function chatState(c: Chat, running: boolean): { state: 'running' | 'error' | 's
   return c.sessionId ? { state: 'session', words: 'Session kept' } : { state: 'none', words: 'No session yet' };
 }
 
+// the chip popover's line when the new chat took the setting from the person's last choice (D2), said once
+const fromLastCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
+
 /** The conversation of one chat. Keyed by chat id: a new chat is a new feed. */
 export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; onNavigate?: (href: string) => void; onShowList?: () => void }>) {
   const s = services(handle);
@@ -229,6 +236,21 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   const openProps = () => (closeMore(), (propsOpen = true), void handle.update());
 
   feed.addEventListener('change', () => void handle.update());
+  // the read cursor (D8): moved to the newest message only while the person can see it (the window visible and focused, the
+  // conversation at the bottom), as a room does; the core never moves it back
+  let marked = 0;
+  const markRead = () => {
+    const last = feed.messages.at(-1)?.seq ?? 0;
+    if (last <= marked || feed.loading || !list.stick || !windowAttended()) return;
+    marked = last;
+    try {
+      s.client.chatMarkRead(handle.props.id, last).catch(() => undefined);
+    } catch {
+      /* an older core: nothing to mark */
+    }
+  };
+  window.addEventListener('focus', markRead, { signal: handle.signal });
+  document.addEventListener('visibilitychange', markRead, { signal: handle.signal });
   window.addEventListener(
     'keydown',
     (e) => {
@@ -322,6 +344,24 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     return !!c;
   };
 
+  // D9: the rules every new chat starts with, and the person's click that allows a rule here and in every new chat
+  const defaults = useDefaultRules(handle);
+  const allowEverywhere = async (rule: string): Promise<boolean> => {
+    const ok = await act.run(`allow:${rule}`, async () => {
+      if (!feed.chat?.allowedTools.includes(rule)) {
+        const c = await s.client.chatAllowTool(handle.props.id, rule);
+        feed.setChat(c);
+      }
+      return s.client.chatSetDefaultRule(rule, true);
+    });
+    if (ok) defaults.set(ok);
+    return !!ok;
+  };
+  const setDefault = async (rule: string, on_: boolean) => {
+    const ok = await act.run(`default:${rule}`, () => s.client.chatSetDefaultRule(rule, on_));
+    if (ok) defaults.set(ok);
+  };
+
   const disallow = async (rule: string) => {
     const c = await act.run(`disallow:${rule}`, () => s.client.chatDisallowTool(handle.props.id, rule));
     if (c) feed.setChat(c);
@@ -383,6 +423,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     }
     const stick = list.stick;
     if (stick) seenSeq = msgs.at(-1)?.seq ?? 0;
+    if (stick) handle.queueTask(markRead);
     // the messages are in seq order: count back from the newest (nothing is unseen while stuck to the bottom)
     let unseen = 0;
     if (!stick) for (let i = msgs.length - 1; i >= 0 && msgs[i]!.seq > seenSeq; i--) unseen++;
@@ -413,6 +454,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           onAllow={chat.adapter === 'claude' && !readOnly ? (r) => void allow(r) : undefined}
           onRetry={locked ? undefined : () => void send(RETRY_TEXT)}
           onAllowAndRetry={chat.adapter === 'claude' && !locked ? (r) => void allow(r).then((ok) => (ok ? send(RETRY_TEXT) : false)) : undefined}
+          defaultRules={defaults.data ?? []}
+          onAllowEverywhere={chat.adapter === 'claude' && !readOnly ? (r) => void allowEverywhere(r) : undefined}
           onFork={(seq) => void fork(seq)}
           onEdit={locked ? undefined : (seq, text) => resend(seq, text)}
           onRegenerate={locked || i !== msgs.length - 1 || !lastUserSeq ? undefined : () => void resend(lastUserSeq)}
@@ -483,7 +526,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
         <Popover
           open={settingsOpen}
           onOpen={() => ((settingsOpen = true), (modeOpen = false), void handle.update())}
-          onClose={() => ((settingsOpen = false), void handle.update())}
+          onClose={() => ((settingsOpen = false), forgetFromLast(chat.id, ['model', 'effort']), void handle.update())}
           label="Chat settings"
           placement="top-start"
           testId="chat-settings"
@@ -510,12 +553,17 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             </button>
           )}
         >
-          <ChatSettings chat={chat} adapter={adapter} busy={act.busy} error={act.error} onSave={async (u) => !!(await update(u, 'settings'))} onClose={() => ((settingsOpen = false), void handle.update())} />
+          {tookFromLast(chat.id, ['model', 'effort']) ? (
+            <p mix={fromLastCss} data-testid="chat-from-last">
+              From your last chat
+            </p>
+          ) : null}
+          <ChatSettings chat={chat} adapter={adapter} busy={act.busy} error={act.error} onSave={async (u) => !!(await update(u, 'settings'))} onClose={() => ((settingsOpen = false), forgetFromLast(chat.id, ['model', 'effort']), void handle.update())} />
         </Popover>
         <Popover
           open={modeOpen}
           onOpen={() => ((modeOpen = true), (settingsOpen = false), void handle.update())}
-          onClose={() => ((modeOpen = false), void handle.update())}
+          onClose={() => ((modeOpen = false), forgetFromLast(chat.id, ['permissionMode']), void handle.update())}
           label="Approval mode"
           placement="top-start"
           testId="chat-mode-settings"
@@ -535,6 +583,11 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             </button>
           )}
         >
+          {tookFromLast(chat.id, ['permissionMode']) ? (
+            <p mix={fromLastCss} data-testid="chat-from-last">
+              From your last chat
+            </p>
+          ) : null}
           <ModeSettings
             chat={chat}
             adapter={adapter}
@@ -628,6 +681,17 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             {chat.allowedTools.map((r) => (
               <li key={r}>
                 <code>{r}</code>
+                {chat.adapter === 'claude' ? (
+                  (defaults.data ?? []).includes(r) ? (
+                    <Button size="sm" variant="ghost" disabled={!!act.busy || readOnly} aria-label={`Stop allowing ${r} in every new chat`} title="New chats will no longer start with this rule" data-testid="rule-everywhere" data-on="true" mix={[on('click', () => void setDefault(r, false))]}>
+                      In every new chat
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" disabled={!!act.busy || readOnly} aria-label={`Allow ${r} in every new chat too`} data-testid="rule-everywhere" mix={[on('click', () => void setDefault(r, true))]}>
+                      …and in every new chat
+                    </Button>
+                  )
+                ) : null}
                 <Button size="sm" variant="ghost" disabled={!!act.busy} aria-label={`Remove ${r}`} mix={[on('click', () => void disallow(r))]}>
                   Remove
                 </Button>
@@ -711,7 +775,20 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             <Icon icon={Folder} size={12} />
             <span class="txt">{folderChipText(chat, projectName)}</span>
           </span>
-          {warning ? (
+          {warning && !chipRetry && warning !== 'Last turn failed' ? (
+            // the CLI is missing, not signed in or has a notice to accept (A9): the chip opens the fix in place, Sign in first;
+            // "Use another CLI" (Properties) comes last
+            <CliFixButton
+              adapter={chat.adapter}
+              onOther={openProps}
+              trigger={(mix, open) => (
+                <button type="button" mix={[headChip, warnChip, mix]} aria-expanded={open ? 'true' : 'false'} title="Fix it here, or pick another agent CLI" data-testid="chat-cli-warning" data-action="fix">
+                  <Icon icon={TriangleAlert} size={12} />
+                  <span class="txt">{warning}</span>
+                </button>
+              )}
+            />
+          ) : warning ? (
             <button
               type="button"
               mix={[headChip, warnChip, on('click', chipRetry ? chipRetry : openProps)]}
@@ -762,6 +839,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               on('scroll', (e) => {
                 const el = e.currentTarget as HTMLDivElement;
                 list.onScroll();
+                markRead();
                 if (el.scrollTop < 80 && feed.hasMore && !feed.loadingOlder) void loadOlder();
               }),
             ]}

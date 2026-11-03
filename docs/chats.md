@@ -76,8 +76,11 @@ clock can step back, and a write can be stamped before an earlier one commits). 
 library skills chosen for the chat and `mcpServers` workspace library MCP servers granted to it with the tools each may call
 (both empty lists when none; section 6).
 
-`ListItem` is a `Chat` with two more fields: `"preview"` (the start of the latest user or assistant message, at most 160
-characters) and `"messageCount"`.
+`ListItem` is a `Chat` with four more fields: `"preview"` (the start of the latest user or assistant message, at most 160
+characters), `"messageCount"`, `"lastReadSeq"` (the newest message the person has seen, the read cursor, D8) and `"unread"` (the
+assistant messages after it). A fork and an imported chat start read; a resend never leaves the cursor past the messages it
+removes. `chat.create`'s result (and its `chat.created` event) also carries `"fromLast"`, the settings the new chat took from
+the person's last choice (`"model"`, `"effort"`, `"permissionMode"`; omitted when none; not stored).
 
 `Message`:
 
@@ -120,6 +123,11 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.import` | `{sessions: [{sessionId, wslDistro}]}` (at most 500) | `{imported: [{sessionId, chat: Chat, messages}], skipped: [{sessionId, wslDistro, reason, chatId?}]}` (section 7) |
 | `chat.allowTool` | `{id, tool}` | `Chat` |
 | `chat.disallowTool` | `{id, tool}` | `Chat` |
+| `chat.markRead` | `{id, seq}` | `{chatId, lastReadSeq}`: moves the read cursor up to `seq` (never back, never past the newest message); the UI calls it only while the person sees the chat's newest message (D8) |
+| `chat.unread` | `{projectId?}` | `{chats, messages}`: the chats (not archived) with answers after their cursor, and how many answers |
+| `chat.lastChoice` | `{projectId?, adapter?["claude"]}` | `{model, effort, permissionMode}`: what a new chat of that place and CLI starts with (D2; `""` = the CLI's default) |
+| `chat.defaultRules` | `{}` | `{rules}`: the allow rules every new chat starts with (D9) |
+| `chat.setDefaultRule` | `{tool, allow}` | `{rules}`: adds (checked as `chat.allowTool` checks) or removes a rule for every new chat; chats that exist keep their own |
 | `chat.attachment` | `{id}` | `{id, name, mime, size, kind: text \| image \| file, data (base64)}`: a file sent with a message, checked against the hash kept when it was attached (P90) |
 | `chat.asks` | `{id}` | `[PendingAsk]`: the tool calls the chat's ACP agent waits to be allowed (P83). `rule` (when set) is the allow rule `chat.answer` with `remember` would record: set only when the chat's agent takes per-chat allow rules and a safe rule names the call, so the UI offers "Allow <tool> in this chat" only then |
 | `chat.answer` | `{id, askId, allow, remember?}` | `{answered: true}`; allow lets exactly that call run once. With `remember` (and `allow`) also `{rule}`: the allow rule for the call is recorded as `chat.allowTool` records it, so later turns may make it without asking ("Allow Bash in this chat"); Claude chats only, any other adapter is refused with the reason and the request keeps waiting; refused too when the call's input was shortened or redacted or no safe rule names it. The rule is recorded before the call is allowed and taken back when the request is gone meanwhile |
@@ -175,6 +183,13 @@ Rules worth knowing in the UI:
   nested parentheses, a leading `-`, a bare `Bash` or a Bash rule that allows every command, and `; & | $ < >` or backquotes in a
   Bash rule. ACP chats refuse allow rules.
 - `chat.create` and `chat.send` are refused while the license is read-only.
+- `chat.create` fills what it is not given from the person's last choice (D2): `chat.update` with `model`, `effort` or
+  `permissionMode` records the value stored, per place (the chat's project, or none) and agent CLI, in the setting
+  `chats.lastChoice.<project or ->.<adapter>`. A mode that skips approvals is never recorded (the one before stays), a model or
+  effort the CLI no longer takes is not carried, and what the CLI reported (`cliModel`) is never recorded.
+- `chat.create` of a Claude Code chat copies the allow rules set for every new chat (D9, setting `chats.defaultAllowedTools`,
+  each checked by the rule checker) into the chat's own list and records them in a `system` note ("Allowed in every new chat:
+  ..."); they are then the chat's own, removable with `chat.disallowTool`. Skip modes are untouched.
 
 ## 3. Events
 
@@ -193,6 +208,8 @@ Every event carries `chatId` and the chat's project as `projectId` (empty for a 
 | `chat.permission` | `{chatId, ask: PendingAsk}`; `chat.permission_answered` `{chatId, id, outcome: allowed \| refused \| expired \| withdrawn}` (P83) |
 | `chat.rewound` | `{chatId, fromSeq}`: a resend removed the messages from `fromSeq` on (P89) |
 | `chat.message` | `{chatId, message: Message}` for every stored message |
+| `chat.read` | `{chatId, lastReadSeq}`: the read cursor moved (D8) |
+| `chat.default_rules` | `{rules}` (no `chatId`): the rules for every new chat changed (D9) |
 | `chat.turn` | `{chatId, turnId, status: "done" \| "error" \| "stopped", usage: {inputTokens, outputTokens, costUsd (null = unknown)}, sessionId, resumed, fallback, error?}` |
 
 The runtime's own `agent.started`, `agent.mcp`, `agent.output`, `agent.completed` and `agent.stopped` events are published as

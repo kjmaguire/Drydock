@@ -137,6 +137,9 @@ type Chat struct {
 	// ImportedSession is the Claude Code session id it was read from (SessionID starts equal to it and follows the CLI).
 	ImportedFrom    string `json:"importedFrom,omitempty"`
 	ImportedSession string `json:"importedSession,omitempty"`
+	// FromLast names, on chat.create's result only, the settings the new chat took from the person's last choice ("model",
+	// "effort", "permissionMode"; D2). Not stored.
+	FromLast []string `json:"fromLast,omitempty"`
 }
 
 // SkillRef names a workspace library skill chosen for a chat (decision P60).
@@ -158,6 +161,9 @@ type ListItem struct {
 	Chat
 	Preview      string `json:"preview"`      // the start of the latest user or assistant message
 	MessageCount int    `json:"messageCount"` // all stored messages
+	// LastReadSeq is the newest message the person has seen (chat.markRead, D8); Unread counts the answers after it.
+	LastReadSeq int64 `json:"lastReadSeq"`
+	Unread      int   `json:"unread"`
 }
 
 // Message is one stored message.
@@ -425,6 +431,9 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 			return Chat{}, err
 		}
 	}
+	// what the request leaves empty comes from the person's last choice for this scope and CLI (D2)
+	var fromLast []string
+	r.Model, r.Effort, r.PermissionMode, fromLast = s.carried(ctx, strings.TrimSpace(r.ProjectID), r.Adapter, caps, r.Model, r.Effort, r.PermissionMode)
 	mode, err := permissionMode(caps, r.PermissionMode)
 	if err != nil {
 		return Chat{}, err
@@ -434,7 +443,11 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 		return Chat{}, err
 	}
 	c := Chat{ID: ids.New(strings.TrimSuffix(AgentPrefix, "_")), ProjectID: strings.TrimSpace(r.ProjectID), Title: title, Adapter: r.Adapter, WSLDistro: distro, Model: r.Model,
-		Effort: r.Effort, PermissionMode: mode, AllowedTools: []string{}, ReadHistory: r.ReadHistory == nil || *r.ReadHistory, Status: StatusIdle}
+		Effort: r.Effort, PermissionMode: mode, AllowedTools: []string{}, ReadHistory: r.ReadHistory == nil || *r.ReadHistory, Status: StatusIdle, FromLast: fromLast}
+	// the allow rules the person set for every new chat (D9), for an agent that takes rules
+	if takesRules(c.Adapter, caps) {
+		c.AllowedTools = s.DefaultRules(ctx)
+	}
 	if c.Skills, err = s.checkSkills(ctx, c.Adapter, r.Skills); err != nil {
 		return Chat{}, err
 	}
@@ -452,6 +465,15 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 	c.Created, c.Updated, c.Version = now, now, 1
 	if err := s.insertChat(ctx, c); err != nil {
 		return Chat{}, err
+	}
+	if len(c.AllowedTools) > 0 {
+		if _, err := s.insertMessage(ctx, c, "", RoleSystem, "Allowed in every new chat: "+strings.Join(c.AllowedTools, ", ")+". Remove one under Allowed tools.", "", nil); err != nil {
+			s.logf("chats: note the default rules: %v", err)
+		}
+		if got, err := s.Get(ctx, c.ID); err == nil {
+			got.FromLast = c.FromLast
+			c = got // the note raised the version
+		}
 	}
 	s.publish(ctx, "chat.created", c.ProjectID, map[string]any{"chatId": c.ID, "chat": c})
 	return c, nil
@@ -687,7 +709,7 @@ type ListReq struct {
 func (s *Service) List(ctx context.Context, r ListReq) ([]ListItem, error) {
 	q := `SELECT ` + prefixCols("c.") + `,
 		COALESCE((SELECT m.body FROM chat_messages m WHERE m.chat_id=c.id AND m.role IN ('user','assistant') ORDER BY m.seq DESC LIMIT 1),''),
-		(SELECT COUNT(*) FROM chat_messages m WHERE m.chat_id=c.id)
+		(SELECT COUNT(*) FROM chat_messages m WHERE m.chat_id=c.id), ` + unreadCols + `
 		FROM chats c WHERE 1=1`
 	var args []any
 	if r.ProjectID != "" {
@@ -720,7 +742,7 @@ func (s *Service) List(ctx context.Context, r ListReq) ([]ListItem, error) {
 	for rows.Next() {
 		var it ListItem
 		var preview string
-		c, err := scanChat(rows, &preview, &it.MessageCount)
+		c, err := scanChat(rows, &preview, &it.MessageCount, &it.LastReadSeq, &it.Unread)
 		if err != nil {
 			return nil, err
 		}
@@ -1110,6 +1132,10 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 			c.Adapter, c.WSLDistro, c.Cwd, string(sk), string(ms), c.ProjectID, c.CLIModel, c.CLIPermissionMode, storage.Now(), c.ID); err != nil {
 			return err
 		}
+		// the person's choice of model, effort or mode is what the next new chat of this scope and CLI starts with (D2)
+		if err := rememberChoiceTx(ctx, tx, c, r); err != nil {
+			return err
+		}
 		out, err = getTx(ctx, tx, c.ID)
 		return err
 	})
@@ -1279,7 +1305,7 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 				return err
 			}
 		}
-		return nil
+		return markAllReadTx(ctx, tx, n.ID) // what was copied was read in the chat it came from
 	})
 	if err != nil {
 		dropCopies()

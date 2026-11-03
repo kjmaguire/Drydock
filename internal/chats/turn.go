@@ -235,7 +235,8 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 			if _, err := tx.ExecContext(ctx, `DELETE FROM chat_messages WHERE chat_id=? AND seq>=?`, c.ID, r.replaceFrom); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE chats SET session_id='' WHERE id=?`, c.ID); err != nil {
+			// the read cursor never stays past the messages removed: the new answers take their numbers again
+			if _, err := tx.ExecContext(ctx, `UPDATE chats SET session_id='', last_read_seq=MIN(last_read_seq, ?) WHERE id=?`, r.replaceFrom-1, c.ID); err != nil {
 				return err
 			}
 		}

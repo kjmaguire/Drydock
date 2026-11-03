@@ -227,8 +227,29 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
     });
 
   const effectiveWhere = (): Where => (where.kind === 'new' ? { kind: 'new', path: newPath ?? (baseDir.data ? newFolderPath(baseDir.data, text) : '') } : where);
-  const tuned = (): Tuning => tuning ?? (catalog.data ? defaultTuning(catalog.data) : noTuning);
   const adapterId = () => builderAdapter(catalog.data ?? [], adapters.data?.find((a) => a.detection.installed)?.id ?? 'claude');
+  // nothing chosen or remembered for this place: the model, effort and mode the person last chose in a chat of the same place
+  // and CLI (chat.lastChoice, D2), the same source a new chat starts from
+  const lastChat = query(handle, {
+    key: () => `${projectId()}:${adapterId()}`,
+    load: async () => {
+      try {
+        return await s.client.chatLastChoice(projectId(), adapterId());
+      } catch {
+        return undefined;
+      }
+    },
+  });
+  const fromChats = (base: Tuning): Tuning | undefined => {
+    const l = lastChat.data;
+    if (!l || !(l.model || l.effort || l.permissionMode)) return undefined;
+    return { model: l.model || base.model, effort: l.effort || (l.model ? '' : base.effort), permission: l.permissionMode || base.permission };
+  };
+  const tuned = (): Tuning => {
+    if (tuning) return tuning;
+    const base = catalog.data ? defaultTuning(catalog.data) : noTuning;
+    return fromChats(base) ?? base;
+  };
 
   const start = async () => {
     if (act.busy) return;

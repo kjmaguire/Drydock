@@ -9,7 +9,7 @@
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { Plus, Search } from 'lucide';
-import type { Chat } from '../../api/chatClient.ts';
+import type { ChatListItem } from '../../api/chatClient.ts';
 import { agentName, presenceFor, presenceWords } from '../../lib/format.ts';
 import { modelName } from '../../lib/model-name.ts';
 import { parseWorkItem, workItemHref, workItemKey, type WorkItemRef } from '../../lib/route.ts';
@@ -21,6 +21,7 @@ import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ChatConversation } from '../chats/chat-conversation.tsx';
+import { noteFromLast } from '../chats/from-last.ts';
 import { WEEK_MS, firstCheckText, mergedSince, spendLine } from '../overview/overview.ts';
 import { findingsText } from '../security/security.ts';
 import { TaskDetailScreen } from '../tasks/task-detail-screen.tsx';
@@ -78,6 +79,8 @@ const rowCss = css({
   '& > .dot[data-tone="failed"]': { background: t.danger },
   '& > .dot[data-tone="idle"]': { background: 'transparent', boxShadow: `inset 0 0 0 1.5px ${t.textFaint}` },
   '& > .title': { minWidth: '0', fontSize: t.textMd, fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  // a chat that answered while the person was elsewhere (D8): a dot after its title
+  '& > .title > .unread': { display: 'inline-block', width: '7px', height: '7px', marginLeft: '6px', borderRadius: '50%', background: t.accent, verticalAlign: 'middle' },
   '& > .line': { gridColumn: '2', minWidth: '0', color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   '&:hover': { background: t.bgHover, textDecoration: 'none' },
   '&[aria-current="true"]': { background: t.bgActive },
@@ -149,7 +152,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
   watch(handle, s.project);
   const pid = () => s.workspace.projectId;
   const on_ = { key: pid, enabled: () => !!pid() };
-  const chats = query(handle, { load: (): Promise<Chat[]> => s.client.chatList({ projectId: pid()! }), when: (e) => e.type.startsWith('chat.'), ...on_ });
+  const chats = query(handle, { load: (): Promise<ChatListItem[]> => s.client.chatList({ projectId: pid()! }), when: (e) => e.type.startsWith('chat.'), ...on_ });
   const budget = query(handle, { load: () => s.client.budgetStatus({ projectId: pid()! }), when: (e) => e.type.startsWith('budget.') || e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const evals = query(handle, { load: () => s.client.evalsReport({ projectId: pid()!, sinceMs: Date.now() - WEEK_MS }), when: (e) => e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const scan = query(handle, { load: () => s.client.securityScanGet(pid()!), when: (e) => e.type.startsWith('security.'), ...on_ });
@@ -163,6 +166,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
   const newChat = () =>
     act.run('chat', async () => {
       const c = await s.client.chatCreate({ projectId: pid() });
+      noteFromLast(c);
       go(workItemHref({ kind: 'chat', id: c.id }));
     });
 
@@ -176,9 +180,13 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
         data-group={r.group}
         data-item={r.key}
         aria-current={r.key === open ? 'true' : undefined}
+        data-unread={r.unread > 0 ? 'true' : undefined}
       >
         <span class="dot" data-tone={r.tone} aria-hidden="true" />
-        <span class="title">{r.title}</span>
+        <span class="title">
+          {r.title}
+          {r.unread > 0 ? <span class="unread" data-testid="work-unread" title={`${r.unread} unread`} aria-hidden="true" /> : null}
+        </span>
         <span class="line">{r.line}</span>
       </a>
     </li>

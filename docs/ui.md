@@ -84,7 +84,8 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
   project; Running and Mine, once the My tasks page, are its tabs, and `/needs-you?tab=running` and `/my-tasks` open them; the
   Inbox opens on the tab it was left on, kept in `drydock.inbox`, and the selected row is in its address, `/needs-you?item=<row
   key>`, so Reload and Back come back to it; 2026-11-02, C14);
-  **Chats**; then **Projects**, one line each (decision P141: a click opens the project's **Work**, `/`; the open one is marked
+  **Chats** (with the count of chats that answered while the person was elsewhere, `chats-unread`, from `chat.unread`: "Chats,
+  2 unread"; D8); then **Projects**, one line each (decision P141: a click opens the project's **Work**, `/`; the open one is marked
   and shows its task count; a project with items waiting on the person shows their amber count at the end of its line, a link of
   its own to its first item in the Inbox, `nav-project-needs`, a small badge on the rail; 2026-11-02, G9; its Work, Crew and
   Settings are the project's tab bar, not sub-items); at the foot **Agents** (`/library`, `nav-library`)
@@ -109,7 +110,7 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
   (`chat.list` for the project) grouped **Needs you** (a task or chat with an Inbox item, by urgency, or a task waiting for a
   person), **Running** (newest first; a task not started yet has a hollow dot) and **Earlier** (merged, failed, cancelled, idle
   chats), each row a status dot, the title and one faint line ("Ready to merge · +42 −3", "Ada · 4 min", "Merged · yesterday",
-  "Chat · Tue"); under it Board, Pull requests and Rooms (`nav-tasks`, `nav-pulls`, `nav-rooms`; Rooms carries the rooms' unread count, `nav-rooms-unread`, so an agent's answer is seen from Work, X18). The centre is the item open,
+  "Chat · Tue"; a chat with answers the person has not seen has a dot after its title and "3 unread" in its line, D8); under it Board, Pull requests and Rooms (`nav-tasks`, `nav-pulls`, `nav-rooms`; Rooms carries the rooms' unread count, `nav-rooms-unread`, so an agent's answer is seen from Work, X18). The centre is the item open,
   named in the URL (`/?item=task:<id>` or `chat:<id>`, `parseWorkItem`/`workItemHref` in `lib/route.ts`), so Reload and Back keep
   it: a task's own page (`TaskDetailScreen` with `embedded`: the properties go under the work) or the chat (`ChatConversation`,
   P139); with none named, the first that needs you, else the first running, else one line and Describe a task. The shell treats
@@ -481,15 +482,32 @@ Review changes (a dialog of the diffs), and the replies an offer invites are chi
 the stream and typing cost nothing more). Ctrl+O (verbose, kept per viewer in `localStorage` `drydock.chat.verbose`) opens every
 line; the composer says so in one faint line. The header is the title, the folder or project chip ("Own folder" for a chat in
 its private folder, the path in the tooltip; decision P144), one warning chip when the CLI
-is in a bad state, and ⋯ (a popover: the CLI with its state, where the chat runs, skills and MCP servers, Allowed tools as a
+is in a bad state (missing, not signed in, a notice to accept: the chip opens the fix in place, `screens/shared/cli-fix.tsx`, A9:
+Sign in runs the CLI's own sign-in in a terminal there and checks again, else the install command with Copy and a link, else the
+notice with a tick and Accept; "Use another CLI", Properties, last), and ⋯ (a popover: the CLI with its state, where the chat runs, skills and MCP servers, Allowed tools as a
 second view of the same panel, Properties, Fork, Move to a project). The composer's chips: agent CLI (opens Properties), model ·
 effort (chat settings), permission mode, then attach files, attach chats, Stop and Send. No explanatory paragraphs: an empty chat
 is the composer with the cursor in it; the empty Chats page is one line and New chat. `ChatConversation`
 (`screens/chats/chat-conversation.tsx`) renders one chat without the list for a page that embeds it.
 
+**Unread chats, the last choice, rules for every new chat, the CLI's fix (as built, lane B batch B2).** A chat keeps a read
+cursor (`chat.markRead`): the open chat moves it to its newest message only while the window is visible and focused and the
+conversation is at the bottom (`lib/attended.ts`, the rooms' rule), so a chat that answered while the person was elsewhere lists
+with a dot and ", N unread" in its name (`chat-unread`), the Chats link counts such chats and Work's chat rows show the dot (D8;
+no toast: G2's toast surface is not on this branch). A new chat (New chat, Work's New chat, the dialog) starts with the model,
+effort and mode the person last chose with the chips for the same place (a project, or none) and CLI; a mode that skips
+approvals is never carried, and the chip's popover says "From your last chat" the first time it is opened (`from-last.ts`);
+Home's chips start from the same choice when nothing is remembered for the place (D2). A refusal's callout and Allowed tools
+offer "…and in every new chat": the rule, checked by the core as a chat's own, is copied into every new Claude Code chat (listed
+there and removable, with a note in the chat), and the list is on Settings > Agent CLIs, Claude Code's Overview, under Chats
+(`default-rules.tsx`; D9). The New chat refusal for the CLI, the new chat dialog (a chosen CLI not signed in) and the Inbox's
+agent-CLI item offer the same fix as the chat's warning chip (A9). Tests: `chats-screen.test.browser.tsx`,
+`sidebar.test.browser.tsx`, `work.test.ts`, `workspace-home.test.browser.tsx`, `default-rules.test.browser.tsx`,
+`cli-fix.test.browser.tsx`, `needs-you-screen.test.browser.tsx`, `internal/core/chats_newchat_test.go`.
+
 **Chats quick wins (as built, B3).** A turn's next step is on its row: the error a failed turn ends with offers **Try again**
 (`chat.resend` of the person's last message, one new turn on the click), and so does the header's "Last turn failed" chip (off, like the row's, until the resend is answered; a CLI
-that is missing or signed out still opens Properties); "Stopped by you." offers **Continue** (sends "Continue.", the core quotes
+that is missing or signed out opens its fix, A9); "Stopped by you." offers **Continue** (sends "Continue.", the core quotes
 what was shown up to the stop); a send refused because the folder is gone offers **Choose folder…** (Properties) and, for a chat
 without a project, **Use its own folder** (`chat.update cwd ""`), the message waiting in the box. Before any text a turn says what
 it is doing (`chat-phase`): "Starting Claude Code…" until the runtime's `agent.started` for the chat, then "Thinking…", then

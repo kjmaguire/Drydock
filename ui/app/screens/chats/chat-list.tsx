@@ -101,6 +101,9 @@ const rowCss = css({
   '& .run i': { width: '6px', height: '6px', borderRadius: '50%', background: t.success, animation: 'dd-chat-pulse 1.2s ease-in-out infinite' },
   '@keyframes dd-chat-pulse': { '50%': { opacity: '0.35' } },
   '& .err': { width: '6px', height: '6px', borderRadius: '50%', background: t.danger, flex: 'none' },
+  // answers the person has not seen (D8): a dot after the title
+  '& .unread': { width: '7px', height: '7px', borderRadius: '50%', background: t.accent, flex: 'none' },
+  '& a[data-unread] .title > span': { fontWeight: '600' },
 });
 // the actions button sits over the row's time and shows on hover or focus
 const moreCss = css({
@@ -168,7 +171,7 @@ export function ChatList(
   const scope = () => (all || !handle.props.projectId ? '' : handle.props.projectId);
   const chats = query(handle, {
     load: () => s.client.chatList({ projectId: scope(), includeArchived: archived }),
-    when: (e) => e.type === 'chat.created' || e.type === 'chat.updated' || e.type === 'chat.deleted' || e.type === 'chat.turn_started' || e.type === 'chat.turn',
+    when: (e) => e.type === 'chat.created' || e.type === 'chat.updated' || e.type === 'chat.deleted' || e.type === 'chat.turn_started' || e.type === 'chat.turn' || e.type === 'chat.read',
     key: () => [scope(), archived],
     debounceMs: 150,
   });
@@ -257,14 +260,21 @@ export function ChatList(
   const row = (c: ChatListItem) => {
     const { selectedId } = handle.props;
     const title = chatTitle(c);
+    const unread = c.unread ?? 0;
     return (
       <li key={c.id} class="chat-row" mix={rowCss} data-testid="chat-row" data-chat-id={c.id} data-pinned={c.pinned ? 'true' : undefined}>
-        <a href={routes.chat.href({ id: c.id })} aria-current={selectedId === c.id ? 'page' : undefined} aria-label={`${title}${c.status === 'running' ? ', running' : ''}${c.pinned ? ', pinned' : ''}`}>
+        <a
+          href={routes.chat.href({ id: c.id })}
+          aria-current={selectedId === c.id ? 'page' : undefined}
+          data-unread={unread > 0 ? 'true' : undefined}
+          aria-label={`${title}${c.status === 'running' ? ', running' : ''}${c.pinned ? ', pinned' : ''}${unread > 0 ? `, ${unread} unread` : ''}`}
+        >
           <span class="title">
             {c.pinned ? <Icon icon={Pin} size={11} /> : null}
             <span>{title}</span>
             {c.archived ? <Badge>archived</Badge> : null}
             {c.status === 'error' ? <span class="err" title={c.lastError || 'The last turn failed'} /> : null}
+            {unread > 0 ? <span class="unread" data-testid="chat-unread" title={`${unread} unread`} /> : null}
           </span>
           <span class="line">
             <span title={new Date(c.updatedAt).toLocaleString()}>

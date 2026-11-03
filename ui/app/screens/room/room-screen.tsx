@@ -166,10 +166,8 @@ const askRowCss = css({
 });
 const olderCss = css({ display: 'flex', justifyContent: 'center', padding: `${t.s2} 0` });
 
-/** The person is looking at this window: it is visible and has focus. Messages are marked read only then. */
-export function windowAttended(doc: Document = document): boolean {
-  return doc.visibilityState === 'visible' && doc.hasFocus();
-}
+import { windowAttended } from '../../lib/attended.ts';
+export { windowAttended };
 
 
 /** The conversation of one room. Keyed by room id: a new room is a new feed. */

@@ -57,6 +57,14 @@ describe('Work (decision P141)', () => {
     expect([tone['task:merge'], tone['task:run'], tone['task:back'], tone['task:done'], tone['task:fail'], tone['chat:c-old']]).toEqual(['needs', 'running', 'idle', 'done', 'failed', 'quiet']);
   });
 
+  it("marks a chat with answers you have not seen: a count in its line and on the row (D8)", () => {
+    const [r] = workRows({ tasks: [], chats: [chat({ id: 'c9', unread: 3, updatedAt: now - 20 * MIN })], needs: [], now });
+    expect(r!.unread).toBe(3);
+    expect(r!.line).toBe('Chat · 3 unread · 20 min');
+    const [seen] = workRows({ tasks: [], chats: [chat({ id: 'c9', updatedAt: now - 20 * MIN })], needs: [], now });
+    expect([seen!.unread, seen!.line]).toEqual([0, 'Chat · 20 min']);
+  });
+
   it('a need line names the gate and the size of the change', () => {
     expect(needLine(need({ phase: 'spec' }))).toBe('Accept the spec');
     expect(needLine(need({ kind: 'approval' }))).toBe('Approval');

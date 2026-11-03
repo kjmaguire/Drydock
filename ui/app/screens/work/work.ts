@@ -27,6 +27,8 @@ export interface WorkRow {
   at: number;
   /** The most urgent Needs-you item's severity (lower is more urgent); 99 for a row that needs nothing. */
   severity: number;
+  /** A chat's answers the person has not seen (D8); 0 for a task. */
+  unread: number;
 }
 
 export const GROUP_TITLE: Record<WorkGroup, string> = { needs: 'Needs you', running: 'Running', earlier: 'Earlier' };
@@ -36,7 +38,7 @@ const RUNNING = new Set(['CLAIMED', 'IN_PROGRESS', 'REVIEW', 'VERIFICATION']);
 export const isRunningStatus = (status: string): boolean => RUNNING.has(status);
 const DONE_WORDS: Record<string, string> = { COMPLETED: 'Merged', FAILED: 'Failed', CANCELLED: 'Cancelled' };
 
-export type WorkChat = Pick<Chat, 'id' | 'title' | 'status' | 'updatedAt' | 'createdAt'>;
+export type WorkChat = Pick<Chat, 'id' | 'title' | 'status' | 'updatedAt' | 'createdAt'> & { unread?: number };
 
 export interface WorkInput {
   tasks: readonly Task[];
@@ -83,7 +85,7 @@ export function workRows(input: WorkInput): WorkRow[] {
     else if (RUNNING.has(x.status)) row = { group: 'running', tone: 'running', line: join(who || 'Running', when) };
     else if (x.status === 'BLOCKED') row = { group: 'running', tone: 'quiet', line: join('Blocked', when) };
     else row = { group: 'running', tone: 'idle', line: join(who ? `${who}, not started` : 'Not started', when) };
-    rows.push({ ref, key, title: x.title, at, severity: need?.severity ?? 99, ...row });
+    rows.push({ ref, key, title: x.title, at, severity: need?.severity ?? 99, unread: 0, ...row });
   }
   for (const c of input.chats) {
     const ref: WorkItemRef = { kind: 'chat', id: c.id };
@@ -91,9 +93,11 @@ export function workRows(input: WorkInput): WorkRow[] {
     const need = needOf.get(key);
     const at = ms(c.updatedAt || c.createdAt);
     const title = c.title || 'New chat';
-    if (need) rows.push({ ref, key, title, at, severity: need.severity, group: 'needs', tone: 'needs', line: join(needLine(need), 'Chat') });
-    else if (c.status === 'running') rows.push({ ref, key, title, at, severity: 99, group: 'running', tone: 'running', line: 'Chat · answering' });
-    else rows.push({ ref, key, title, at, severity: 99, group: 'earlier', tone: c.status === 'error' ? 'failed' : 'quiet', line: join('Chat', c.status === 'error' ? 'failed' : '', listWhen(at, now)) });
+    const unread = c.unread ?? 0;
+    const news = unread > 0 ? `${unread} unread` : '';
+    if (need) rows.push({ ref, key, title, at, severity: need.severity, unread, group: 'needs', tone: 'needs', line: join(needLine(need), 'Chat') });
+    else if (c.status === 'running') rows.push({ ref, key, title, at, severity: 99, unread, group: 'running', tone: 'running', line: 'Chat · answering' });
+    else rows.push({ ref, key, title, at, severity: 99, unread, group: 'earlier', tone: c.status === 'error' ? 'failed' : 'quiet', line: join('Chat', c.status === 'error' ? 'failed' : '', news, listWhen(at, now)) });
   }
   const order: Record<WorkGroup, number> = { needs: 0, running: 1, earlier: 2 };
   return rows.sort((a, b) => order[a.group] - order[b.group] || (a.group === 'needs' ? a.severity - b.severity : 0) || b.at - a.at || a.key.localeCompare(b.key));
