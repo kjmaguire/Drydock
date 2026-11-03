@@ -452,12 +452,21 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	c, err := core.Open(context.Background(), core.Config{
 		PickFile:   pickFile,
 		PickFolder: pickFolder,
-		DevDrives:  devDrives,
-		DataDir:    filepath.Join(root, "data"),
-		User:       "e2e",
-		LeaseTTL:   3 * time.Second,
-		Adapters:   map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
-		WSL:        wslHost,
+		// TEST DOUBLES for "Reveal in Explorer" and "Open in your editor" (effort review X26): the shell starts nothing, and PATH
+		// holds only VS Code's command. The desktop app starts Explorer or the editor (app/openpath_windows.go).
+		OpenPath: func(context.Context, core.PathOpen) error { return nil },
+		LookPath: func(name string) (string, error) {
+			if name == "code" {
+				return filepath.Join(root, "bin", "code.exe"), nil
+			}
+			return "", fmt.Errorf("%s is not on PATH", name)
+		},
+		DevDrives: devDrives,
+		DataDir:   filepath.Join(root, "data"),
+		User:      "e2e",
+		LeaseTTL:  3 * time.Second,
+		Adapters:  map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
+		WSL:       wslHost,
 		ScanTools: scan.Paths{OSV: scan.Tool{Path: self, Args: scantest.Args("osv-scanner", "--sleep-ms=1500")},
 			Opengrep: scan.Tool{Path: self, Args: scantest.Args("opengrep", "--sleep-ms=2500")}},
 		ScanRulesDir: scanRules,

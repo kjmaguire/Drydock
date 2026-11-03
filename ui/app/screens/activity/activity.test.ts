@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { DrydockEvent } from '../../api/types.ts';
-import { defaultFilter, filterRows, inScope, matchesFilter, mergeRows, readFilter, selectRows, typeFamily, typeTone, writeFilter } from './activity.ts';
+import { defaultFilter, filterRows, inScope, matchesFilter, mergeRows, readDepth, readFilter, selectRows, typeFamily, typeTone, writeDepth, writeFilter } from './activity.ts';
 
 const ev = (seq: number, type: string, extra: Partial<DrydockEvent> = {}): DrydockEvent => ({ seq, time: '2026-01-01T00:00:00Z', type, ...extra });
 
@@ -80,5 +80,20 @@ describe('activity helpers', () => {
     expect(mergeRows(a, b).map((x) => `${x.seq}${x.k}`)).toEqual(['1a', '2b', '4a', '9a', '12b']);
     expect(mergeRows([], b)).toEqual(b);
     expect(mergeRows(a, [])).toEqual(a);
+  });
+});
+
+describe('the remembered depth (X53)', () => {
+  it('reads back what was written per project, and anything unreadable as none', () => {
+    const kept = new Map<string, string>();
+    const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+    expect(readDepth('p1', store)).toBe(0);
+    writeDepth('p1', 3, store);
+    expect(readDepth('p1', store)).toBe(3);
+    expect(readDepth('p2', store)).toBe(0);
+    kept.set('drydock.activity.depth.p2', 'lots');
+    expect(readDepth('p2', store)).toBe(0);
+    const broken = { getItem: () => { throw new Error('denied'); } };
+    expect(readDepth('p1', broken)).toBe(0);
   });
 });

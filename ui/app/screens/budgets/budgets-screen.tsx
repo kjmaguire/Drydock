@@ -276,7 +276,7 @@ export function BudgetsScreen(handle: Handle) {
           )
         ) : (
           <>
-            <ErrorNote error={q.error} what="Could not list budgets" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not list budgets" />
             {q.loading && !q.data ? <Loading /> : null}
             {q.data && rows.length === 0 && !adding ? (
               <Empty title="No budgets" icon={PiggyBank}>

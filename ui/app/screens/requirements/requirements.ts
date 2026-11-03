@@ -1,6 +1,6 @@
 // Pure helpers for the Requirements screen.
 
-import type { TraceEvidence } from '../../api/extTypes.ts';
+import type { LinkSuggestion, TraceEvidence } from '../../api/extTypes.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
 export const MAX_FILE_BYTES = 1_000_000;
@@ -71,3 +71,35 @@ export function linkCriteria(taskCriteria: readonly string[], ticked: ReadonlySe
 
 /** The Link button: "Link 3 criteria of #12". */
 export const linkLabel = (n: number, seq?: number): string => (seq === undefined || n === 0 ? 'Link' : `Link ${n} ${n === 1 ? 'criterion' : 'criteria'} of #${seq}`);
+
+/** Why a task is suggested for a requirement (X43): the part of the task whose words all occur in a passage, and the passage. */
+export function suggestionWhy(sg: Pick<LinkSuggestion, 'matched' | 'heading'>): string {
+  const what = sg.matched === 'criterion' ? 'a criterion' : 'its title';
+  const where = sg.heading.split(' > ').pop() ?? '';
+  return where ? `${what} matches "${where}"` : `${what} matches the text`;
+}
+
+/** Where the suggestions the person dismissed for a requirement are kept (this browser only). */
+export const dismissedKey = (reqId: string) => `drydock.reqDismissed.${reqId}`;
+
+/** The task ids whose suggestion the person dismissed for a requirement. */
+export function dismissedSuggestions(reqId: string): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(dismissedKey(reqId)) ?? '[]') as unknown;
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Dismisses a suggestion (kept in this browser; at most the last 200) and returns the dismissed set. */
+export function dismissSuggestion(reqId: string, taskId: string): Set<string> {
+  const out = dismissedSuggestions(reqId);
+  out.add(taskId);
+  try {
+    localStorage.setItem(dismissedKey(reqId), JSON.stringify([...out].slice(-200)));
+  } catch {
+    // storage blocked: dismissed for this page only
+  }
+  return out;
+}

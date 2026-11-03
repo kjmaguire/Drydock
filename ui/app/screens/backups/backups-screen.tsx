@@ -6,7 +6,7 @@ import { Archive, CalendarClock, DatabaseBackup, FolderClock, History, RotateCcw
 import type { BackupInfo, BackupVerify, RestoreStaged } from '../../api/pkgTypes.ts';
 import { formatBytes, formatDateTime } from '../../lib/format.ts';
 import { starts } from '../../state/live.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, kv, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
@@ -242,7 +242,7 @@ export function BackupsScreen(handle: Handle) {
     return (
       <Page title="Backups" icon={DatabaseBackup} subtitle={l ? `${backups.length} in the backup folder` : undefined} guide="backups">
         <div mix={settingsColumn}>
-          <ErrorNote error={list.error ?? status.error ?? act.error} what="Backups" />
+          <ErrorNote error={list.error ?? status.error ?? act.error} retry={retryFor(list, status, act)} what="Backups" />
 
           {pending?.pending ? (
             <Callout tone="warn" icon={History} role="status" testId="restore-pending" title="A restore is staged">

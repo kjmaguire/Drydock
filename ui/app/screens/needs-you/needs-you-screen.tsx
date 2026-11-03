@@ -18,9 +18,10 @@ import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { starts } from '../../state/live.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import type { InboxTab } from '../../state/ui.ts';
 import { Button, buttonStyle } from '../../ui/button.tsx';
+import { supportFor } from '../support/support.ts';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { headerCss } from '../../ui/layout.tsx';
@@ -29,12 +30,16 @@ import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
 import { RunAgainButton } from '../shared/run-again.tsx';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
+import { GateAnswer, hasGatePanel } from '../tasks/review-panel.tsx';
+import { AskCard } from '../chats/chat-asks.tsx';
 import { MyTasksList } from './my-tasks-screen.tsx';
 import { CliFix, distroOfKey } from '../shared/cli-fix.tsx';
 import { ProblemFix, problemOpenLabel } from './problem-fix.tsx';
 import {
   answerOf,
   canAck,
+  chatAskOf,
+  pendingOf,
   clock,
   doingWords,
   KIND_LABEL,
@@ -77,6 +82,7 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
   agent: { icon: Bot, tone: 'err' },
   connection: { icon: PlugZap, tone: 'err' },
   problem: { icon: TriangleAlert, tone: 'warn' },
+  changes: { icon: MessageSquare, tone: 'warn' },
 };
 
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
@@ -470,7 +476,7 @@ export function NeedsYouScreen(
               </span>
               <span class="sub" data-testid="needs-sub">{needsSubtitle(it, p?.name, summary, now)}</span>
             </span>
-            {isSel && answered?.key === r.key && answered.kind !== 'open' ? <kbd aria-hidden="true">A</kbd> : null}
+            {isSel && answered?.key === r.key && answered.kind !== 'open' && answered.kind !== 'gate' ? <kbd aria-hidden="true">A</kbd> : null}
           </button>
         </li>
       );
@@ -557,7 +563,7 @@ export function NeedsYouScreen(
             </Button>
           ) : null}
         </div>
-        <ErrorNote error={ws.needs.error} what="Could not load what needs you" />
+        <ErrorNote error={ws.needs.error} retry={retryFor(ws.needs)} what="Could not load what needs you" />
         {ws.needs.loading && !ws.needs.data ? <Loading /> : null}
         {ws.needs.data && needs.length === 0 ? <p mix={emptyCss}>Nothing is waiting for you. Approvals, spec gates, reviews and questions from every project appear here.</p> : null}
         {needs.length ? (
@@ -572,7 +578,7 @@ export function NeedsYouScreen(
         <h2 id="inbox-running" mix={groupCss} style={{ paddingTop: active === 'needs' ? '18px' : undefined }}>
           Running
         </h2>
-        <ErrorNote error={ws.summaries.error} what="Could not load the running tasks" />
+        <ErrorNote error={ws.summaries.error} retry={retryFor(ws.summaries)} what="Could not load the running tasks" />
         {ws.summaries.data && running === 0 ? <p mix={emptyCss}>No agent is working on a task and no scan runs.</p> : null}
         {runRowsHere.length ? (
           <ul mix={listCss} aria-label="Running now">
@@ -586,7 +592,7 @@ export function NeedsYouScreen(
         <h2 id="inbox-done" mix={groupCss}>
           Done today
         </h2>
-        <ErrorNote error={done.error} what="Could not load the tasks done today" />
+        <ErrorNote error={done.error} retry={done.reload} what="Could not load the tasks done today" />
         {done.loading && !done.data ? <Loading /> : null}
         {done.data && doneList.length === 0 ? <p mix={emptyCss}>No task was completed today yet.</p> : null}
         {doneList.length ? (
@@ -705,10 +711,24 @@ function NeedsDetail(
     enabled: () => !!handle.props.item.approvalId,
     when: (e) => starts(e, 'approval.', 'run.', 'permission.'),
   });
+  // a chat's waiting tool call (chat-ask:<id>): answered here with the chat's own card (C3)
+  const asks = query(handle, {
+    load: () => s.client.chatAsks(chatAskOf(handle.props.item)!.chatId),
+    enabled: () => !!chatAskOf(handle.props.item),
+    when: (e) => starts(e, 'chat.permission'),
+  });
   const act = action(handle);
   let sent = false;
 
-  const answer = (): Answer => (detail.data ? answerOf(detail.data) : { kind: 'open' });
+  const ask = () => {
+    const c = chatAskOf(handle.props.item);
+    return c ? asks.data?.find((x) => x.id === c.askId) : undefined;
+  };
+  const answer = (): Answer => {
+    if (detail.data) return answerOf(detail.data, hasGatePanel);
+    const c = chatAskOf(handle.props.item);
+    return c && ask() ? { kind: 'chat', ...c } : { kind: 'open' };
+  };
   const readOnly = () => s.workspace.license.readOnly;
   const respond = (label: string, fn: () => Promise<void>) =>
     void act.run(label, async () => {
@@ -717,16 +737,41 @@ function NeedsDetail(
       // the item leaves the list when the core says so; the counts and the list read again now
       await s.workspace.needs.reload();
     });
-  const approve = (once = false) => {
+  // a chat's request: Allow once (exactly that call), Allow in this chat (its rule recorded), Deny
+  const answerChat = (how: 'allow' | 'deny' | 'remember') => {
+    const a = answer();
+    if (a.kind !== 'chat' || act.busy || sent || (how !== 'deny' && readOnly())) return;
+    respond(how, async () => {
+      if (how === 'remember') await s.client.chatAllowAndRemember(a.chatId, a.askId);
+      else await s.client.chatAnswer(a.chatId, a.askId, how === 'allow');
+    });
+  };
+  // a gate's panel answers on the request's run, as on the task page
+  const respondGate = async (decision: string, data?: unknown) => {
     const a = answer();
     const d = detail.data;
+    if (!d || a.kind !== 'gate' || act.busy || sent) return;
+    await act.run('gate', async () => {
+      await s.client.runRespond(a.runId, d.id, decision, data);
+      sent = true;
+      await s.workspace.needs.reload();
+      return true;
+    });
+  };
+  const approve = (once = false) => {
+    const a = answer();
+    if (a.kind === 'chat') return answerChat('allow');
+    const d = detail.data;
     // an answer already sent is not sent again by a second key while the item waits to leave the list (audit 2026-10-27)
-    if (!d || a.kind === 'open' || readOnly() || act.busy || sent) return;
+    // a gate's answers are its panel's buttons (a waiver keeps its second click): no key answers it
+    // a review a collaborator asked changes on is not merged by a key: its answer is Send back, or the task's page
+    if (!d || a.kind === 'open' || a.kind === 'gate' || a.kind === 'changes' || readOnly() || act.busy || sent) return;
     if (a.kind === 'permission' && a.forTask && !once) respond('approve', () => s.client.runApproveForTask(a.runId, d.id));
     else respond(once ? 'once' : 'approve', () => s.client.runRespond(a.runId, d.id, 'approved'));
   };
   const deny = () => {
     const a = answer();
+    if (a.kind === 'chat') return answerChat('deny');
     const d = detail.data;
     if (!d || (a.kind !== 'permission' && a.kind !== 'approval') || act.busy || sent) return;
     respond('deny', () => s.client.runRespond(a.runId, d.id, 'rejected'));
@@ -755,7 +800,7 @@ function NeedsDetail(
     const d: ApprovalDetail | undefined = detail.data;
     const a = answer();
     const busy = !!act.busy || sent;
-    if (d) handle.queueTask(() => handle.props.onAnswer?.(a.kind));
+    if (d || a.kind === 'chat') handle.queueTask(() => handle.props.onAnswer?.(a.kind));
     const ro = readOnly();
     const title = needsRowTitle(it, summary);
     // a budget item's detail is what to do: it is the hint below, not said twice
@@ -769,7 +814,7 @@ function NeedsDetail(
     const failing = (summary?.checks ?? []).filter((c) => c.status === 'failed').map((c) => c.kind);
     const spec = d && d.kind === 'review' && d.phase === 'spec' ? specPayload({ id: d.id, nodeId: '', step: 0, spec: { kind: d.kind, title: d.title, payload: d.payload, phase: d.phase } }) : undefined;
     const permission = a.kind === 'permission';
-    const review = look === 'spec' || look === 'merge' || look === 'plan' || look === 'review';
+    const review = look === 'spec' || look === 'merge' || look === 'plan' || look === 'review' || look === 'changes';
     const expires = d?.expiresAt || msOf(it.expiresAt);
     const answerHere = a.kind !== 'open';
     const budgetPage = it.kind === 'budget' && it.budgetState !== 'paused';
@@ -817,7 +862,7 @@ function NeedsDetail(
           </h2>
           {description ? <p data-testid="detail-description">{visible(description)}</p> : null}
           {/* what to do where it is decided, for what is not answered here */}
-          {(!d || a.kind === 'open') && hint ? <p data-testid="needs-hint">{hint}</p> : null}
+          {(!d || a.kind === 'open') && a.kind !== 'chat' && hint ? <p data-testid="needs-hint">{hint}</p> : null}
           {/* an agent CLI that is not ready: its fix here, Sign in first (A9); the Agents page keeps the full detail */}
           {/* what went wrong in the background: its fix here where there is one (B6, F14 and H7) */}
           {look === 'problem' ? <ProblemFix key={it.key} item={it} /> : null}
@@ -825,7 +870,7 @@ function NeedsDetail(
           {/* a request answered here keeps its page one step away, under what it is about */}
           {answerHere ? <div mix={openRow}>{openLink}</div> : null}
         </div>
-        <ErrorNote error={detail.error} what="Could not read the request" />
+        <ErrorNote error={detail.error} retry={detail.reload} what="Could not read the request" />
         {it.approvalId && detail.loading && !d ? <Loading /> : null}
         <dl mix={dlCss} data-testid="detail-facts">
           {agent || it.agentName ? (
@@ -944,6 +989,43 @@ function NeedsDetail(
             Answer sent. It leaves the inbox when the core confirms.
           </p>
         ) : null}
+        {a.kind === 'gate' && d ? (
+          <div data-testid="detail-gate">
+            <GateAnswer
+              p={pendingOf(d)}
+              runId={a.runId}
+              busy={busy}
+              readOnly={ro}
+              onRespond={respondGate}
+              onDone={() => {
+                sent = true;
+                void s.workspace.needs.reload();
+                void handle.update();
+              }}
+            />
+          </div>
+        ) : null}
+        {a.kind === 'changes' && d?.prReview ? (
+          <div mix={staysCss} data-testid="detail-pr-review">
+            <span class="h">{visible(d.prReview.summary)}</span>
+            <span class="b">Send back sends the worker these words. Nothing was sent yet.</span>
+            <pre class="b" style={{ whiteSpace: 'pre-wrap', margin: '0', overflowWrap: 'anywhere' }}>
+              {visible(d.prReview.feedback)}
+            </pre>
+          </div>
+        ) : null}
+        {a.kind === 'chat' && ask() ? (
+          <div data-testid="detail-chat-ask">
+            <AskCard
+              ask={ask()!}
+              cli="The chat's agent"
+              busy={act.busy ? `${act.busy}:${a.askId}` : sent ? 'sent' : ''}
+              readOnly={ro}
+              onAnswer={(allow) => answerChat(allow ? 'allow' : 'deny')}
+              onRemember={() => answerChat('remember')}
+            />
+          </div>
+        ) : null}
         <div mix={actionsCss} data-testid="detail-actions">
           {a.kind === 'permission' || a.kind === 'approval' ? (
             <>
@@ -959,6 +1041,16 @@ function NeedsDetail(
                 </Button>
               ) : null}
             </>
+          ) : a.kind === 'changes' && d ? (
+            <Button
+              variant="primary"
+              data-variant="primary"
+              disabled={busy || ro}
+              mix={[on('click', () => respond('send-back', () => s.client.runRespond(a.runId, d.id, 'rejected', { feedback: a.feedback })))]}
+              data-testid="detail-send-back"
+            >
+              Send back with the GitHub review
+            </Button>
           ) : a.kind === 'spec' || a.kind === 'merge' ? (
             <Button variant="primary" data-variant="primary" disabled={busy || ro} mix={[on('click', () => approve())]} data-testid="detail-approve">
               {a.kind === 'spec' ? 'Accept spec' : 'Merge'} <kbd>A</kbd>
@@ -983,6 +1075,12 @@ function NeedsDetail(
           {it.kind === 'agent' && it.taskId && summary && (summary.status === 'FAILED' || summary.status === 'CANCELLED') ? (
             // the agent failed its task: run the work again from here, with the run page's confirmation (paid work again)
             <RunAgainButton taskId={it.taskId} seq={summary.seq} status={summary.status} variant="secondary" disabled={ro} onNavigate={handle.props.onGo} />
+          ) : null}
+          {it.kind === 'agent' && it.runId ? (
+            // the Support page with the run picked and previewed (X56 with C6): nobody types a run id
+            <a href={supportFor(it.runId)} mix={buttonStyle('secondary', 'md')} data-testid="detail-report">
+              Report this
+            </a>
           ) : null}
           {canAck(it) ? (
             <Button disabled={acking} mix={[on('click', onDone)]} data-testid="detail-done">

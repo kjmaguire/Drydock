@@ -6,7 +6,7 @@
 import { type Handle } from 'remix/component';
 import { Stethoscope } from 'lucide';
 import { starts } from '../../state/live.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Switch } from '../../ui/form.tsx';
@@ -34,7 +34,7 @@ export function DiagnosticsPanel(handle: Handle) {
         testId="diagnostics"
         description="What Drydock keeps about how it runs, one switch each. Nothing here leaves this computer by itself."
       >
-        <ErrorNote error={q.error ?? act.error} what="Diagnostics" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Diagnostics" />
         {!st && q.loading ? <Loading /> : null}
         {st ? (
           <div mix={panel}>

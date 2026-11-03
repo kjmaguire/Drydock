@@ -206,9 +206,10 @@ export const controller = createController(routes, {
       const { GuideScreen } = await import('../screens/guide/guide-screen.tsx');
       return render(<GuideScreen key={params.topic ?? ''} topic={params.topic} />);
     },
-    async support({ render }) {
+    async support({ render, url }) {
       const { SupportScreen } = await import('../screens/support/support-screen.tsx');
-      return render(<SupportScreen />);
+      const run = url.searchParams.get('run') ?? undefined;
+      return render(<SupportScreen key={url.search} run={run} />);
     },
     async license({ render }) {
       const { LicenseScreen } = await import('../screens/license/license-screen.tsx');

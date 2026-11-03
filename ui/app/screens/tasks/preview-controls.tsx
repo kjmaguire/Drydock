@@ -5,7 +5,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { ExternalLink, MonitorPlay, Square } from 'lucide';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { muted } from '../../ui/data.tsx';
@@ -35,7 +35,7 @@ export function PreviewControls(handle: Handle<{ taskId: string; hasWorktree: bo
     return (
       <section aria-label="Preview" style={{ display: 'grid', gap: '12px' }}>
         <h2 style={{ fontSize: 'var(--text-md)', fontWeight: '600' }}>Preview</h2>
-        <ErrorNote error={act.error ?? q.error} what="Preview" />
+        <ErrorNote error={act.error ?? q.error} retry={retryFor(act, q)} what="Preview" />
         <div mix={[card, boxCss]}>
           {mine ? (
             <p data-testid="preview-running">

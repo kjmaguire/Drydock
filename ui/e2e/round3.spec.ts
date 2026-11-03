@@ -172,7 +172,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await projectNav(page, 'nav-tasks');
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill('Build checkout');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Build checkout/ })).toBeVisible();
   await projectNav(page, 'nav-requirements');
   await page.getByTestId('requirement').filter({ hasText: 'Checkout' }).getByRole('button', { name: 'Open' }).click();

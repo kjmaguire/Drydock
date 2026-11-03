@@ -9,7 +9,7 @@ import type { LibrarySkill, Skill, SkillDelivery, SkillRegistry, SkillRegistrySt
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, kv, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -398,7 +398,7 @@ function AddFromLibrary(
         title="Add from the Library"
         description="Pick skills and the agents that need them: adding is your acceptance."
       >
-        <ErrorNote error={lib.error ?? act.error} what="Library" />
+        <ErrorNote error={lib.error ?? act.error} retry={retryFor(lib, act)} what="Library" />
         {added ? (
           <Notice tone="ok" role="status" testId="skill-added">
             {added.names.length === 1 ? addedText(added.names[0]!, added.project) : `${added.names.length} skills were added to ${added.project} and are accepted ✓: ${added.names.join(', ')}`} {added.who}
@@ -550,7 +550,7 @@ function Usage(handle: Handle<{ projectId: string; onChanged: () => void }>) {
         title="Usage"
         description="What each skill cost and whether it was read. Nothing changes until you act on a recommendation."
       >
-        <ErrorNote error={q.error ?? act.error} what="Usage" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Usage" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && rows.length === 0 ? <p mix={muted}>No skill has been used in a run yet.</p> : null}
         {rows.length > 0 ? (
@@ -897,7 +897,7 @@ export function SkillsScreen(handle: Handle) {
           </Button>
         }
       >
-        <ErrorNote error={q.error ?? act.error} what="Skills" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Skills" />
         {scan ? (
           <Notice tone="info" role="status" testId="skill-scan">
             {scanText(scan)}

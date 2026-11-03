@@ -230,7 +230,7 @@ describe('Home is the start screen (P142)', () => {
     await r.act(() => enter(box(r)));
     await waitFor(() => expect(navigated).toEqual(['/?item=chat:c9']), r);
     expect(JSON.parse(localStorage.getItem(SETUP_NOTES_KEY)!)).toEqual({ p9: [cli] });
-    expect(s.ui.takeFlash()).toBeUndefined();
+    expect(s.ui.toasts).toEqual([]);
   });
 
   it('says what is missing, and an error under the box keeps the text', async () => {

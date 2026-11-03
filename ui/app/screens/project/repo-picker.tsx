@@ -143,7 +143,7 @@ export function RepoPicker(
   return () => {
     const { selected, cloneDir, onSelect, onCloneDir, unavailableHint } = handle.props;
     if (status.loading && !status.data) return <Loading label="Checking GitHub..." />;
-    if (status.error) return <ErrorNote error={status.error} what="Could not check GitHub" />;
+    if (status.error) return <ErrorNote error={status.error} retry={status.reload} what="Could not check GitHub" />;
     const st = status.data;
     if (!st?.loggedIn) {
       return (

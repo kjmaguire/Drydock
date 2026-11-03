@@ -153,6 +153,10 @@ const (
 	// NeedsSecurityFindings is a scan a person's rule started (after a merge, a sync, weekly; lane B batch B7, H5) that found
 	// high or critical findings the scan before did not have. Subject is the scan's id.
 	NeedsSecurityFindings NeedsKind = "security_findings"
+	// NeedsPRReview is a pull request's review and merge that a collaborator asked changes on, on GitHub, while it waited for the
+	// person (H12): the review item itself, said once (the rule against duplicates), above the other reviews. It is answered like
+	// the review (the key is still the approval's), and the task can be sent back with the collaborator's words in one click.
+	NeedsPRReview NeedsKind = "pr_review"
 )
 
 // Budget states of a NeedsBudget item.
@@ -184,7 +188,9 @@ type NeedsYouItem struct {
 	TaskID     string    `json:"taskId,omitempty"`
 	AgentID    string    `json:"agentId,omitempty"`
 	ChatID     string    `json:"chatId,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	// RunID is the workflow run an agent item is about (its task's latest run): Report this picks it on the Support page (X56).
+	RunID     string    `json:"runId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 	// TaskSeq is the task's number in its project (with the project, the task's key); 0 for an item of no task.
 	TaskSeq int `json:"taskSeq,omitempty"`
 	// Phase says which gate a review item is, from the request that made it (workflow.RequestSpec.Phase): "spec" (accept the
@@ -238,16 +244,18 @@ SELECT a.id, a.kind, a.title, a.task_id, a.project_id, a.created_at, a.phase, a.
   COALESCE(NULLIF(CASE WHEN a.run_id = '' AND json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.action.agentId') END, ''),
            (SELECT t.assignee FROM tasks t WHERE a.task_id <> '' AND t.id = a.task_id), ''),
   COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.gate') END, ''),
-  COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.exceeded[0].budget.id') END, '')
+  COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.exceeded[0].budget.id') END, ''),
+  COALESCE((SELECT e.summary FROM task_evidence e WHERE a.kind = 'review' AND a.phase = 'merge' AND a.task_id <> '' AND e.task_id = a.task_id
+            AND e.kind = 'pr_review_waiting' AND e.created_at >= a.created_at ORDER BY e.id DESC LIMIT 1), '')
 FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`, projectID, projectID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var it NeedsYouItem
-		var kind, gate, budgetID string
+		var kind, gate, budgetID, changes string
 		var at, expires int64
-		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.Phase, &expires, &it.RoomID, &it.AgentID, &gate, &budgetID); err != nil {
+		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.Phase, &expires, &it.RoomID, &it.AgentID, &gate, &budgetID, &changes); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -260,6 +268,9 @@ FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`,
 		case kind == "approval" && gate == "budget":
 			// the budget gate's pause (budget.PauseGate): a budget item that is answered like an approval
 			it.Kind, it.Severity, it.BudgetID, it.BudgetState, it.Detail = NeedsBudget, 0, budgetID, BudgetPaused, budgetPausedDo
+		case kind == "review" && changes != "":
+			// a collaborator asked for changes on GitHub after this review and merge was asked for (H12)
+			it.Kind, it.Severity, it.Detail = NeedsPRReview, 1, changes
 		case kind == "review":
 			it.Kind, it.Severity = NeedsReview, 2
 		case kind == "question":

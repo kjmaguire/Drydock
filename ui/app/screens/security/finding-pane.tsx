@@ -213,7 +213,7 @@ export function FindingPane(
           </div>
           <div class="body">
             {noFp ? <p class="note">This finding is from a scan made before findings had fingerprints: scan again to see the code around it.</p> : null}
-            <ErrorNote error={cx.error} />
+            <ErrorNote error={cx.error} retry={cx.reload} />
             {!noFp && !c && cx.loading ? <p class="note">Reading the file…</p> : null}
             {c?.changed && c.lines.length > 0 ? <p class="note">The file changed since the scan: these are its lines now.</p> : null}
             {c && c.lines.length > 0 ? <CodeLines lines={c.lines} label={`The code around it, in ${f.file ?? 'the file'}`} testId="finding-lines" /> : null}

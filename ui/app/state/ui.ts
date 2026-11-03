@@ -6,6 +6,7 @@ import { useBindings } from '../lib/keys.ts';
 import { applyTheme, loadTheme, type ThemeChoice } from '../lib/theme.ts';
 import type { SkillPick } from '../api/extTypes.ts';
 import { isRecord } from '../api/guards.ts';
+import type { WorkItemRef } from '../lib/route.ts';
 import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'room' | 'task' | 'thread' | 'inspector';
@@ -161,10 +162,27 @@ export function parseInboxTab(raw: unknown): InboxTab {
   return raw === 'running' || raw === 'done' || raw === 'mine' ? raw : 'needs';
 }
 
-/** A one-time note one page leaves for the next. */
+/** A one-time note one page leaves for the next (a toast since decision G2). */
 export interface Flash {
   text: string;
   tone: 'ok' | 'warn';
+}
+
+/** The most toasts on screen at once: a fourth pushes the oldest out (decision G2). */
+export const TOASTS_MAX = 3;
+
+/** What a toast says: one line, a quieter second one, and at most one action. */
+export interface ToastInit {
+  text: string;
+  detail?: string | undefined;
+  tone: 'ok' | 'warn' | 'info';
+  action?: { label: string; href: string };
+  /** Stays until closed (a warning a page left for the next); the others leave by themselves. */
+  sticky?: boolean;
+}
+
+export interface Toast extends ToastInit {
+  id: number;
 }
 
 export class UiModel extends Model {
@@ -324,18 +342,39 @@ export class UiModel extends Model {
     return asked;
   }
 
-  #flash: Flash | undefined;
+  #toasts: Toast[] = [];
+  #toastSeq = 0;
 
-  /** A one-time note for the next page (the workspace Home says which project was deleted). */
-  flash(text: string, tone: Flash['tone'] = 'ok'): void {
-    this.#flash = { text, tone };
+  /**
+   * The item the project's Work page has open (named by ?item= or, with none, the one it opens by default), set by Work as it
+   * draws and cleared when it leaves. The toasts read it so nothing is said about what the person is looking at (G2). Not
+   * watched: setting it changes nothing on screen.
+   */
+  workOpen: WorkItemRef | undefined;
+
+  /** The toasts on screen, oldest first (the shell's <Toasts/> draws them). */
+  get toasts(): readonly Toast[] {
+    return this.#toasts;
   }
 
-  /** The note left for this page, once; clears it (no change event: read when the page mounts). */
-  takeFlash(): Flash | undefined {
-    const f = this.#flash;
-    this.#flash = undefined;
-    return f;
+  /** Show a toast; the oldest leaves when there would be more than TOASTS_MAX. Returns its id. */
+  toast(t: ToastInit): number {
+    const id = ++this.#toastSeq;
+    this.#toasts = [...this.#toasts, { ...t, id }].slice(-TOASTS_MAX);
+    this.changed();
+    return id;
+  }
+
+  dismissToast(id: number): void {
+    const next = this.#toasts.filter((t) => t.id !== id);
+    if (next.length === this.#toasts.length) return;
+    this.#toasts = next;
+    this.changed();
+  }
+
+  /** A note for whatever page comes next (the workspace Home says which project was deleted): a toast, a warning one stays until closed. */
+  flash(text: string, tone: Flash['tone'] = 'ok'): void {
+    this.toast({ text, tone, sticky: tone === 'warn' });
   }
 
   #picks: { projectId: string; picks: SkillPick[] } | undefined;
@@ -400,6 +439,51 @@ export class UiModel extends Model {
   /** Open the dock on a tab (the task view, the command palette, Ctrl+Shift+D). */
   openDock(tab: DockTab): void {
     this.setDock({ open: true, tab });
+  }
+
+  #logAsk: { taskId: string; logId: string } | undefined;
+
+  /**
+   * Open the dock's Logs tab on one log of a task (effort review X24: a failed check in the Checks grid, a turn's stream on the run
+   * page). The log becomes the task's remembered one, so a Logs panel that mounts opens it; one already showing takes the ask once
+   * (takeLogAsk). Without a log id it is the plain Logs tab.
+   */
+  openLogs(taskId: string, logId?: string): void {
+    if (logId) {
+      this.setDockView(taskId, { log: logId });
+      this.#logAsk = { taskId, logId };
+    }
+    this.openDock('logs');
+  }
+
+  /** The log openLogs asked for, once, when it is of this task (the Logs panel of another task leaves it). */
+  takeLogAsk(taskId: string): string | undefined {
+    const a = this.#logAsk;
+    if (!a || a.taskId !== taskId) return undefined;
+    this.#logAsk = undefined;
+    return a.logId;
+  }
+
+  #diffAsk: { taskId: string; file: string } | undefined;
+
+  /**
+   * Open the dock's Diff tab on one file of a task (effort review X212: a row of Work's file list). The file becomes the task's
+   * remembered one, so a Diff viewer that mounts opens it; one already showing takes the ask once (takeDiffAsk).
+   */
+  openDiff(taskId: string, file?: string): void {
+    if (file) {
+      this.setDockView(taskId, { file });
+      this.#diffAsk = { taskId, file };
+    }
+    this.openDock('diff');
+  }
+
+  /** The file openDiff asked for, once, when it is of this task. */
+  takeDiffAsk(taskId: string): string | undefined {
+    const a = this.#diffAsk;
+    if (!a || a.taskId !== taskId) return undefined;
+    this.#diffAsk = undefined;
+    return a.file;
   }
 
   #terminalAsk: TerminalAsk | undefined;

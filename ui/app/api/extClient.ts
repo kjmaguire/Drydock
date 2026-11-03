@@ -42,6 +42,7 @@ import type {
   IntegrationOAuthApp,
   IntegrationOAuthSession,
   MemoryEntry,
+  LinkSuggestion,
   Milestone,
   NotionPageText,
   Outbox,
@@ -212,6 +213,8 @@ export interface ExtClient {
   requirementSearch(projectId: string, query: string, docId?: string, k?: number): Promise<RequirementHit[]>;
   requirementLink(requirementId: string, taskId: string, criteria: string[]): Promise<RequirementLink[]>;
   requirementUnlink(requirementId: string, taskId: string): Promise<void>;
+  /** Open tasks whose own words match a passage of the requirement (X43): suggestions the person links or dismisses. */
+  requirementSuggestLinks(requirementId: string, k?: number, exclude?: string[]): Promise<LinkSuggestion[]>;
   requirementLinks(filter: { requirementId?: string; taskId?: string }): Promise<RequirementLink[]>;
   requirementTrace(id: string): Promise<RequirementTrace>;
   requirementCoverage(projectId: string): Promise<RequirementTrace[]>;
@@ -283,7 +286,8 @@ export interface ExtClient {
   roomReply(messageId: string, agentId?: string): Promise<ReplyOutcome>;
   /** What the newest chain of a room did while the app runs (X12); null when none ran. */
   roomReplyOutcome(roomId: string): Promise<ReplyOutcome | null>;
-  planPropose(projectId: string, goal: string, requirements?: string, plannerAgentId?: string): Promise<{ planId: string; runId: string; plannerAgentId: string }>;
+  /** requirementIds: the project's requirement documents to plan from (their text joins requirements; accepting links the tasks to them). */
+  planPropose(projectId: string, goal: string, requirements?: string, plannerAgentId?: string, requirementIds?: string[]): Promise<{ planId: string; runId: string; plannerAgentId: string; fallback?: boolean }>;
   planGet(planId: string): Promise<Plan>;
   planList(projectId: string): Promise<Plan[]>;
   planAccept(planId: string, accept?: string[], edits?: Record<string, ProposedTask>, start?: boolean): Promise<Plan>;
@@ -402,7 +406,7 @@ export function createExtClient(t: Transport): ExtClient {
     },
     sandboxForwards: async (taskId) => {
       const r = await call<SandboxForwards>('sandbox.forward.list', { taskId });
-      return { ...r, forwards: arr(r.forwards) };
+      return { ...r, forwards: arr(r.forwards), viewing: arr(r.viewing), listening: arr(r.listening) };
     },
     sandboxForwardOpen: (taskId, port) => call('sandbox.forward.open', { taskId, port }),
     sandboxForwardClose: (taskId, port) => voidCall('sandbox.forward.close', { taskId, port }),
@@ -453,6 +457,7 @@ export function createExtClient(t: Transport): ExtClient {
     requirementVersions: async (id) => arr(await call<RequirementVersion[] | null>('requirement.versions', { id })),
     requirementText: async (id, version = 0) => String((await call<string | null>('requirement.text', { id, version })) ?? ''),
     requirementSearch: async (projectId, query, docId = '', k = 0) => arr(await call<RequirementHit[] | null>('requirement.search', { projectId, query, docId, k })),
+    requirementSuggestLinks: async (requirementId, k = 5, exclude = []) => arr(await call<LinkSuggestion[] | null>('requirement.suggestLinks', { requirementId, k, exclude })),
     requirementLink: async (requirementId, taskId, criteria) => arr(await call<RequirementLink[] | null>('requirement.link', { requirementId, taskId, criteria })),
     requirementUnlink: (requirementId, taskId) => voidCall('requirement.unlink', { requirementId, taskId }),
     requirementLinks: async ({ requirementId = '', taskId = '' }) => arr(await call<RequirementLink[] | null>('requirement.links', { requirementId, taskId })),
@@ -524,7 +529,7 @@ export function createExtClient(t: Transport): ExtClient {
     roomTurns: async (roomId, limit = 0) => arr(await call<RoomTurn[] | null>('room.turns', { roomId, limit })),
     roomReply: (messageId, agentId) => call<ReplyOutcome>('room.reply', agentId ? { messageId, agentId } : { messageId }),
     roomReplyOutcome: (roomId) => call<ReplyOutcome | null>('room.replyOutcome', { roomId }),
-    planPropose: (projectId, goal, requirements = '', plannerAgentId = '') => call('plan.propose', { projectId, goal, requirements, plannerAgentId }),
+    planPropose: (projectId, goal, requirements = '', plannerAgentId = '', requirementIds = []) => call('plan.propose', { projectId, goal, requirements, plannerAgentId, requirementIds }),
     planGet: (planId) => call('plan.get', { planId }),
     planList: async (projectId) => arr(await call<Plan[] | null>('plan.list', { projectId })),
     planAccept: (planId, accept, edits, start) => call('plan.accept', { planId, accept, edits, start: start === true }),

@@ -69,6 +69,8 @@ describe('Work (decision P141)', () => {
     expect(needLine(need({ phase: 'spec' }))).toBe('Accept the spec');
     expect(needLine(need({ kind: 'approval' }))).toBe('Approval');
     expect(needLine(need({ kind: 'something new' }))).toBe('Needs you');
+    // a collaborator asked for changes on GitHub while the merge waits (H12): said so, with the change's size
+    expect(needLine(need({ kind: 'pr_review', phase: 'merge', context: { hasDiff: true, insertions: 42, deletions: 3 } as never }))).toBe('Changes asked on GitHub · +42 −3');
   });
 
   it('opens the item the URL names, else the first that needs you, else the first running, else none', () => {
@@ -98,6 +100,7 @@ describe('Work (decision P141)', () => {
     expect(modelEffort('sonnet', '', name)).toBe('sonnet');
     expect(editAgentHref('agt 1')).toBe('/team?edit=agt%201');
     expect(newAgentHref()).toBe('/team?new=agent');
+    expect(newAgentHref('Plans each feature.')).toBe('/team?new=agent&describe=Plans%20each%20feature.');
   });
 });
 

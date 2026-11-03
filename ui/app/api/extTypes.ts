@@ -327,6 +327,9 @@ export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'relevant';
 /** The context package ceiling's default and bounds in tokens (the core's ctxeng.DefaultCeiling, MinCeiling, MaxCeiling). */
 export const CONTEXT_CEILING = { default: 20000, min: 4000, max: 200000 } as const;
 
+/** The CI waits' defaults and ceiling in minutes (the core's DefaultCIGraceMinutes, DefaultCIMaxWaitMinutes, MaxCIWaitMinutes). */
+export const CI_WAITS = { grace: 5, maxWait: 60, max: 360 } as const;
+
 export interface DevSettings {
   maxParallel: number;
   autoSchedule: boolean;
@@ -345,6 +348,9 @@ export interface DevSettings {
   /** Who declared that the repository has no CI, and when (Unix ms). Set by the core when it saves `none`, never by the UI. */
   ciNoneBy?: string;
   ciNoneAt?: number;
+  /** Minutes a pushed commit may show no CI result, and CI checks may run, before the person is asked (0 or absent: CI_WAITS; C7). */
+  ciGraceMinutes?: number;
+  ciMaxWaitMinutes?: number;
   /**
    * How a Claude agent gets the project's skills: `all` puts every skill that reaches it into every turn; `relevant` puts in
    * the repository's own skills and the imported ones whose paths match the task's files, and lists the other imported ones
@@ -665,6 +671,16 @@ export interface RequirementTrace {
   tasksStale: number;
   verified: boolean;
 }
+/** An open task whose title or a criterion matches a passage of a requirement (requirement.suggestLinks): a text match, never a link by itself. */
+export interface LinkSuggestion {
+  taskId: string;
+  seq: number;
+  title: string;
+  /** The heading path of the passage that matched. */
+  heading: string;
+  matched: 'title' | 'criterion';
+  score: number;
+}
 export interface Milestone {
   id: string;
   projectId: string;
@@ -957,6 +973,10 @@ export interface Plan {
   start?: TickResult | null;
   /** plan.accept with start: the pass failed (the plan was accepted and its tasks exist). */
   startError?: string;
+  /** The project's requirement documents the plan was made from: accepting it links each created task to them. */
+  requirementIds?: string[] | null;
+  /** The created tasks the accept could not link to a requirement the plan was made from (archived or removed after Propose). */
+  unlinked?: { taskId: string; requirementId: string }[] | null;
 }
 export interface SchedulerStatus {
   settings: DevSettings;
@@ -1504,6 +1524,11 @@ export interface SandboxStatus {
   hosts?: string[];
   /** A definition to start from, when the project has none. */
   starter?: string;
+  /**
+   * The project's files the starter took something from (a compose file, a dev container, a Dockerfile; X35). Their values are
+   * copied as they are. Absent when it read only the language files, or from an older core.
+   */
+  starterFrom?: string[];
   egressError?: string;
   configPath: string;
   /**
@@ -1546,6 +1571,13 @@ export interface SandboxForwards {
   max: number;
   /** Why the sandbox could not be asked (no container engine answers). */
   error?: string;
+  /** The ports whose window is open now: Open brings that window to the front (X314). */
+  viewing?: number[];
+  /**
+   * The ports something listens on in the sandbox, lowest first (X31): one click forwards and opens each. Read from the sandbox,
+   * so only a number and the name of a background process the sandbox checked. Absent from an older core.
+   */
+  listening?: { port: number; name?: string }[];
 }
 export interface SandboxTestStep {
   name: string;

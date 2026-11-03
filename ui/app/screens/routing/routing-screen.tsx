@@ -7,7 +7,7 @@ import { css, on, type Handle } from 'remix/component';
 import { FlaskConical, Route as RouteIcon, TriangleAlert } from 'lucide';
 import type { CheapSelection, RoutePreview, RouteSettings } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
@@ -231,7 +231,7 @@ export function CheapModelPanel(handle: Handle) {
         label="Cheap model selection"
         description="Tests the cheapest few models of each cheap, private provider with a small tool-call check. It can cost a little."
       >
-        <ErrorNote error={providers.error ?? act.error} what="Selection failed" />
+        <ErrorNote error={providers.error ?? act.error} retry={retryFor(providers, act)} what="Selection failed" />
         {providers.data && cheap.length === 0 ? (
           <p mix={[card, muted]}>
             No enabled cheap private provider. Add one under <a href={routes.models.href({ key: 'new' })}>Models</a>.
@@ -263,7 +263,7 @@ export function CheapModelPanel(handle: Handle) {
             ))}
           </ul>
         ) : null}
-        <ErrorNote error={startup.error ?? settings.error} what="Startup probe" />
+        <ErrorNote error={startup.error ?? settings.error} retry={retryFor(startup, settings)} what="Startup probe" />
         <div data-testid="startup-probe" data-on={st ? String(probeOn) : undefined}>
           <Switch
             label="Probe at startup"

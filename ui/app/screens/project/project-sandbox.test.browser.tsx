@@ -58,6 +58,26 @@ describe('Sandbox settings', () => {
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Test the sandbox').disabled).toBe(true);
   });
 
+  it('a starter read from the compose file says which file and that its values are copied as they are (X35)', async () => {
+    const base = {
+      switch: { enabled: false },
+      engine,
+      found: false,
+      branch: 'main',
+      configPath: '.drydock/sandbox.json',
+      configError: 'no definition',
+      starter: '{\n  "image": "node:24-trixie",\n  "services": { "db": { "image": "postgres:17" } }\n}',
+    };
+    let r = panel({ sandboxStatus: async () => ({ ...base, starterFrom: ['docker-compose.yml', 'Dockerfile'] }) });
+    const from = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-starter-from"]')), r);
+    expect(from.textContent).toContain('Read from docker-compose.yml, Dockerfile.');
+    expect(from.textContent).toContain('keep secrets out of env, which the agents see');
+    cleanup();
+    r = panel({ sandboxStatus: async () => base });
+    await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-starter"]')), r);
+    expect(r.container.querySelector('[data-testid="sandbox-starter-from"]')).toBe(null);
+  });
+
   it('without a container engine it says how to get one', async () => {
     const r = panel({ sandboxStatus: async () => ({ ...ready, engine: undefined, engineError: 'no container engine is reachable: docker is not installed or not on PATH' }) });
     const e = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-engine"]')), r);
@@ -189,6 +209,10 @@ describe('Sandbox settings', () => {
       expect(lines(r)).toEqual(changed.changes);
       expect(box.textContent).toContain('Tasks of this project wait, in Needs you, until you confirm this definition.');
       expect(byText<HTMLButtonElement>(box, 'button', 'Confirm this definition').disabled).toBe(false);
+      // one confirmation lets every held task go on, and the callout says so before the click (X38)
+      expect(box.querySelector('[data-testid="sandbox-confirm-note"]')?.textContent).toContain(
+        'lets every task of this project that waits for it go on',
+      );
     });
 
     it('shows a line of the definition as the text it is, never as markup', async () => {

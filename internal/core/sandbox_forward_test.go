@@ -100,10 +100,24 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 	t.Setenv("DRYDOCK_CONTAINER_CLI", bin)
 	r := &forwardRig{}
 	dir := t.TempDir()
+	// TEST DOUBLES for the viewer: it records what it was asked to show, says which addresses have a window, and ends one on Close
+	windows := map[string]bool{}
+	var closed []string
 	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "data"), User: "kyle", OpenSandboxApp: func(_ context.Context, app core.SandboxApp) error {
 		r.mu.Lock()
 		r.opened = append(r.opened, app)
+		windows[app.URL] = true
 		r.mu.Unlock()
+		return nil
+	}, SandboxAppShown: func(url string) bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return windows[url]
+	}, CloseSandboxApp: func(url string) error {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		closed = append(closed, url)
+		delete(windows, url)
 		return nil
 	}})
 	if err != nil {
@@ -128,7 +142,7 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 		t.Fatalf("%+v", f)
 	}
 	a.call("sandbox.forward.list", map[string]any{"taskId": r.task.ID}, &l)
-	if len(l.Forwards) != 1 || l.Forwards[0].HostPort != f.HostPort {
+	if len(l.Forwards) != 1 || l.Forwards[0].HostPort != f.HostPort || len(l.Viewing) != 0 {
 		t.Fatalf("%+v", l)
 	}
 
@@ -143,6 +157,11 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 	}
 	if len(r.shown()) != 1 {
 		t.Fatal("the refused request opened a window")
+	}
+	// the list says which port has its window open, so the page says Show (X314)
+	a.call("sandbox.forward.list", map[string]any{"taskId": r.task.ID}, &l)
+	if len(l.Viewing) != 1 || l.Viewing[0] != 3000 {
+		t.Fatalf("viewing %+v", l.Viewing)
 	}
 	if _, err := c.SandboxForwardOpen(context.Background(), r.task.ID, 3001, "agt_1"); err == nil {
 		t.Fatal("an agent forwarded a port")
@@ -160,9 +179,15 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 
 	a.call("sandbox.forward.close", map[string]any{"taskId": r.task.ID, "port": 3000}, nil)
 	a.call("sandbox.forward.list", map[string]any{"taskId": r.task.ID}, &l)
-	if len(l.Forwards) != 0 {
+	if len(l.Forwards) != 0 || len(l.Viewing) != 0 {
 		t.Fatalf("%+v", l)
 	}
+	// Stop ends the window that showed the forward
+	r.mu.Lock()
+	if len(closed) != 1 || closed[0] != shown[0].URL {
+		t.Fatalf("closed %v", closed)
+	}
+	r.mu.Unlock()
 
 	// what the person did is in the audit log and the task's events: the port and where it went, as them
 	// (opened and viewed twice: sandbox.forward.open and .view, then .show, which records both again)

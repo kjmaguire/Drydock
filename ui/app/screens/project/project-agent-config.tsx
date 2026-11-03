@@ -44,7 +44,7 @@ export function AgentConfigPanel(handle: Handle<{ projectId: string }>) {
       <SettingsGroup title="Agent configuration" label="Agent configuration" testId="agent-config-panel" description={AGENT_CONFIG_WHY}>
         {!list ? (
           <div mix={errorPad}>
-            <ErrorNote error={q.error} what="Could not read the agent configuration" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not read the agent configuration" />
             {q.error ? null : <Loading />}
           </div>
         ) : (

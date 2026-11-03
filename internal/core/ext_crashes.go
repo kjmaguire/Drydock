@@ -32,12 +32,14 @@ func init() {
 				c.logf("crash reports: %v", err)
 			} else if n > 0 {
 				c.logf("Drydock stopped unexpectedly %d time(s) before this start; crash reports are off, so nothing was kept", n)
+				c.start.update(func(r *StartReport) { r.Unexpected = true })
 			}
 		}
 		for _, r := range made {
 			c.logf("Drydock stopped unexpectedly (started %s): %s. The crash report %s is on the Support page.", r.Time.Format("2006-01-02 15:04 UTC"), r.Summary, r.Name)
 		}
 		if len(made) > 0 {
+			c.start.update(func(r *StartReport) { r.Unexpected, r.Crashes = true, len(made) })
 			c.publish(ctx, "app.crashed", "", map[string]any{"count": len(made), "summary": made[len(made)-1].Summary, "name": made[len(made)-1].Name})
 		}
 		return map[string]Method{

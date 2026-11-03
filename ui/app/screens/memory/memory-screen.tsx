@@ -10,7 +10,7 @@ import { css, on, type Handle } from 'remix/component';
 import { Brain, Check, Search, Trash2, X } from 'lucide';
 import type { MemoryEntry } from '../../api/extTypes.ts';
 import { agentName, formatDateTime } from '../../lib/format.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -371,7 +371,7 @@ export function MemoryScreen(handle: Handle) {
             ) : null}
           </Notice>
         ) : null}
-        <ErrorNote error={q.error ?? act.error} what="Memory" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Memory" />
         {q.loading && !q.data && !found ? <Loading /> : null}
         {(q.data || found) && list.length === 0 ? (
           <div mix={card}>

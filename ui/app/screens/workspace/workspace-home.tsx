@@ -2,23 +2,25 @@
 // (P143: a dialog, new-project.tsx, that makes a project and starts nothing; /home?new=project opens it, which is where the old
 // wizard's address and Ctrl+K's New project lead), one box with its chips (start-box.tsx), the "Or:" row, then "Pick up where you
 // left off": the most recently active projects as cards, each with what runs, whether it needs you and one line of what is
-// happening. Opening a card selects that project and opens it.
+// happening. Opening a card selects that project and opens it. After a start that found something the last stop left (a crash,
+// runs resumed or not), one dismissible line says so under the lead (start-report.tsx, X511).
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { ArrowRight, Plus } from 'lucide';
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
-import { services, watch } from '../../state/services.tsx';
+import { retryFor, services, watch } from '../../state/services.tsx';
 import { hueFor } from '../../ui/data.tsx';
 import type { NewProjectWhere } from '../../shell/new.ts';
 import { Button } from '../../ui/button.tsx';
-import { ErrorNote, Notice } from '../../ui/feedback.tsx';
+import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { NewProjectDialog } from './new-project.tsx';
 import { StartBox } from './start-box.tsx';
+import { StartReportLine } from './start-report.tsx';
 import { pickPill, pickUp, type PickUp } from './workspace.ts';
 
 const wrapCss = css({
@@ -110,8 +112,6 @@ function PickCard(handle: Handle<{ item: PickUp; onNavigate?: (href: string) => 
 export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
-  // a note the previous page left (a project was deleted, what a start could not do)
-  const flash = s.ui.takeFlash();
   let all = false;
   let newOpen = false;
   let newWhere: NewProjectWhere | undefined;
@@ -151,13 +151,9 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
               </Button>
             </div>
             <p class="lead">Describe it; change the place or the crew below.</p>
-            {flash ? (
-              <Notice tone={flash.tone} role="status" testId="home-flash">
-                {flash.text}
-              </Notice>
-            ) : null}
+            <StartReportLine />
             <StartBox onNavigate={handle.props.onNavigate} />
-            <ErrorNote error={ws.projects.error} what="Projects" />
+            <ErrorNote error={ws.projects.error} retry={retryFor(ws.projects)} what="Projects" />
             {items.length ? (
               <section mix={pickCss} aria-labelledby={`${id}-pick`} data-testid="home-projects">
                 <div class="head">

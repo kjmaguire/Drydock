@@ -1,6 +1,6 @@
 // The task page's properties panel (the graphite mockup "Task", decision P97): Status, Agent, Reviewer, Runs on, Model, Routing
-// (the task's routing level, P127), Branch, Template and Labels (editable), the links, the step the task is at, the Checks grid, "This run" (elapsed, test runs, cost so
-// far), and the buttons: Open the worktree (O: a terminal in the dock, in the task's worktree) and Hand to another agent (the
+// (the task's routing level, P127), Branch, Template, Labels (editable) and Milestone (X411: add, take out, due or overdue), the links, the step the task is at, the Checks grid, "This run" (elapsed, test runs, cost so
+// far), and the buttons: Open the worktree (O: a terminal in the dock, in the task's worktree; beside it More ways to open: Explorer, an editor, Copy path, X26) and Hand to another agent (the
 // project's agents; the core picks the reviewer and its refusal is shown). Its class task-meta is what the end-to-end suite
 // compares before and after a reload.
 
@@ -21,10 +21,12 @@ import { Menu } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { topicPath } from '../guide/model.ts';
 import { cliName } from '../shared/cli-name.ts';
+import { OpenElsewhere } from '../shared/open-elsewhere.tsx';
 import { SourceTag, distinctSources } from '../shared/usage.tsx';
 import { clockText } from './activity-steps.ts';
 import { stepsFor, type Step } from './steps.ts';
 import { CancelTask } from './task-controls.tsx';
+import { TaskMilestones } from './task-milestone.tsx';
 import { TaskRoutingLevel } from './task-level.tsx';
 import { addLabel, CHECK_WORDS, checkMark, checkName, runMs, runNumber, statusDot, statusWords, testRuns } from './task-page.ts';
 import { isRunActive, isTerminal } from './tasks.ts';
@@ -100,6 +102,22 @@ const checksCss = css({
   '& > li[data-state="failed"] > .d': { background: t.danger },
   '& > li[data-state="running"] > .d': { background: t.accent, boxShadow: `0 0 0 2px ${t.accentSoft}` },
   '& > li[data-state="inconclusive"] > .d': { background: t.warning },
+  // a failed check takes the row: its name opens its log, its reason is the line under it
+  '& > li.failed': { gridColumn: '1 / -1', flexWrap: 'wrap', rowGap: '2px' },
+  '& > li > .name': {
+    minHeight: '24px',
+    padding: '0',
+    border: '0',
+    background: 'transparent',
+    color: t.text,
+    font: 'inherit',
+    textDecoration: 'underline',
+    textDecorationColor: t.borderStrong,
+    textUnderlineOffset: '3px',
+    cursor: 'pointer',
+  },
+  '& > li > .name:hover': { textDecorationColor: t.text },
+  '& > li > .why': { flexBasis: '100%', paddingLeft: '15px', color: t.textMuted, fontSize: t.textXs, overflowWrap: 'anywhere' },
 });
 
 const tilesCss = css({
@@ -118,6 +136,8 @@ const actionsCss = css({
   display: 'grid',
   gap: t.s2,
   '& > .links': { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2 },
+  '& > .split': { display: 'flex', alignItems: 'center', gap: '6px', minWidth: '0' },
+  '& > .split > button:first-child': { flex: '1', minWidth: '0' },
 });
 
 const WIDE = { height: '34px', width: '100%', justifyContent: 'center' };
@@ -414,6 +434,10 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
           <dd data-testid="task-labels">
             <Labels task={task} onChanged={onTask} />
           </dd>
+          <dt>Milestone</dt>
+          <dd>
+            <TaskMilestones taskId={task.id} projectId={task.projectId} />
+          </dd>
           {task.acceptedBy ? (
             <>
               <dt>Accepted</dt>
@@ -471,6 +495,31 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
             <ul mix={checksCss} aria-label="Checks" data-testid="task-checks">
               {checks.map((c) => {
                 const mark = checkMark(c.status);
+                // a failed check is a button to its own log, with its reason as a line under it (X24)
+                if (mark === 'failed') {
+                  const logId = c.logId;
+                  return (
+                    <li key={c.kind} data-check={c.kind} data-state={mark} class="failed">
+                      <span class="d" aria-hidden="true" />
+                      {logId ? (
+                        <button type="button" class="name" title="Open its log in the Logs tab" mix={on('click', () => s.ui.openLogs(task.id, logId))}>
+                          {checkName(c.kind)}
+                          <span class="sr-only">, {CHECK_WORDS[mark]}, open its log</span>
+                        </button>
+                      ) : (
+                        <span>
+                          {checkName(c.kind)}
+                          <span class="sr-only">, {CHECK_WORDS[mark]}</span>
+                        </span>
+                      )}
+                      {c.reason ? (
+                        <span class="why" data-testid="check-reason">
+                          {c.reason}
+                        </span>
+                      ) : null}
+                    </li>
+                  );
+                }
                 return (
                   <li key={c.kind} data-check={c.kind} data-state={mark} title={c.reason ? `${CHECK_WORDS[mark]}: ${c.reason}` : CHECK_WORDS[mark]}>
                     <span class="d" aria-hidden="true" />
@@ -521,15 +570,19 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
 
         <div mix={actionsCss}>
           <ErrorNote error={act.error} what="Not handed on" />
-          <Button
-            style={WIDE}
-            icon={FolderOpen}
-            disabled={!task.worktree}
-            title={task.worktree ? `A terminal in ${task.worktree}` : 'The task has no worktree yet: it gets one when it starts'}
-            mix={on('click', openWorktree)}
-          >
-            Open the worktree <kbd>O</kbd>
-          </Button>
+          <div class="split">
+            <Button
+              style={WIDE}
+              icon={FolderOpen}
+              disabled={!task.worktree}
+              title={task.worktree ? `A terminal in ${task.worktree}` : 'The task has no worktree yet: it gets one when it starts'}
+              mix={on('click', openWorktree)}
+            >
+              Open the worktree <kbd>O</kbd>
+            </Button>
+            {/* Explorer, an editor, Copy path (X26): only while the worktree folder is there */}
+            {task.worktree && !d.worktreeGone ? <OpenElsewhere where={{ taskId: task.id }} fullPath={task.worktree} label="More ways to open the worktree" testId="worktree-open" /> : null}
+          </div>
           {isTerminal(task.status) ? null : (
             <Menu
               label="Hand to another agent"

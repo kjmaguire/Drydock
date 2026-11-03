@@ -354,7 +354,7 @@ export async function createAssignedTask(page: Page, title: string, worker: stri
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill(title);
   await page.getByLabel('Description').fill('Add a Multiply function to the gocalc package.');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(title) })).toBeVisible();
   await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (${workerRole})` });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (${reviewerRole})` });
@@ -368,7 +368,7 @@ export async function createAndStartTask(page: Page, title: string, worker: stri
   await page.getByLabel('Task title').fill(title);
   await page.getByLabel('Description').fill('Subtract returns 0; make it return a - b.');
   await page.getByLabel('Acceptance criteria').fill('Given 5 and 3 When Subtract is called Then 2');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(title) })).toBeVisible();
   await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (backend)` });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (reviewer)` });

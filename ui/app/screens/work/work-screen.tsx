@@ -14,15 +14,16 @@ import { agentName, presenceFor, presenceWords } from '../../lib/format.ts';
 import { modelName } from '../../lib/model-name.ts';
 import { parseWorkItem, workItemHref, workItemKey, type WorkItemRef } from '../../lib/route.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, presenceColor } from '../../ui/data.tsx';
-import { ErrorNote, Notice } from '../../ui/feedback.tsx';
+import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ChatConversation } from '../chats/chat-conversation.tsx';
 import { noteFromLast } from '../chats/from-last.ts';
 import { WEEK_MS, firstCheckText, mergedSince, spendLine } from '../overview/overview.ts';
+import { dueText, nextMilestone } from '../milestones/milestones.ts';
 import { findingsText } from '../security/security.ts';
 import { TaskDetailScreen } from '../tasks/task-detail-screen.tsx';
 import { AgentPanelHost } from '../team/agent-panel.tsx';
@@ -90,7 +91,6 @@ const rowCss = css({
   '&[data-group="needs"][aria-current="true"]': { background: t.warningSoft },
   '&:focus-visible': { boxShadow: `inset ${t.focus}`, outline: 'none' },
 });
-const flashCss = css({ flex: 'none', padding: `0 ${t.s3} ${t.s2}` });
 const quietCss = css({ margin: `${t.s3} ${t.s2}`, color: t.textMuted, fontSize: t.textSm });
 const syncFootCss = css({ flex: 'none', padding: `${t.s1} ${t.s2}`, borderTop: `1px solid ${t.border}` });
 const footCss = css({
@@ -152,7 +152,11 @@ const statsCss = css({
   '& > a': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: t.s2, minHeight: '28px', padding: `0 ${t.s1}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, textDecoration: 'none' },
   '& > a > b': { color: t.text, fontWeight: '500', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
   '& > a:hover': { background: t.bgHover, color: t.text },
+  '& > a > .ms': { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 });
+
+// an overdue milestone on the rail reads in the danger colour, its words saying so as well
+const overdueCss = css({ '&, & > b': { color: t.danger } });
 
 export interface WorkScreenProps {
   /** The ?item= value: "task:<id>" or "chat:<id>". */
@@ -171,9 +175,15 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
   const budget = query(handle, { load: () => s.client.budgetStatus({ projectId: pid()! }), when: (e) => e.type.startsWith('budget.') || e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const evals = query(handle, { load: () => s.client.evalsReport({ projectId: pid()!, sinceMs: Date.now() - WEEK_MS }), when: (e) => e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const scan = query(handle, { load: () => s.client.securityScanGet(pid()!), when: (e) => e.type.startsWith('security.'), ...on_ });
+  // the project's milestones: the rail names the next one due, red when it is overdue (X411)
+  const milestones = query(handle, {
+    load: () => s.client.milestoneList(pid()!),
+    when: (e) => e.type.startsWith('milestone.') || e.type.startsWith('task.'),
+    debounceMs: 500,
+    ...on_,
+  });
   const act = action(handle);
-  // a note the page before left (what a start from Home could not do, P142), shown once as one line
-  const flash = s.ui.takeFlash();
+  handle.signal.addEventListener('abort', () => (s.ui.workOpen = undefined));
   let search = '';
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href).catch(() => {}));
 
@@ -217,10 +227,12 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
     const named = parseWorkItem(handle.props.item);
     const open: WorkItemRef | undefined = openItem(rows, named);
     const openKey = open ? workItemKey(open) : undefined;
+    s.ui.workOpen = open; // the shell's toasts say nothing about it (G2)
     const spend = budget.data ? spendLine(budget.data.usage['project'], budget.data.statuses) : undefined;
     const first = evals.data ? firstCheckText(evals.data.report) : undefined;
     const lastScan = scan.data && scan.data.status !== 'running' ? scan.data : undefined;
     const merged = mergedSince(p.taskList, Date.now() - WEEK_MS);
+    const next = nextMilestone(milestones.data ?? []);
     const channels = p.roomList.filter((r) => r.kind === 'channel' && !r.archived);
     const general = channels.find((r) => r.name === 'general') ?? channels[0];
     // what the rooms hold that the person has not read (X18): the Rooms rail draws it only on a room's page
@@ -249,16 +261,9 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
               Chat
             </Button>
           </div>
-          {flash ? (
-            <div mix={flashCss}>
-              <Notice tone={flash.tone} role="status" testId="work-flash">
-                {flash.text}
-              </Notice>
-            </div>
-          ) : null}
           {/* what failed when the project was made, a line each with its fix, until dismissed or resolved (B2) */}
           {pid() ? <SetupNotes key={`notes:${pid()}`} projectId={pid()!} /> : null}
-          <ErrorNote error={act.error ?? chats.error} what={act.error ? 'Could not start a chat' : 'Could not read the chats'} />
+          <ErrorNote error={act.error ?? chats.error} retry={retryFor(act, chats)} what={act.error ? 'Could not start a chat' : 'Could not read the chats'} />
           <div mix={listCss} data-testid="work-list">
             {(['needs', 'running', 'earlier'] as WorkGroup[]).map((g) =>
               groups[g].length ? (
@@ -370,6 +375,14 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             <a href={routes.tasks.href()} data-testid="work-merged">
               Merged this week <b>{merged}</b>
             </a>
+            {next ? (
+              <a href={routes.milestones.href()} data-testid="work-milestone" data-overdue={next.overdue ? 'true' : undefined} mix={next.overdue ? overdueCss : undefined} title={`Next milestone: ${next.title}`}>
+                <span class="ms">Next milestone: {next.title}</span>
+                <b>
+                  {dueText(next, Date.now())} · {next.progress.percent}%
+                </b>
+              </a>
+            ) : null}
           </div>
         </aside>
         <AgentPanelHost agents={agents} />

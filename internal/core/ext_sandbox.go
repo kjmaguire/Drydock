@@ -16,9 +16,11 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/sandbox"
 	"github.com/kjmaguire/drydock/internal/tasks"
+	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
 // The per-task container sandbox (docs/sandbox.md). A project switches it on (a human decision, off by default, never carried
@@ -50,10 +52,27 @@ type SandboxSwitch struct {
 type SandboxUnconfirmedError struct {
 	Branch  string
 	Changes []string
+	// Fingerprint is the digest of the definition that was refused: the task page's "Confirm this definition" confirms exactly it.
+	Fingerprint string
 }
 
+// SandboxGate says why the sandbox did not start, for the question the person answers (pipeline.SandboxGate, X38).
+func (e *SandboxUnconfirmedError) SandboxGate() (string, string, []string) {
+	return pipeline.SandboxUnconfirmed, e.Fingerprint, e.Changes
+}
+
+// sandboxGateError is a sandbox that did not start for a reason the question names (pipeline.SandboxGate).
+type sandboxGateError struct {
+	reason string
+	err    error
+}
+
+func (e *sandboxGateError) Error() string                           { return e.err.Error() }
+func (e *sandboxGateError) Unwrap() error                           { return e.err }
+func (e *sandboxGateError) SandboxGate() (string, string, []string) { return e.reason, "", nil }
+
 func (e *SandboxUnconfirmedError) Error() string {
-	return fmt.Sprintf("the sandbox definition on %s (%s) is not the one you confirmed: %s. Confirm it in the project's sandbox settings (or switch the sandbox off and on again), then answer to try again",
+	return fmt.Sprintf("the sandbox definition on %s (%s) is not the one you confirmed: %s. Confirming it, here or in the project's sandbox settings (or switching the sandbox off and on again), lets every task of the project that waits for it go on",
 		e.Branch, sandbox.ConfigPath, strings.Join(e.Changes, "; "))
 }
 
@@ -68,7 +87,7 @@ func (c *Core) trustedSandboxDefinition(ctx context.Context, projectID string) (
 	if sw.Trusted != nil && sw.Trusted.Fingerprint() == cfg.Fingerprint() {
 		return cfg, branch, nil
 	}
-	return cfg, branch, &SandboxUnconfirmedError{Branch: branch, Changes: sandbox.Diff(sw.Trusted, cfg)}
+	return cfg, branch, &SandboxUnconfirmedError{Branch: branch, Changes: sandbox.Diff(sw.Trusted, cfg), Fingerprint: cfg.Fingerprint()}
 }
 
 // TrustSandbox records that the person confirmed the definition whose digest is fingerprint, which must be the one on the default
@@ -97,7 +116,50 @@ func (c *Core) TrustSandbox(ctx context.Context, projectID, fingerprint, by stri
 		c.logf("audit sandbox.trust: %v", err)
 	}
 	c.publish(ctx, "sandbox.trusted", projectID, map[string]any{"by": by})
+	c.answerSandboxQuestions(ctx, projectID, by)
 	return sw, nil
+}
+
+// answerSandboxQuestions answers, as the person who just confirmed the project's sandbox definition (sandbox.trust, or switching
+// the sandbox on), every question of the project's tasks that waits because the definition was not confirmed: their steps run
+// again (effort review X38). One confirmation resumes every such task of the project, and the task page says so beside the
+// button. Questions for other reasons (no engine, a broken definition) are not answered: confirming does not fix them. Nothing is
+// answered in read-only (licence) mode, where a person cannot answer them either.
+func (c *Core) answerSandboxQuestions(ctx context.Context, projectID, by string) int {
+	if c.RequireLicensed(ctx, "approve") != nil {
+		return 0
+	}
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id, run_id, payload FROM approvals WHERE status='REQUESTED' AND kind='question' AND project_id=?`, projectID)
+	if err != nil {
+		return 0
+	}
+	type waiting struct{ id, run string }
+	var ws []waiting
+	for rows.Next() {
+		var id, run string
+		var payload []byte
+		if rows.Scan(&id, &run, &payload) != nil {
+			continue
+		}
+		var p struct {
+			Gate   string `json:"gate"`
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal(payload, &p) == nil && p.Gate == "sandbox" && p.Reason == pipeline.SandboxUnconfirmed && run != "" {
+			ws = append(ws, waiting{id, run})
+		}
+	}
+	_ = rows.Close()
+	n := 0
+	data := []byte(`{}`) // the same answer as the task page's Try again
+	for _, w := range ws {
+		if err := c.Engine.Resume(ctx, workflow.RunID(w.run), workflow.Response{RequestID: workflow.RequestID(w.id), Decision: "answered", By: by, Data: data}); err != nil {
+			c.logf("sandbox: resuming %s after the confirmation: %v", w.run, err)
+			continue
+		}
+		n++
+	}
+	return n
 }
 
 func (c *Core) saveSandboxSwitch(ctx context.Context, projectID string, s SandboxSwitch) error {
@@ -144,6 +206,9 @@ func (c *Core) SetSandbox(ctx context.Context, projectID string, on bool, by str
 		return SandboxSwitch{}, err
 	}
 	c.publish(ctx, "sandbox.switched", projectID, map[string]any{"enabled": on, "by": by})
+	if on && s.Trusted != nil {
+		c.answerSandboxQuestions(ctx, projectID, by) // switching on confirms the definition
+	}
 	return s, nil
 }
 
@@ -194,9 +259,111 @@ func (c *Core) sandboxBox(ctx context.Context, t tasks.Task) (*sandbox.Box, erro
 	}
 	cfg, _, err := c.trustedSandboxDefinition(ctx, t.ProjectID)
 	if err != nil {
-		return nil, err
+		var unconfirmed *SandboxUnconfirmedError
+		if errors.As(err, &unconfirmed) {
+			return nil, err
+		}
+		return nil, &sandboxGateError{reason: pipeline.SandboxDefinition, err: err}
 	}
-	return c.sandboxes().Ensure(ctx, sandbox.Spec{TaskID: t.ID, ProjectID: t.ProjectID, Worktree: t.Worktree, Config: cfg})
+	// creating the sandbox can take minutes (pulling images, starting services, running setup): each step is said on the task
+	// page while it goes, instead of minutes of silence (effort review X39)
+	b, err := c.sandboxes().Ensure(ctx, sandbox.Spec{TaskID: t.ID, ProjectID: t.ProjectID, Worktree: t.Worktree, Config: cfg, Progress: func(step string) {
+		c.sbStarts.step(t.ID, step)
+		c.publishTask(ctx, EventSandboxStarting, t, "", map[string]any{"step": step})
+	}})
+	if c.sbStarts.finish(t.ID, err == nil) {
+		if err == nil {
+			c.publishTask(ctx, EventSandboxReady, t, "", map[string]any{})
+		} else {
+			c.publishTask(ctx, EventSandboxStartFailed, t, "", map[string]any{})
+		}
+	}
+	if err != nil {
+		reason := pipeline.SandboxStart
+		if errors.Is(err, sandbox.ErrNoEngine) {
+			reason = pipeline.SandboxEngine
+		}
+		return nil, &sandboxGateError{reason: reason, err: err}
+	}
+	return b, nil
+}
+
+// Events of a sandbox that is being created (X39). The step is in plain words and names only images and services of the
+// definition (sandbox.Spec.Progress).
+const (
+	EventSandboxStarting    = "sandbox.starting"
+	EventSandboxReady       = "sandbox.ready"
+	EventSandboxStartFailed = "sandbox.start_failed"
+)
+
+// SandboxStart is how the last start of a task's sandbox went, kept while Drydock runs: the steps so far, and whether it is ready
+// or failed. While neither, the task page says the step it is at.
+type SandboxStart struct {
+	Steps  []string `json:"steps"`
+	Ready  bool     `json:"ready,omitempty"`
+	Failed bool     `json:"failed,omitempty"`
+}
+
+// sandboxStarts holds each task's SandboxStart; a task's goes when the task ends.
+type sandboxStarts struct {
+	mu sync.Mutex
+	m  map[string]SandboxStart
+}
+
+// step records a step; a start that had finished is replaced by a new one.
+func (s *sandboxStarts) step(taskID, step string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.m == nil {
+		s.m = map[string]SandboxStart{}
+	}
+	cur := s.m[taskID]
+	if cur.Ready || cur.Failed {
+		cur = SandboxStart{}
+	}
+	if len(cur.Steps) < 50 {
+		cur.Steps = append(append([]string(nil), cur.Steps...), step)
+	}
+	s.m[taskID] = cur
+}
+
+// finish ends a start that is going on; it reports whether the record changed. A failure before any step (no engine, a network
+// that could not be created) also ends a start recorded earlier as ready, so the page does not say "started" above a sandbox that
+// could not start.
+func (s *sandboxStarts) finish(taskID string, ok bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, has := s.m[taskID]
+	if !has || cur.Failed {
+		return false
+	}
+	if cur.Ready {
+		if ok {
+			return false
+		}
+		s.m[taskID] = SandboxStart{Failed: true}
+		return true
+	}
+	cur.Ready, cur.Failed = ok, !ok
+	s.m[taskID] = cur
+	return true
+}
+
+func (s *sandboxStarts) get(taskID string) *SandboxStart {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.m[taskID]
+	if !ok {
+		return nil
+	}
+	cur.Steps = append([]string(nil), cur.Steps...)
+	return &cur
+}
+
+func (s *sandboxStarts) drop(taskID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.m, taskID)
 }
 
 // sandboxHook is pipeline.Deps.Sandbox.
@@ -319,17 +486,20 @@ var SandboxTools = []string{"sandbox_info", "sandbox_logs", "sandbox_run", "sand
 
 // SandboxStatus is what the project settings show.
 type SandboxStatus struct {
-	Switch     SandboxSwitch   `json:"switch"`
-	Engine     *sandbox.Info   `json:"engine,omitempty"`
-	EngineErr  string          `json:"engineError,omitempty"`
-	Found      bool            `json:"found"`
-	Branch     string          `json:"branch,omitempty"`
-	Config     *sandbox.Config `json:"config,omitempty"`
-	ConfigErr  string          `json:"configError,omitempty"`
-	Hosts      []string        `json:"hosts,omitempty"`
-	Starter    string          `json:"starter,omitempty"` // a definition to start from, when the project has none
-	EgressErr  string          `json:"egressError,omitempty"`
-	ConfigPath string          `json:"configPath"`
+	Switch    SandboxSwitch   `json:"switch"`
+	Engine    *sandbox.Info   `json:"engine,omitempty"`
+	EngineErr string          `json:"engineError,omitempty"`
+	Found     bool            `json:"found"`
+	Branch    string          `json:"branch,omitempty"`
+	Config    *sandbox.Config `json:"config,omitempty"`
+	ConfigErr string          `json:"configError,omitempty"`
+	Hosts     []string        `json:"hosts,omitempty"`
+	Starter   string          `json:"starter,omitempty"` // a definition to start from, when the project has none
+	// StarterFrom names the project's files the starter took something from (a compose file, a dev container, a Dockerfile; X35):
+	// their values are copied as they are, so the settings say to read them before committing.
+	StarterFrom []string `json:"starterFrom,omitempty"`
+	EgressErr   string   `json:"egressError,omitempty"`
+	ConfigPath  string   `json:"configPath"`
 	// Fingerprint is the digest of the definition shown; sandbox.trust confirms the definition with that digest. Trusted is true
 	// when the sandbox is on and this is the definition the person confirmed; otherwise Changes says what differs.
 	Fingerprint string   `json:"fingerprint,omitempty"`
@@ -359,7 +529,7 @@ func (c *Core) sandboxStatus(ctx context.Context, projectID string) (SandboxStat
 		st.ConfigErr = err.Error()
 	case err != nil:
 		st.ConfigErr = err.Error()
-		st.Starter = c.sandboxStarter(ctx, projectID, branch)
+		st.Starter, st.StarterFrom = c.sandboxStarter(ctx, projectID, branch)
 	default:
 		st.Config, st.Hosts = &cfg, cfg.Hosts()
 		st.Fingerprint = cfg.Fingerprint()
@@ -378,18 +548,20 @@ func (c *Core) sandboxStatus(ctx context.Context, projectID string) (SandboxStat
 	return st, nil
 }
 
-// sandboxStarter suggests a definition from the files on the default branch.
-func (c *Core) sandboxStarter(ctx context.Context, projectID, branch string) string {
+// sandboxStarter suggests a definition from the files on the default branch: the language files, and the compose file, dev
+// container and Dockerfile the project already has (X35). from names the files it took something from.
+func (c *Core) sandboxStarter(ctx context.Context, projectID, branch string) (starter string, from []string) {
 	repo, err := c.repo(ctx, projectID)
 	if err != nil || branch == "" {
-		return ""
+		return "", nil
 	}
-	has := func(name string) bool {
-		_, ok, err := repo.ShowFile(ctx, branch, name)
-		return err == nil && ok
+	read := func(name string) (string, bool) {
+		text, ok, err := repo.ShowFile(ctx, branch, name)
+		return text, err == nil && ok
 	}
-	b, _ := json.MarshalIndent(sandbox.Starter(has), "", "  ")
-	return string(b)
+	cfg, from := sandbox.StarterFrom(read)
+	b, _ := json.MarshalIndent(cfg, "", "  ")
+	return string(b), from
 }
 
 // SandboxTestStep is one step of the sandbox test.
@@ -533,6 +705,7 @@ func (c *Core) watchSandboxTasks(ctx context.Context) {
 	// Consume replays what the bus dropped when this watcher fell behind: a missed event would leave a sandbox running for a task
 	// that has ended (audit 2026-10-16, L2)
 	events.Consume(ctx, c.Bus, events.Filter{Types: []string{"task.completed", "task.failed", "task.cancelled"}}, func(e events.Event) {
+		c.sbStarts.drop(e.TaskID)
 		if e.TaskID == "" || !c.sandboxSwitch(ctx, e.ProjectID).Enabled {
 			return
 		}

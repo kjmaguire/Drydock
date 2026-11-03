@@ -103,7 +103,7 @@ export function RoleToolsPanel(handle: Handle<{ projectId: string }>) {
         title="Agent tools by role"
         description="Which tools each role's agents get in this project. Drydock's defaults fit most projects."
       >
-        <ErrorNote error={q.error} what="Could not load the table" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not load the table" />
         <ErrorNote error={act.error} what="Not changed" />
         {!v ? (
           q.error ? null : <Loading />

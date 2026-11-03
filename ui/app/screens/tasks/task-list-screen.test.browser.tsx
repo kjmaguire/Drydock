@@ -6,7 +6,7 @@ import { byLabel, byText, cleanup, mount, type, waitFor } from '../../test/rende
 import { SchedulerPanel } from './scheduler-panel.tsx';
 import { TaskCreateScreen } from './task-create-screen.tsx';
 import { TaskListScreen } from './task-list-screen.tsx';
-import { recorder, svc, task } from './testing.ts';
+import { agent, recorder, svc, task } from './testing.ts';
 
 afterEach(() => {
   cleanup();
@@ -541,7 +541,7 @@ describe('TaskCreateScreen', () => {
   it('creates the task with trimmed title and one criterion per line, then hands over the new task', async () => {
     const taskCreate = recorder(() => task({ id: 't9' }));
     const created: Task[] = [];
-    const r = mount(<TaskCreateScreen onCreated={(x) => created.push(x)} />, svc({ taskCreate }));
+    const r = mount(<TaskCreateScreen onCreated={(x) => created.push(x)} />, svc({ taskCreate }, { agents: [] }));
     await waitFor(() => expect(byLabel(r.container, 'Task title')).toBeTruthy(), r);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Create task').disabled).toBe(true);
     await r.act(() => type(byLabel(r.container, 'Task title'), '  Add Multiply  '));
@@ -557,12 +557,83 @@ describe('TaskCreateScreen', () => {
   });
 
   it('shows the core refusal and stays on the form', async () => {
-    const r = mount(<TaskCreateScreen onCreated={() => undefined} />, svc({ taskCreate: async () => Promise.reject(new Error('title is required')) }));
+    const r = mount(<TaskCreateScreen onCreated={() => undefined} />, svc({ taskCreate: async () => Promise.reject(new Error('title is required')) }, { agents: [] }));
     await waitFor(() => expect(byLabel(r.container, 'Task title')).toBeTruthy(), r);
     await r.act(() => type(byLabel(r.container, 'Task title'), 'x'));
     await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create task').disabled).toBe(false), r);
     await r.act(() => byText(r.container, 'button', 'Create task').click());
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('Task not created: title is required'), r);
     expect(byLabel<HTMLInputElement>(r.container, 'Task title').value).toBe('x');
+  });
+
+  it('Create and start sends the pair chosen for you and start; Create only makes it unassigned (C1)', async () => {
+    const taskCreate = recorder(() => task({ id: 't9' }));
+    const created: Task[] = [];
+    const r = mount(<TaskCreateScreen onCreated={(x) => created.push(x)} />, svc({ taskCreate }));
+    await waitFor(() => expect(r.$('[data-testid="task-crew-pair"]')?.textContent).toContain('Dana builds, Rex reviews'), r);
+    await r.act(() => type(byLabel(r.container, 'Task title'), 'Add Multiply'));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Create and start').click());
+    await waitFor(() => expect(created.length).toBe(1), r);
+    expect(taskCreate.calls[0]).toEqual([{ projectId: 'prj_1', title: 'Add Multiply', description: '', acceptance: [], assignee: 'a1', reviewer: 'a2', start: true }]);
+    await r.act(() => byText(r.container, 'button', 'Create only').click());
+    await waitFor(() => expect(created.length).toBe(2), r);
+    expect(taskCreate.calls[1]).toEqual([{ projectId: 'prj_1', title: 'Add Multiply', description: '', acceptance: [] }]);
+  });
+
+  it('Enter in the form only creates, even with a pair that could start (C1 review)', async () => {
+    const taskCreate = recorder(() => task({ id: 't9' }));
+    const created: Task[] = [];
+    const r = mount(<TaskCreateScreen onCreated={(x) => created.push(x)} />, svc({ taskCreate }));
+    await waitFor(() => expect(r.$('[data-testid="task-crew-pair"]')).toBeTruthy(), r);
+    await r.act(() => type(byLabel(r.container, 'Task title'), 'Add Multiply'));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(false), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').type).toBe('button');
+    // implicit submission (Enter in the title) submits the form with no submitter
+    await r.act(() => (r.$('form') as HTMLFormElement).requestSubmit());
+    await waitFor(() => expect(created.length).toBe(1), r);
+    expect(taskCreate.calls[0]).toEqual([{ projectId: 'prj_1', title: 'Add Multiply', description: '', acceptance: [] }]);
+  });
+
+  it('a task made whose start then failed is named with a link, and the form is cleared (C1 review)', async () => {
+    const taskCreate = recorder(() => ({ ...task({ id: 't12', seq: 12 }), startError: 'task #12 was created but did not start: no security agent' }));
+    const created: Task[] = [];
+    const r = mount(<TaskCreateScreen onCreated={(x) => created.push(x)} />, svc({ taskCreate }));
+    await waitFor(() => expect(r.$('[data-testid="task-crew-pair"]')).toBeTruthy(), r);
+    await r.act(() => type(byLabel(r.container, 'Task title'), 'Harden login'));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Create and start').click());
+    await waitFor(() => expect(r.$('[data-testid="task-made-not-started"]')).toBeTruthy(), r);
+    const note = r.$('[data-testid="task-made-not-started"]')!;
+    expect(note.textContent).toContain('task #12 was created but did not start: no security agent');
+    expect(note.querySelector('a')!.getAttribute('href')).toBe('/task/t12');
+    expect(byLabel<HTMLInputElement>(r.container, 'Task title').value).toBe('');
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(true);
+    expect(created).toEqual([]);
+  });
+
+  it('Change picks another pair; the same agent twice cannot start', async () => {
+    const taskCreate = recorder(() => task({ id: 't9' }));
+    const agents = [agent('a1', 'Dana', 'backend'), agent('a2', 'Rex', 'reviewer'), agent('a3', 'Ivy', 'frontend')];
+    const r = mount(<TaskCreateScreen onCreated={() => undefined} />, svc({ taskCreate }, { agents }));
+    await waitFor(() => expect(r.$('[data-testid="task-crew-pair"]')).toBeTruthy(), r);
+    await r.act(() => type(byLabel(r.container, 'Task title'), 'Add Multiply'));
+    await r.act(() => byText(r.container, 'button', 'Change').click());
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Worker'), 'a2'));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(true), r);
+    expect(r.$('[data-testid="task-start-blocked"]')!.textContent).toContain('different agent');
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Worker'), 'a3'));
+    await r.act(() => byText(r.container, 'button', 'Create and start').click());
+    await waitFor(() => expect(taskCreate.calls.length).toBe(1), r);
+    expect((taskCreate.calls[0] as unknown[])[0]).toMatchObject({ assignee: 'a3', reviewer: 'a2', start: true });
+  });
+
+  it('a project without a repository cannot start from here; Create only still works', async () => {
+    const r = mount(<TaskCreateScreen onCreated={() => undefined} />, svc({ projectList: async () => [{ id: 'prj_1', name: 'gocalc', hasRepo: false } as never] }));
+    await waitFor(() => expect(r.$('[data-testid="task-crew-pair"]')).toBeTruthy(), r);
+    await r.act(() => type(byLabel(r.container, 'Task title'), 'Plan'));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(true), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Create only').disabled).toBe(false);
+    expect(r.$('[data-testid="task-start-blocked"]')!.textContent).toContain('no repository');
   });
 });

@@ -6,7 +6,7 @@ import { css, on, type Handle } from 'remix/component';
 import { Activity, Eye, FileDown } from 'lucide';
 import type { TelemetryDocument, TelemetryExport } from '../../api/extTypes.ts';
 import { starts } from '../../state/live.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, kv, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -59,7 +59,7 @@ export function TelemetryPanel(handle: Handle) {
         testId="telemetry"
         description="Usage counts only: no prompts, code or secrets. Kept on this computer, and sent to a collector only if you set one up. Off unless you turn it on."
       >
-        <ErrorNote error={q.error ?? act.error} what="Telemetry" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Telemetry" />
         {!st && q.loading ? <Loading /> : null}
         {st ? (
           <div mix={panel}>

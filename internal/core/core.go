@@ -104,10 +104,20 @@ type Config struct {
 	// does not open inside the app. The desktop app sets it (app/app_windows.go); the address has passed ExternalURL by then. Without
 	// it (the browser harness) the page uses the browser's own link.
 	OpenURL func(ctx context.Context, rawURL string) error
+	// OpenPath opens a task's worktree or a project's repository, or a file in it, in Explorer or a code editor (effort review X26):
+	// the path is one the core resolved and confined (Core.OpenPath), the editor a program of its allowlist found on PATH. The desktop
+	// app sets it (app/app_windows.go); without it the page offers Copy path only. The e2e harness sets a labelled stand-in.
+	OpenPath func(ctx context.Context, p PathOpen) error
+	// LookPath finds an editor's command on PATH for OpenPath. Default: exec.LookPath; tests and the e2e harness set a stand-in.
+	LookPath func(file string) (string, error)
 	// OpenSandboxApp shows a forwarded port of a task's sandbox in a window of Drydock's own, in a process of its own with a
 	// storage partition of its own (decision P134). The desktop app sets it (app/sandboxview_windows.go); without it (the browser
 	// harness) the page says the viewer is not available, and never opens the address in a browser.
 	OpenSandboxApp func(ctx context.Context, app SandboxApp) error
+	// SandboxAppShown says whether Drydock's viewer shows the address now, and CloseSandboxApp ends that viewer (effort review X314:
+	// a second Open brings the window to the front, Stop closes it). The desktop app sets both with OpenSandboxApp.
+	SandboxAppShown func(url string) bool
+	CloseSandboxApp func(url string) error
 	// Restart starts Drydock again and quits this one: "Restart now" after a staged restore (decision P116). The desktop app sets
 	// it (app/restart_windows.go); without it (the browser harness) the page says to quit and reopen.
 	Restart func(ctx context.Context) error
@@ -178,6 +188,8 @@ type Core struct {
 	clones      cloneRuns     // the clones running now, for github.cloneCancel (B12)
 	ghStatus    ghStatusCache // the last github.status answer, for a few seconds (F4)
 	written     writtenFiles  // the files this run wrote for the person, the only ones fs.reveal shows (A11)
+	sbStarts    sandboxStarts // how the last start of each task's sandbox went, step by step (X39)
+	start       startState    // what this start found the last one left behind (X511, ext_startreport.go)
 	DB          *storage.DB
 	Bus         *events.SQLBus
 	Tasks       *tasks.Service
@@ -266,9 +278,14 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		}
 		return nil, err
 	}
+	// the last process left its marker when it ended without Close (X511): said once, in the start report
+	unclean := markRunning(cfg.DataDir)
 	locked := false
 	defer func() {
 		if !locked {
+			if !unclean {
+				clearRunning(cfg.DataDir)
+			}
 			lock.Release()
 		}
 	}()
@@ -279,6 +296,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}
 	bg, cancel := context.WithCancel(context.Background())
 	c := &Core{cfg: cfg, DB: db, cancel: cancel, adapters: map[string]agents.Adapter{}, repos: map[string]*git.Repo{}}
+	c.start.r = StartReport{StartedAt: storage.Now(), Unexpected: unclean, Resumed: []StartRun{}, NotResumed: []StartRun{}}
 	acked, err := c.loadGateAcks(ctx)
 	if err != nil {
 		cancel()
@@ -428,6 +446,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		c.logf("close stale agent runs: %v", err)
 	} else if n > 0 {
 		c.logf("closed %d agent run(s) the last stop left open", n)
+		c.start.update(func(r *StartReport) { r.AgentRunsClosed = n })
 	}
 	if err := c.startExtensions(bg); err != nil {
 		c.logf("extensions: %v", err)
@@ -441,11 +460,14 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// the method registry is complete once the extensions have started: build it once for Call
 	m := c.Methods()
 	c.methods.Store(&m)
+	recoverHead, _ := c.Bus.LastSeq(ctx)
+	recoverSince := storage.Now()
 	if n, err := c.Engine.Recover(ctx); err != nil {
 		c.logf("recover: %v", err)
 	} else if n > 0 {
 		c.logf("resumed %d interrupted run(s)", n)
 	}
+	c.noteRecovered(ctx, recoverHead, recoverSince)
 	// a run whose last owner's lease was still valid at start (killed and restarted within the lease TTL) is taken over
 	// as soon as that lease expires
 	safe.Go("core.Open#2", func() { c.Engine.WatchRecover(bg, 0) })
@@ -463,6 +485,8 @@ func (c *Core) Close() {
 	c.Engine.Close()
 	c.Bus.Close()
 	_ = c.DB.Close()
+	// closed as it should: the next start is not told otherwise (X511)
+	clearRunning(c.cfg.DataDir)
 	c.lock.Release() // last: until the database is closed this folder is still ours
 }
 

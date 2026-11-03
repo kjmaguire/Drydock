@@ -3,6 +3,10 @@
 // memory, so it waits for the typing to stop); the bundle is then created on this computer. Including one run is opt-in behind an acknowledgement. Drydock
 // never uploads a bundle. Works in every license state and with no project.
 //
+// The run to include is picked from the newest runs that failed or were stopped part way (supportbundle.recentRuns, X56), or typed
+// with "Another run id..."; Report this on a run page, a failed task or an Inbox item opens /support?run=<id>, which picks that run
+// and previews with it at once. The acknowledgement before a bundle with a run is created stays.
+//
 // Creating never writes over a file by itself (audit 2026-10-16, L39): when a file is already at the destination the core writes
 // nothing and answers that it exists; the page asks "Replace it?" and sends the request again with overwrite only after the person
 // says yes. A bundle that was written is shown with what was done to it: the scrub report, the files left out and the files in it.
@@ -10,7 +14,8 @@
 import { css, on, ref, type Handle } from 'remix/component';
 import { FileArchive, FileSearch, LifeBuoy, ShieldCheck } from 'lucide';
 import type { BundleCreated, BundleExists, BundleFile, BundlePreview, BundleReport } from '../../api/pkgTypes.ts';
-import { formatBytes } from '../../lib/format.ts';
+import type { RecentRun } from '../../api/pkgClient.ts';
+import { agoWords, formatBytes } from '../../lib/format.ts';
 import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { faint, mono } from '../../ui/data.tsx';
@@ -19,6 +24,7 @@ import { Disclosure } from '../../ui/disclosure.tsx';
 import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
+import { Select, type SelectOption } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { RuleCounts } from '../data/rule-counts.tsx';
 import { confirmRow, Done, Group, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
@@ -148,12 +154,44 @@ function FileTable(handle: Handle<{ files: BundleFile[] | null; label?: string; 
 /** How long the page waits after a choice changes before it previews again. */
 export const PREVIEW_DELAY_MS = 600;
 
-export function SupportScreen(handle: Handle) {
+/** The picker's choice that shows the run id field. */
+export const OTHER_RUN = 'other';
+
+/** The picker's options: no run, the recent failed or paused runs by task, then a typed id. */
+export function runOptions(runs: readonly RecentRun[], now = Date.now()): SelectOption[] {
+  return [
+    { value: '', label: 'No run' },
+    ...runs.map((r) => ({
+      value: r.runId,
+      label: `${r.title || r.runId} (${r.status === 'PAUSED' ? 'stopped part way' : 'failed'})`,
+      hint: [r.project, agoWords(r.updatedAt, now)].filter(Boolean).join(', '),
+    })),
+    { value: OTHER_RUN, label: 'Another run id...' },
+  ];
+}
+
+/** `run` comes from the address (/support?run=<id>, Report this): that run is picked and the first preview includes it. */
+export function SupportScreen(handle: Handle<{ run?: string }>) {
   const s = services(handle);
   const act = action(handle);
   let events = '';
   let eventsError: string | undefined;
-  let run = '';
+  let run = (handle.props.run ?? '').trim();
+  /** The recent failed or paused runs; none (an older core, or a failed read) leaves only the id field. */
+  let recent: RecentRun[] = [];
+  /** The person chose "Another run id...", or the address named a run the list does not have. */
+  let other = false;
+  void Promise.resolve()
+    .then(() => s.client.supportbundleRecentRuns())
+    .then((r) => {
+      if (handle.signal.aborted) return;
+      recent = r.runs;
+      if (run && !recent.some((x) => x.runId === run)) other = true;
+      void handle.update();
+    })
+    .catch(() => {
+      /* no list: the id field stays, as before */
+    });
   let ack = false;
   let dest = '';
   // the choices a preview was made for travel with it: the bundle is made from exactly them, and only while the page still shows them
@@ -275,17 +313,41 @@ export function SupportScreen(handle: Handle) {
           >
             <div mix={panelPad} tabIndex={-1} data-testid="bundle-build-body">
               <div mix={formCss}>
-                <Field label="Include one run (optional; a run id). Adds that run's events with payloads and its raw output.">
-                  {(id) => (
-                    <input
-                      id={id}
-                      value={run}
-                      spellcheck={false}
-                      placeholder="run_..."
-                      mix={[mono, on('input', (e) => ((run = e.currentTarget.value), (ack = false), forget(), later(), void handle.update()))]}
-                    />
-                  )}
-                </Field>
+                {recent.length > 0 ? (
+                  <Field label="Run to include (optional). Adds that run's events with payloads and its raw output.">
+                    {(id) => (
+                      <Select
+                        id={id}
+                        testId="bundle-run-pick"
+                        value={other ? OTHER_RUN : recent.some((x) => x.runId === run.trim()) ? run.trim() : ''}
+                        options={runOptions(recent)}
+                        onChange={(v) => {
+                          other = v === OTHER_RUN;
+                          if (!other) {
+                            run = v;
+                            later();
+                          }
+                          ack = false;
+                          forget();
+                          void handle.update();
+                        }}
+                      />
+                    )}
+                  </Field>
+                ) : null}
+                {recent.length === 0 || other ? (
+                  <Field label="Include one run (optional; a run id). Adds that run's events with payloads and its raw output.">
+                    {(id) => (
+                      <input
+                        id={id}
+                        value={run}
+                        spellcheck={false}
+                        placeholder="run_..."
+                        mix={[mono, on('input', (e) => ((run = e.currentTarget.value), (ack = false), forget(), later(), void handle.update()))]}
+                      />
+                    )}
+                  </Field>
+                ) : null}
                 <Disclosure summary="More options" open={events !== '' || !!eventsError} testId="bundle-more">
                   <Field label="Recent events to list (empty for the default of 500, at most 5000)" error={eventsError}>
                     {(id) => (

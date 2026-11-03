@@ -55,6 +55,10 @@ type DiffFiles struct {
 	// RunActive says an agent is working on the task now (its run is being driven, not waiting for a person or paused): the
 	// viewer then opens on the live diff, and goes back to the recorded one when the run stops, unless the person chose.
 	RunActive bool `json:"runActive,omitempty"`
+	// DiffID is the evidence id of the recorded diff (task.diff with it reads that exact patch: the dock's Raw view, L36).
+	DiffID int64 `json:"diffId,omitempty"`
+	// Worktree is the task's worktree folder while it is there (the file list's Copy path, X26).
+	Worktree string `json:"worktree,omitempty"`
 }
 
 // DiffFileContent is both versions of one file. Partial means only the changed regions are known (the commits are gone);
@@ -74,6 +78,7 @@ type DiffFileContent struct {
 // diffSource is everything needed to read one diff: the patch and the two sides.
 type diffSource struct {
 	kind     string // recorded | live
+	evidence int64  // the recorded diff's evidence id
 	patch    string
 	base     string
 	head     string // commit, or "" for a live diff (the worktree on disk)
@@ -117,6 +122,7 @@ func (c *Core) diffSource(ctx context.Context, id string, live bool) (diffSource
 					return diffSource{}, t, fmt.Errorf("the recorded diff cannot be read: %w", err)
 				}
 				src.patch = string(b)
+				src.evidence = ev[i].ID
 				var d struct {
 					Base   string `json:"base"`
 					Commit string `json:"commit"`
@@ -156,7 +162,10 @@ func (c *Core) TaskDiffFiles(ctx context.Context, id string, live bool) (DiffFil
 	if err != nil {
 		return DiffFiles{}, err
 	}
-	out := DiffFiles{Source: src.kind, Base: src.base, Head: src.head, Files: []DiffFile{}, LiveAvailable: worktreeExists(t)}
+	out := DiffFiles{Source: src.kind, Base: src.base, Head: src.head, Files: []DiffFile{}, LiveAvailable: worktreeExists(t), DiffID: src.evidence}
+	if out.LiveAvailable {
+		out.Worktree = t.Worktree
+	}
 	if info, ok := c.activeRun(ctx, t); ok && executing(info.Status) {
 		out.RunActive = true
 	}

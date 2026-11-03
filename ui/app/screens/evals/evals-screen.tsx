@@ -4,7 +4,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { Download, FolderOpen, Gauge, RefreshCw } from 'lucide';
 import type { EvalsExportResult, Ratio } from '../../api/extTypes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Disclosure } from '../../ui/disclosure.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -140,7 +140,7 @@ export function EvalsScreen(handle: Handle) {
                 }}
               />
             </div>
-            <ErrorNote error={q.error ?? act.error} what="Evals" />
+            <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Evals" />
             {exported ? (
               <Notice tone="ok" role="status" testId="evals-exported">
                 Wrote <code>{exported.path}</code> ({exported.bytes} bytes, {exported.tasks} tasks, sha256 <code>{exported.sha256.slice(0, 16)}</code>). It stays on

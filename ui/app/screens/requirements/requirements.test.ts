@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, isReadable, linkCriteria, linkedTaskIds, linkLabel, titleFromFile } from './requirements.ts';
+import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, isReadable, linkCriteria, linkedTaskIds, linkLabel, titleFromFile, suggestionWhy } from './requirements.ts';
 
 describe('Requirements helpers', () => {
   it('refuses a file over 1 MB before reading it and titles a file by its name', () => {
@@ -59,5 +59,13 @@ describe('linking criteria (X42)', () => {
     expect(linkLabel(3, 12)).toBe('Link 3 criteria of #12');
     expect(linkLabel(1, 12)).toBe('Link 1 criterion of #12');
     expect(linkLabel(0, 12)).toBe('Link');
+  });
+});
+
+describe('suggestionWhy (X43)', () => {
+  it('names what of the task matched and the passage it matched', () => {
+    expect(suggestionWhy({ matched: 'title', heading: 'Checkout > Card payments' })).toBe('its title matches "Card payments"');
+    expect(suggestionWhy({ matched: 'criterion', heading: 'Refunds' })).toBe('a criterion matches "Refunds"');
+    expect(suggestionWhy({ matched: 'title', heading: '' })).toBe('its title matches the text');
   });
 });

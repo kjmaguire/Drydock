@@ -363,7 +363,7 @@ export function ChatList(
               <div mix={groupCss} aria-live="polite">
                 {hits.loading && !hits.data ? 'Searching...' : `${hits.data?.length ?? 0} ${hits.data?.length === 1 ? 'match' : 'matches'}`}
               </div>
-              <ErrorNote error={hits.error} />
+              <ErrorNote error={hits.error} retry={hits.reload} />
               <ul mix={listCss} aria-label="Search results">
                 {(hits.data ?? []).map(hitRow)}
               </ul>
@@ -372,7 +372,7 @@ export function ChatList(
             <Loading label="Loading chats..." />
           ) : (
             <>
-              <ErrorNote error={chats.error} />
+              <ErrorNote error={chats.error} retry={chats.reload} />
               {openChat ? (
                 <>
                   <div mix={groupCss}>{openChat.projectId ? 'Open, from another project' : 'Open, not in a project'}</div>

@@ -4,7 +4,7 @@
 
 import { css, type Handle } from 'remix/component';
 import type { Agent } from '../../api/types.ts';
-import { query, services } from '../../state/services.tsx';
+import { query, retryFor, services } from '../../state/services.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { tightList } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -38,7 +38,7 @@ export function JoinRules(handle: Handle<{ projectId: string; agents: readonly A
     return (
       <section mix={cardCss} aria-label="Join rules" data-testid="join-rules">
         <h3>Join rules</h3>
-        <ErrorNote error={rules.error} />
+        <ErrorNote error={rules.error} retry={retryFor(rules)} />
         {withRule.length ? (
           <ul mix={tightList}>
             {withRule.map((id) => (

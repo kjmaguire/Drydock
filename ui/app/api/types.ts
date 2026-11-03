@@ -24,6 +24,28 @@ export interface AppInfo {
   /** The build's version and build id, as the release set them (decision P129); "0.0.0-dev" for a build from the source tree. Absent from older cores. */
   version?: string;
   build?: string;
+  /** What this start found the last one left behind (X511); absent from older cores. */
+  startReport?: StartReport;
+}
+
+/** A workflow run a start resumed or could not resume. */
+export interface StartRun {
+  runId: string;
+  taskId?: string;
+  projectId?: string;
+  title?: string;
+}
+
+/** What the core found when it started (X511): said once on Home, until the person dismisses it. */
+export interface StartReport {
+  /** Names this start (ms since the epoch), so a dismissal is remembered for it and not the next. */
+  startedAt: number;
+  /** The last process ended without closing (a crash, a kill, a power cut). */
+  unexpected: boolean;
+  crashes?: number;
+  agentRunsClosed?: number;
+  resumed: StartRun[];
+  notResumed: StartRun[];
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';
@@ -588,6 +610,16 @@ export interface TaskCreateReq {
   priority?: number;
   /** Trimmed, lower-cased and deduplicated by the core; too many or too long is refused. */
   labels?: string[];
+  /** The worker: the task is assigned as it is made (core.CreateTaskReq); a missing reviewer is chosen as task.assign chooses one. */
+  assignee?: string;
+  reviewer?: string;
+  /** Starts the task too ("Create and start"), under task.start's checks, made before the task is: a refused start makes no task. */
+  start?: boolean;
+}
+
+/** task.create's answer (core.CreateTaskResult): startError when the task was made but its assignment or start then failed. */
+export interface TaskCreateResult extends Task {
+  startError?: string;
 }
 
 /** tasks.MaxLabels and tasks.MaxLabelLen */
@@ -694,6 +726,14 @@ export interface RunInfo {
   version: number;
 }
 
+/** core.PRReviewNote: a collaborator's change request that arrived while a review and merge waited, framed as feedback. */
+export interface PRReviewNote {
+  summary: string;
+  author?: string;
+  /** The words Send back with the GitHub review sends: the request quoted as data. */
+  feedback: string;
+}
+
 export interface TaskDetail {
   task: Task;
   evidence: Evidence[];
@@ -714,6 +754,22 @@ export interface TaskDetail {
   runAgainWhy?: string;
   /** The task's project runs its commands in a sandbox: the preview on demand does not run on this machine there. Absent otherwise. */
   sandboxed?: boolean;
+  /**
+   * How the last start of the task's sandbox went while Drydock runs (X39): the steps so far in plain words ("pulling node:24",
+   * "running setup (1 of 2)"), then ready or failed. Absent when the sandbox was not created since Drydock started.
+   */
+  sandboxStart?: SandboxStart;
+  /** A collaborator's change request on GitHub that arrived while the review and merge waited (H12, core.PRReviewNote). */
+  prReview?: PRReviewNote;
+  /** The task names a worktree whose folder is not there any more (removed after the merge): nothing offers to open it outside Drydock (X26). Absent otherwise. */
+  worktreeGone?: boolean;
+}
+
+/** core.SandboxStart: the steps of creating a task's sandbox; neither ready nor failed while it goes on. */
+export interface SandboxStart {
+  steps: string[];
+  ready?: boolean;
+  failed?: boolean;
 }
 
 /**
@@ -764,6 +820,8 @@ export interface SummaryCheck {
   reason?: string;
   /** What failed (tests, findings), at most 10. */
   failing?: string[];
+  /** The Logs tab's id of the result's output ("ev:<evidence id>"), when it wrote one: ui.openLogs(taskId, logId) opens it. */
+  logId?: string;
 }
 
 /** A request waiting for a person; answer it with runRespond(runId, requestId, ...). */
@@ -938,7 +996,8 @@ export type NeedsKind =
   | 'adapter_drift'
   | 'tool_install'
   | 'crash'
-  | 'security_findings';
+  | 'security_findings'
+  | 'pr_review';
 
 export interface NeedsYouItem {
   key: string;
@@ -954,6 +1013,8 @@ export interface NeedsYouItem {
   agentId?: string;
   /** A chat whose CLI waits for the person to allow a tool call (kind chat_permission). */
   chatId?: string;
+  /** The workflow run an agent item is about (its task's latest run): Report this picks it on the Support page (X56). */
+  runId?: string;
   createdAt: string;
   /** What a task's item is about (UI review P1-1): the assignee, the newest diff's size, the checks and the reviewer's verdict. */
   context?: NeedsContext;

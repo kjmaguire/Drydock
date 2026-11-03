@@ -584,6 +584,14 @@ func (k *Knowledge) methods() map[string]Method {
 		}
 		return k.Requirements.Links(ctx, p.RequirementID)
 	})
+	// open tasks whose own words match a passage of the requirement: shown as suggestions the person links or dismisses (X43)
+	m["requirement.suggestLinks"] = bind(func(ctx context.Context, p struct {
+		RequirementID string   `json:"requirementId"`
+		K             int      `json:"k"`
+		Exclude       []string `json:"exclude"`
+	}) (any, error) {
+		return k.Requirements.SuggestLinks(ctx, p.RequirementID, p.K, p.Exclude)
+	})
 	m["requirement.stale"] = bind(func(ctx context.Context, p knowProject) (any, error) {
 		return k.Requirements.StaleLinks(ctx, p.ProjectID)
 	})

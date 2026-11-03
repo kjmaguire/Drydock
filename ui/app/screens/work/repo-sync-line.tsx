@@ -8,6 +8,7 @@ import { RefreshCw } from 'lucide';
 import { action, query, services } from '../../state/services.tsx';
 import { IconButton } from '../../ui/button.tsx';
 import { t } from '../../ui/tokens.ts';
+import { OpenElsewhere } from '../shared/open-elsewhere.tsx';
 import { remoteWord, showsSync, syncLine } from './repo-sync.ts';
 
 const lineCss = css({
@@ -43,12 +44,15 @@ export function RepoSyncLine(handle: Handle<{ projectId: string }>) {
     const line = syncLine(data);
     const busy = !!act.busy;
     const r = remoteWord(data);
+    // the repository folder, outside Drydock (X26)
+    const repo = s.workspace.projectList.find((p) => p.id === handle.props.projectId)?.repoPath;
     return (
       <div mix={lineCss} data-testid="repo-sync" data-behind={String(data.behind)} data-ahead={String(data.ahead)} data-outcome={data.outcome || ''}>
         <div class="row">
           <span class="state" data-tone={line.tone} data-testid="repo-sync-state" title={data.error || line.text} role="status">
             {busy ? `Syncing with ${r}…` : line.text}
           </span>
+          {repo ? <OpenElsewhere where={{ projectId: handle.props.projectId }} fullPath={repo} label="More ways to open the repository" testId="repo-open" /> : null}
           <IconButton icon={RefreshCw} size={14} label="Sync now" title={`Sync now: fetch from ${r}, then update ${data.branch} when nothing else changes`} data-testid="repo-sync-now" disabled={busy} mix={on('click', () => void sync())} />
         </div>
         {act.error ? (

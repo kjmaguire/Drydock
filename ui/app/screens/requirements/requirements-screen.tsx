@@ -10,7 +10,7 @@ import { formatDateTime, plural } from '../../lib/format.ts';
 import { requirementHref } from '../../lib/route.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, StatusChip, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -22,7 +22,22 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, isReadable, linkCriteria, linkedTaskIds, linkLabel, titleFromFile, UNREADABLE } from './requirements.ts';
+import {
+  dismissedSuggestions,
+  dismissSuggestion,
+  documentProblem,
+  evidenceOutcome,
+  fileProblem,
+  isDocument,
+  isGWT,
+  isReadable,
+  linkCriteria,
+  linkedTaskIds,
+  linkLabel,
+  suggestionWhy,
+  titleFromFile,
+  UNREADABLE,
+} from './requirements.ts';
 
 // --- trace ---
 
@@ -275,6 +290,18 @@ const takesFiles = (onFile: (f: File) => void) => [
 
 const ACCEPT = '.md,.markdown,.txt,.pdf,.docx,text/plain,text/markdown';
 
+// "Likely covered by #12": a row per suggested task with Link (or Choose, when it has no Given/When/Then criteria) and Dismiss
+const suggestCss = css({
+  display: 'grid',
+  gap: t.s2,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  fontSize: t.textSm,
+  '& li': { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, minWidth: '0' },
+  '& li > span:first-child': { minWidth: '0', overflowWrap: 'anywhere' },
+});
+
 function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onChanged: () => void; focusLink?: boolean }>) {
   const s = services(handle);
   const act = action(handle);
@@ -301,6 +328,21 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     load: () => s.client.requirementLinks({ requirementId: id() }),
     key: id,
     when: (e) => e.type.startsWith('requirement.'),
+  });
+  // the suggestions the person dismissed for this requirement (this browser only): sent to the core, which leaves them out
+  // before it ranks and caps, so dismissing the top ones brings up the next ones
+  let dismissed = dismissedSuggestions(id());
+  let dismissedFor = id();
+  const currentDismissed = () => {
+    if (dismissedFor !== id()) (dismissedFor = id()), (dismissed = dismissedSuggestions(id()));
+    return dismissed;
+  };
+  // open tasks whose words match a passage (X43): text matches the person links or dismisses, never linked by themselves
+  const suggestions = query(handle, {
+    load: () => s.client.requirementSuggestLinks(id(), 5, [...currentDismissed()]),
+    key,
+    when: (e) => e.type.startsWith('requirement.') || e.type === 'task.created',
+    debounceMs: 500,
   });
   let newText = '';
   let newFile = '';
@@ -344,6 +386,9 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     const { r, tasks } = handle.props;
     const busy = act.busy !== '';
     const linkList = links.data ?? [];
+    currentDismissed();
+    const linkedIds = new Set(linkList.map((l) => l.taskId));
+    const suggested = (suggestions.data ?? []).filter((sg) => !dismissed.has(sg.taskId) && !linkedIds.has(sg.taskId));
     const chosen = tasks.find((x) => x.id === taskId);
     const own = chosen?.acceptance ?? [];
     const plan = linkCriteria(own, ticked, criteria);
@@ -406,7 +451,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
 
         <div>
           <h3>Trace</h3>
-          {trace.data ? <TraceView t={trace.data} /> : trace.error ? <ErrorNote error={trace.error} /> : <Loading />}
+          {trace.data ? <TraceView t={trace.data} /> : trace.error ? <ErrorNote error={trace.error} retry={trace.reload} /> : <Loading />}
         </div>
 
         <div mix={twoCol}>
@@ -427,6 +472,53 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
             data-testid="req-link-panel"
           >
             <h3>Link criteria to a task</h3>
+            {suggested.length > 0 ? (
+              <ul mix={suggestCss} aria-label="Tasks that likely cover this requirement" data-testid="req-suggestions">
+                {suggested.map((sg) => {
+                  const own = (tasks.find((x) => x.id === sg.taskId)?.acceptance ?? []).filter(isGWT);
+                  return (
+                    <li key={sg.taskId} data-testid="req-suggestion" data-task={sg.taskId}>
+                      <span>
+                        Likely covered by{' '}
+                        <a href={routes.task.href({ id: sg.taskId })} title={sg.title}>
+                          #{sg.seq} {clip(sg.title, 60)}
+                        </a>
+                      </span>
+                      <span mix={faint}>{suggestionWhy(sg)}</span>
+                      {own.length > 0 ? (
+                        <Button
+                          size="sm"
+                          icon={Link2}
+                          disabled={busy}
+                          aria-label={`Link #${sg.seq} ${sg.title}`}
+                          mix={on('click', async () => {
+                            const x = await act.run('link', () => s.client.requirementLink(r.id, sg.taskId, own));
+                            if (x) (done(), suggestions.reload());
+                          })}
+                        >
+                          Link
+                        </Button>
+                      ) : (
+                        <Button size="sm" disabled={busy} aria-label={`Choose #${sg.seq} ${sg.title} to write its criteria`} mix={on('click', () => set(() => choose(sg.taskId)))}>
+                          Choose
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Dismiss #${sg.seq} ${sg.title}`}
+                        mix={on('click', () => {
+                          set(() => (dismissed = dismissSuggestion(r.id, sg.taskId)));
+                          suggestions.reload();
+                        })}
+                      >
+                        Dismiss
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
             <form
               mix={[
                 subForm,
@@ -760,7 +852,7 @@ export function RequirementsScreen(handle: Handle<RequirementsScreenProps>) {
         <p mix={muted}>
           Link criteria to tasks and see which have passing test evidence.
         </p>
-        <ErrorNote error={q.error ?? act.error} what="Requirements" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Requirements" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (
           <div mix={card}>

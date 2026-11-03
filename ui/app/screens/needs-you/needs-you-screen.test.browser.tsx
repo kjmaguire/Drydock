@@ -192,6 +192,25 @@ describe('the Inbox', () => {
     expect(calls.forTask).toEqual([]);
   });
 
+  it('a review a collaborator asked changes on while it waited is sent back with their words, and A does not merge it (H12)', async () => {
+    const item: NeedsYouItem = { key: 'approval:apr9', kind: 'pr_review', severity: 1, title: 'Review and merge: Add Divide', detail: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', projectId: 'p1', approvalId: 'apr9', taskId: 't9', phase: 'merge', createdAt: new Date(NOW - 60_000).toISOString() } as NeedsYouItem;
+    const prDetail: ApprovalDetail = {
+      id: 'apr9', kind: 'review', phase: 'merge', title: 'Review and merge: Add Divide', description: 'Merge it.', shell: false, targets: [], shortened: false, editable: false,
+      projectId: 'p1', runId: 'run9', createdAt: NOW, status: 'REQUESTED', approveForTask: false, rules: [],
+      prReview: { summary: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', author: 'kyle', feedback: '> from kyle:\n> Please handle negative numbers.' },
+    };
+    const { r, calls } = await open({ approvalGet: async () => prDetail }, [item]);
+    await waitFor(() => expect(r.$('[data-testid="detail-send-back"]')).not.toBeNull(), r);
+    expect(r.$('[data-testid="needs-item"]')!.getAttribute('data-look')).toBe('changes');
+    expect(r.$('[data-testid="detail-kind"]')!.textContent).toBe('Changes asked on GitHub · gocalc');
+    expect(r.$('[data-testid="detail-pr-review"]')!.textContent).toContain('Please handle negative numbers.');
+    expect(r.$('[data-testid="detail-approve"]')).toBeNull();
+    await r.act(() => press('a'));
+    expect(calls.respond).toEqual([]);
+    await r.act(() => (r.$('[data-testid="detail-send-back"]') as HTMLElement).click());
+    await waitFor(() => expect(calls.respond).toEqual([['run9', 'apr9', 'rejected', { feedback: '> from kyle:\n> Please handle negative numbers.' }]]), r);
+  });
+
   it('J and K move the selection; the spec gate shows its criteria and A accepts the spec as written', async () => {
     const { r, calls } = await open();
     await r.act(() => press('j'));
@@ -491,6 +510,41 @@ describe('the Inbox', () => {
   });
 });
 
+describe('every gate answered from the Inbox (C3)', () => {
+  const ciItem: NeedsYouItem = {
+    key: 'approval:apr7', kind: 'question', severity: 2, title: 'CI did not report on the pull request', projectId: 'p1', taskId: 't2', taskSeq: 42, approvalId: 'apr7', createdAt: iso(NOW - 60_000),
+  };
+  const ciDetail: ApprovalDetail = {
+    id: 'apr7', kind: 'question', gate: 'ci', title: ciItem.title, description: 'CI did not report.', shell: false, targets: [], shortened: false, editable: false, projectId: 'p1',
+    runId: 'run7', createdAt: NOW, status: 'REQUESTED', approveForTask: false, rules: [], payload: { gate: 'ci', pr: 4, url: 'https://github.com/o/r/pull/4', reason: 'none', missing: [], running: [] },
+  };
+
+  it("a CI gate shows the task page's panel; its answer goes to the request's run, and A does not answer it", async () => {
+    const { r, calls } = await open({ approvalGet: async () => ciDetail }, [ciItem]);
+    await waitFor(() => expect(r.$('[data-testid="detail-gate"] [data-testid="ci-gate"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="needs-hint"]')).toBeNull();
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the task');
+    await r.act(() => press('a'));
+    await new Promise((res) => setTimeout(res, 30));
+    expect(calls.respond).toEqual([]);
+    const again = Array.from(r.$$('[data-testid="detail-gate"] button')).find((b) => b.textContent?.includes('Check CI again')) as HTMLButtonElement;
+    await r.act(() => again.click());
+    await waitFor(() => expect(calls.respond).toEqual([['run7', 'apr7', 'answered', {}]]), r);
+  });
+
+  it("a chat's waiting tool call is allowed once with A, or denied, from the detail", async () => {
+    const chatItem: NeedsYouItem = { key: 'chat-ask:ask1', kind: 'chat_permission', severity: 2, title: 'Asks to use Bash: go test ./...', detail: 'In the chat Tests', projectId: 'p1', chatId: 'c1', createdAt: iso(NOW - 60_000) };
+    const answers: unknown[][] = [];
+    const ask = { id: 'ask1', chatId: 'c1', turnId: 'u1', messageId: 'm1', tool: 'Bash', summary: 'Bash: go test ./...', input: { command: 'go test ./...' }, created: NOW, expiresAt: NOW + 1_800_000 };
+    const { r } = await open({ chatAsks: async () => [ask], chatAnswer: async (...a) => void answers.push(a) }, [chatItem]);
+    await waitFor(() => expect(r.$('[data-testid="detail-chat-ask"] [data-testid="chat-ask"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the chat');
+    await waitFor(() => expect(r.$('[data-row-key="needs:chat-ask:ask1"] kbd')?.textContent).toBe('A'), r);
+    await r.act(() => press('a'));
+    await waitFor(() => expect(answers).toEqual([['c1', 'ask1', true]]), r);
+  });
+});
+
 describe('an agent that failed its task (C6)', () => {
   const agentFailed: NeedsYouItem = {
     key: 'agent:a1:failed:1', kind: 'agent', severity: 1, title: 'Failed: the worker gave up', projectId: 'p1', agentId: 'a1', agentName: 'Free hand', taskId: 't5', taskSeq: 43, createdAt: iso(NOW - 60_000),
@@ -513,6 +567,17 @@ describe('an agent that failed its task (C6)', () => {
     await r.act(() => yes.click());
     await waitFor(() => expect(again).toEqual(['t5']), r);
     await waitFor(() => expect(navigated).toEqual(['/task/t10']), r);
+  });
+
+  it('reports the run from the item: the Support page with its run picked (X56)', async () => {
+    const { r } = await open(withEnded('FAILED'), [{ ...agentFailed, runId: 'run_42' }]);
+    const link = await waitFor(() => {
+      const el = r.$('[data-testid="detail-report"]');
+      if (!el) throw new Error('no Report this yet');
+      return el;
+    }, r);
+    expect(link.textContent).toBe('Report this');
+    expect(link.getAttribute('href')).toBe('/support?run=run_42');
   });
 
   it('offers nothing to run again while the task has not ended', async () => {

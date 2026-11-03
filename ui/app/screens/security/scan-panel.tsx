@@ -14,7 +14,7 @@ import type { DrydockEvent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { typing } from '../../lib/keys.ts';
 import { pollWhile } from '../../lib/poll.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -608,7 +608,7 @@ export function ScanPanel(
                     {updated}
                   </Notice>
                 ) : null}
-                <ErrorNote error={act.error ?? current.error ?? history.error} what="Security scan" />
+                <ErrorNote error={act.error ?? current.error ?? history.error} retry={retryFor(act, current, history)} what="Security scan" />
                 {report?.storeError ? (
                   <Notice tone="warn" testId="scan-store-error">
                     {report.storeError}

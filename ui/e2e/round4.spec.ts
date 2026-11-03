@@ -205,6 +205,9 @@ test('support bundle: preview lists files and the scrub report, a planted secret
   expect(listed.length).toBe(Object.keys(entries).length);
 
   // including a run is opt-in; an unknown run is refused by the core before anything is written
+  // the run is picked from the failed ones when there are any (X56); a typed id goes through Another run id...
+  const pick = page.getByTestId('bundle-run-pick');
+  if (await pick.count()) await choose(pick, 'other');
   await page.getByLabel(/Include one run/).fill('run_does_not_exist');
   await expect(page.getByRole('alert')).toContainText('there is no run');
   expect(readFileSync(path).length).toBeGreaterThan(0);

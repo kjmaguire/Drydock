@@ -10,7 +10,7 @@ import type { EndpointUptimeView, ProviderEdit } from '../../api/providerClient.
 import type { ProbeResult, Provider, ProviderModel } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { parseWhole } from '../../lib/limits.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -452,7 +452,7 @@ export function ProviderPane(handle: Handle<{ p: Provider; onChanged: () => void
             </>
           }
         />
-        <ErrorNote error={act.error ?? q.error} what="Provider" />
+        <ErrorNote error={act.error ?? q.error} retry={retryFor(act, q)} what="Provider" />
         <CheapProbeOffer p={p} />
 
         {editing && d ? (

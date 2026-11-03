@@ -2,7 +2,9 @@ package pipeline
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -68,6 +70,18 @@ type CheckState struct {
 	Reason string `json:"reason,omitempty"`
 	// Failing names what failed (tests, findings), at most MaxFailingNames of them.
 	Failing []string `json:"failing,omitempty"`
+	// LogID is the Logs tab's id of the result's output ("ev:<evidence id>", as logs.list names it), when it wrote one.
+	LogID string `json:"logId,omitempty"`
+}
+
+// EvidenceLogPath returns the log file of an evidence row: a check's absolute log path. A diff, a screenshot or a reference
+// that is not a file path (a commit, a URL) is not a log.
+func EvidenceLogPath(kind, ref string) (string, bool) {
+	switch kind {
+	case "diff", "screenshot", "commit", "pr", "ci", "design":
+		return "", false
+	}
+	return ref, ref != "" && filepath.IsAbs(ref)
 }
 
 // RunningCheck is the check a pass is running now, as CheckStartedEvent said.
@@ -150,6 +164,9 @@ func LatestChecks(ev []tasks.Evidence, running *RunningCheck) []CheckState {
 
 func checkStateOf(e tasks.Evidence) CheckState {
 	st := CheckState{Kind: e.Kind, Reason: shortLine(e.Summary, 200), Status: CheckInconclusive}
+	if _, ok := EvidenceLogPath(e.Kind, e.Ref); ok {
+		st.LogID = "ev:" + strconv.FormatInt(e.ID, 10)
+	}
 	if e.Passed != nil {
 		st.Status = CheckFailed
 		if *e.Passed {

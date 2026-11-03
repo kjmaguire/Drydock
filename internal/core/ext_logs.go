@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -124,15 +124,8 @@ func (c *Core) TaskLogs(ctx context.Context, taskID string) ([]LogSource, error)
 	return out, nil
 }
 
-// evidenceLogPath returns the log file of an evidence row: a check's absolute log path. A diff, a screenshot or a reference
-// that is not a file path (a commit, a URL) is not a log.
-func evidenceLogPath(kind, ref string) (string, bool) {
-	switch kind {
-	case "diff", "screenshot", "commit", "pr", "ci", "design":
-		return "", false
-	}
-	return ref, ref != "" && filepath.IsAbs(ref)
-}
+// evidenceLogPath returns the log file of an evidence row (pipeline.EvidenceLogPath: the rule the Checks grid's log ids follow).
+func evidenceLogPath(kind, ref string) (string, bool) { return pipeline.EvidenceLogPath(kind, ref) }
 
 // logPath resolves a log id of a task to its file. The id must belong to the task.
 func (c *Core) logPath(ctx context.Context, taskID, id string) (path string, agent bool, err error) {

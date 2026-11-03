@@ -6,7 +6,7 @@ import { css, on, ref, type Handle } from 'remix/component';
 import { BookOpen, Download, ExternalLink, FilePlus, Library, MessageSquareText, RefreshCw, Search, ShieldAlert, Trash2, Upload } from 'lucide';
 import type { Pack, PackAttachment, PackCitation, PackConsult, PackFile, PackSearchResult, PackTemplate, PackUpload, QuarantinedChunk } from '../../api/extTypes.ts';
 import { formatCost, formatDateTime, plural } from '../../lib/format.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -280,7 +280,7 @@ function QuarantineList(handle: Handle<{ packId: string; onChanged: () => void }
     return (
       <div mix={quarCss} data-testid="quarantine">
         <p mix={faint}>These passages looked like instructions to an agent and were kept out of search. Only you can release one.</p>
-        <ErrorNote error={q.error ?? act.error} />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} />
         {q.data && rows.length === 0 ? <p mix={faint}>Nothing is quarantined.</p> : null}
         {rows.map((c) => (
           <div key={c.chunkId} mix={chunkCss} data-testid="quarantined-chunk">
@@ -577,7 +577,7 @@ function PackFiles(handle: Handle<{ packId: string; onChanged: () => void }>) {
     const busy = act.busy !== '';
     return (
       <div mix={filesCss} data-testid="pack-files">
-        <ErrorNote error={q.error ?? act.error} />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} />
         {q.data && files.length === 0 ? <p mix={faint}>This pack has no files.</p> : null}
         <ul>
           {files.map((f) => (
@@ -827,7 +827,7 @@ export function PacksScreen(handle: Handle) {
     const projectId = pid() ?? '';
     return (
       <Page title="Expert packs" icon={BookOpen} subtitle={packs.data ? `${list.length} installed` : undefined} guide="skills">
-        <ErrorNote error={packs.error ?? act.error} what="Packs" />
+        <ErrorNote error={packs.error ?? act.error} retry={retryFor(packs, act)} what="Packs" />
         {packs.loading && !packs.data ? <Loading /> : null}
         {packs.data && list.length === 0 ? (
           <div mix={card}>

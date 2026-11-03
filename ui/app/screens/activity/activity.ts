@@ -109,6 +109,26 @@ export function writeFilter(projectId: string | undefined, f: ActivityFilter, st
   }
 }
 
+const DEPTH_KEY = 'drydock.activity.depth.';
+
+/** How many older pages the person read on the project's Activity page (X53), read again when the page opens; 0 when unknown. */
+export function readDepth(projectId: string | undefined, storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): number {
+  try {
+    const n = Number(storage?.getItem(DEPTH_KEY + (projectId ?? '')) ?? 0);
+    return Number.isInteger(n) && n > 0 ? Math.min(n, 100) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function writeDepth(projectId: string | undefined, depth: number, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  try {
+    storage?.setItem(DEPTH_KEY + (projectId ?? ''), String(Math.max(0, Math.floor(depth))));
+  } catch {
+    /* a convenience only */
+  }
+}
+
 /** Whether the event is in the scope. A run decides alone (its task only names it); a task or an agent must match. */
 export function inScope(e: Pick<DrydockEvent, 'taskId' | 'runId' | 'agentId'>, scope: Scope): boolean {
   if (scope.agentId && e.agentId !== scope.agentId) return false;

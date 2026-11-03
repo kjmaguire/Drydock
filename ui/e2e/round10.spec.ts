@@ -12,7 +12,13 @@ test('the dock: Monaco diff, logs and a terminal in the task worktree', async ({
 
   // the task page shows the change in Monaco's diff editor, both sides
   const diff = page.getByTestId('diff-viewer').first();
-  await expect(diff.getByRole('button', { name: /calc\.go/ })).toBeVisible();
+  await expect(diff.getByRole('list', { name: 'Changed files' }).getByRole('button', { name: /calc\.go/ })).toBeVisible();
+  // the file in the worktree, outside Drydock (X26): Explorer, the editor the harness's stand-in PATH has, Copy path
+  await diff.getByTestId('diff-file-open').click();
+  await expect(page.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Open in Visual Studio Code' })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Open in Visual Studio Code' }).click();
+  await expect(page.getByText('Could not open it')).toHaveCount(0);
   const editor = diff.getByTestId('monaco-diff');
   // (in a narrow pane Monaco shows the diff inline even when side by side is chosen, so both texts are looked for anywhere)
   await expect(editor).toContainText(/return\sa\s-\sb/, { timeout: 60_000 });

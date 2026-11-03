@@ -10,7 +10,7 @@ import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { TaskMinutesLink } from '../room/room-exports.tsx';
 import { ClipboardList, Columns2, MessagesSquare } from 'lucide';
 import type { AssignPreview } from '../../api/controlClient.ts';
-import type { Connection, SummaryCheck, Task, TaskDetail } from '../../api/types.ts';
+import type { Connection, SandboxStart, SummaryCheck, Task, TaskDetail } from '../../api/types.ts';
 import { agentName } from '../../lib/format.ts';
 import { LEAD_ORIGIN_WAITS, leadStep } from '../../lib/task-origin.ts';
 import { routes } from '../../routes.ts';
@@ -23,6 +23,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
+import { DiffSummary } from '../dock/diff-files.tsx';
 import { DiffViewer } from '../dock/diff-viewer.tsx';
 import { TaskDecisions } from '../shared/explain.tsx';
 import { UsageTable } from '../shared/usage.tsx';
@@ -33,14 +34,13 @@ import { EndedCard } from './ended-card.tsx';
 import { EvidenceList, ReviewList } from './evidence.tsx';
 import { PreviewControls } from './preview-controls.tsx';
 import { SandboxApp } from './sandbox-app.tsx';
-import { DiffView } from './raw-diff.tsx';
 import { AllowRules, ReviewPanel } from './review-panel.tsx';
 import { SteerBox } from './steer-box.tsx';
 import { TaskControls } from './task-controls.tsx';
-import { criteriaRows, statusDot, statusPill } from './task-page.ts';
+import { criteriaRows, sandboxStartWords, statusDot, statusPill } from './task-page.ts';
 import { TaskProperties } from './task-properties.tsx';
 import { TaskTools } from './task-tools.tsx';
-import { isWaitingForTask, newestDiffId } from './tasks.ts';
+import { isWaitingForTask } from './tasks.ts';
 
 // the page: the work and the properties side by side, each column scrolling on its own (the bar stays on top of the work and the
 // steer box at its foot); on a narrower window the properties go under the work and the page scrolls as one.
@@ -154,6 +154,32 @@ const blockedCss = css({
   '& button': { justifySelf: 'start' },
 });
 
+const startCss = css({
+  fontSize: t.textSm,
+  '& > summary': { cursor: 'pointer', color: t.textMuted },
+  '& > ol': { margin: `${t.s2} 0 0`, paddingLeft: '20px', color: t.textMuted, display: 'grid', gap: '2px' },
+});
+
+/** The steps of creating the task's sandbox (X39), one folded line: what it did while the task said nothing else. */
+function SandboxStartLine(handle: Handle<{ start: SandboxStart }>) {
+  return () => {
+    const { start } = handle.props;
+    const head = start.ready ? 'Sandbox started' : start.failed ? 'The sandbox did not start' : 'Starting the sandbox';
+    return (
+      <details mix={startCss} data-testid="sandbox-start">
+        <summary>
+          {head} · {start.steps.length} {start.steps.length === 1 ? 'step' : 'steps'}
+        </summary>
+        <ol aria-label="Sandbox steps">
+          {start.steps.map((step, i) => (
+            <li key={`${i}:${step}`}>{step}</li>
+          ))}
+        </ol>
+      </details>
+    );
+  };
+}
+
 /** A section after the Activity, headed like it. */
 function Part(handle: Handle<{ title: string; label?: string; testId?: string; actions?: RemixNode; children?: RemixNode }>) {
   return () => {
@@ -217,7 +243,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
     if (!d || d.task.id !== handle.props.id) {
       return (
         <Page title="Task" icon={ClipboardList}>
-          <ErrorNote error={detail.error} what="Could not load the task" />
+          <ErrorNote error={detail.error} retry={detail.reload} what="Could not load the task" />
           {detail.loading || !detail.error ? <Loading label="Loading task..." /> : null}
         </Page>
       );
@@ -259,13 +285,13 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                   {d.roomId ? <TaskMinutesLink key={d.roomId} roomId={d.roomId} roomName={`task-${task.seq}`} /> : null}
                   <span mix={pillCss} data-testid="task-status" data-tone={tone}>
                     <span class="d" aria-hidden="true" />
-                    {statusPill(task, d.paused, checks)}
+                    {sandboxStartWords(d.sandboxStart) ?? statusPill(task, d.paused, checks)}
                   </span>
                 </span>
               </header>
 
               <div mix={bodyCss}>
-                <ErrorNote error={detail.error} what="Refresh failed" />
+                <ErrorNote error={detail.error} retry={detail.reload} what="Refresh failed" />
                 <div class="lead">
                   <h1 id={titleId}>{task.title}</h1>
                   {leadStep(task.origin) === undefined ? null : (
@@ -284,6 +310,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                 <ReviewPanel detail={d} criteria={criteria} onChanged={reload} />
                 <AllowRules rules={d.allowRules ?? []} onChanged={reload} />
                 <TaskControls key={task.id} detail={d} onChanged={reload} />
+                {d.sandboxStart && d.sandboxStart.steps.length > 0 ? <SandboxStartLine start={d.sandboxStart} /> : null}
                 <TaskActivity taskId={task.id} agents={agents} />
                 <Part title="Evidence">
                   <EvidenceList evidence={d.evidence} />
@@ -300,20 +327,22 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                   title="Diff"
                   testId="task-diff"
                   actions={
-                    <Button size="sm" variant="ghost" icon={Columns2} mix={on('click', () => s.ui.openDock('diff'))}>
-                      Open in the dock
-                    </Button>
+                    handle.props.embedded ? null : (
+                      <Button size="sm" variant="ghost" icon={Columns2} mix={on('click', () => s.ui.openDock('diff'))}>
+                        Open in the dock
+                      </Button>
+                    )
                   }
                 >
-                  {/* embedded in Work (P141) the Monaco diff stays in the dock ("Open in the dock"): each Monaco diff editor leaves
-                      about 3,000 detached nodes behind when it is disposed, and Work opens one task after another */}
-                  {handle.props.embedded ? null : <DiffViewer taskId={task.id} />}
-                  <DiffView key={task.id} taskId={task.id} diffId={newestDiffId(d.evidence)} />
+                  {/* embedded in Work (P141) the Monaco diff stays in the dock: each Monaco diff editor leaves about 3,000 detached
+                      nodes behind when it is disposed, and Work opens one task after another. Work lists the changed files with
+                      their counts instead, a row opening the dock on that file (X212); the raw patch is the viewer's Raw view. */}
+                  {handle.props.embedded ? <DiffSummary key={task.id} taskId={task.id} /> : <DiffViewer taskId={task.id} />}
                 </Part>
                 <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} sandboxed={!!d.sandboxed} />
                 <SandboxApp key={`sandbox-app-${task.id}`} taskId={task.id} />
                 <Part title="Usage">
-                  <ErrorNote error={usage.error} what="Could not load usage" />
+                  <ErrorNote error={usage.error} retry={usage.reload} what="Could not load usage" />
                   <UsageTable rows={usage.data ?? []} />
                 </Part>
                 <Part title="Why these models?">

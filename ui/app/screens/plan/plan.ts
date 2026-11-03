@@ -137,6 +137,19 @@ export function andList(xs: readonly string[]): string {
   return xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 }
 
+/**
+ * The trace links an accepted plan could not make, in a sentence ('' when it made them all): how many created tasks are not
+ * linked to a requirement the plan was made from.
+ */
+export function unlinkedText(plan: Pick<Plan, 'unlinked' | 'requirementIds'>): string {
+  const un = plan.unlinked ?? [];
+  if (un.length === 0) return '';
+  const tasks = new Set(un.map((u) => u.taskId)).size;
+  const reqs = new Set(un.map((u) => u.requirementId)).size;
+  const to = (plan.requirementIds ?? []).length > 1 ? (reqs === 1 ? 'one of its requirements' : `${reqs} of its requirements`) : 'its requirement';
+  return `${plural(tasks, 'task')} could not be linked to ${to} in the trace.`;
+}
+
 /** The scheduler's pass in a sentence: what started and what waits (the skipped ready tasks plus `alsoWaiting` others). */
 export function startedText(tick: TickResult, alsoWaiting = 0): string {
   const started = (tick.started ?? []).length;
@@ -151,4 +164,53 @@ export function milestoneTitle(goal: string): string {
   const bytes = (x: string) => new TextEncoder().encode(x).length;
   while (bytes(s) > 200) s = s.slice(0, -1);
   return s || 'Plan';
+}
+
+// --- who plans (X45) ---
+
+const norm = (s: string) => s.toLowerCase().replace(/[_-]/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+// the core's role synonyms (internal/pipeline/roles.go): the pm (planner), the architect and the team lead
+const PLANNER_ROLES = ['pm', 'product manager', 'product owner', 'product', 'planner', 'planning'];
+const ARCHITECT_ROLES = ['architect', 'software architect', 'architecture'];
+const LEAD_ROLES = ['lead', 'team lead', 'teamlead', 'manager', 'supervisor', 'engineering manager'];
+
+/** Whether an agent's role is one that plans: a pm or planner, or an architect. */
+export const plansByRole = (role: string): boolean => [...PLANNER_ROLES, ...ARCHITECT_ROLES].includes(norm(role));
+
+/**
+ * The agent the core picks when the person names no planner (pipeline.PickPlanner): the first pm or planner, then the first
+ * architect, then the team lead, then the first agent. `fallback` is true when nobody on the crew plans by role.
+ */
+export function autoPlanner<A extends { id: string; role: string }>(agents: readonly A[]): { agent?: A; fallback: boolean } {
+  for (const roles of [PLANNER_ROLES, ARCHITECT_ROLES, LEAD_ROLES]) {
+    const a = agents.find((x) => roles.includes(norm(x.role)));
+    if (a) return { agent: a, fallback: roles === LEAD_ROLES };
+  }
+  return { agent: agents[0], fallback: agents.length > 0 };
+}
+
+/** The sentence New agent's Describe box opens with from "Add a planner". */
+export const PLANNER_DESCRIPTION = 'Plans each feature and writes the spec before anyone codes.';
+
+/** Where the planner the person chose for a project is remembered (this browser only). */
+export const plannerKey = (projectId: string) => `drydock.planner.${projectId}`;
+
+/** The remembered planner of a project, when it is still on the crew. */
+export function rememberedPlanner(projectId: string, agents: readonly { id: string }[]): string {
+  try {
+    const v = localStorage.getItem(plannerKey(projectId)) ?? '';
+    return agents.some((a) => a.id === v) ? v : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Remembers (or, with '', forgets) the planner the person chose for a project. */
+export function rememberPlanner(projectId: string, agentId: string): void {
+  try {
+    if (agentId) localStorage.setItem(plannerKey(projectId), agentId);
+    else localStorage.removeItem(plannerKey(projectId));
+  } catch {
+    // storage blocked: the choice lasts for this page only
+  }
 }

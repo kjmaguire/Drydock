@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { BundleCreated, BundlePreview, BundleResult } from '../../api/pkgTypes.ts';
-import { byLabel, byText, cleanup, errorOf, fromMenu, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, errorOf, fromMenu, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { SupportScreen } from './support-screen.tsx';
 
 afterEach(cleanup);
@@ -443,5 +443,53 @@ describe('SupportScreen', () => {
     await previewed(r);
     await r.act(() => btn(group, 'Report this').click());
     expect(document.activeElement).toBe(tid(r.container, 'bundle-create'));
+  });
+});
+
+describe('Report this: the run picked, not typed (X56)', () => {
+  const recentRuns = async () => ({
+    runs: [
+      { runId: 'run_f', taskId: 't1', title: 'Add Divide', project: 'gocalc', status: 'FAILED', updatedAt: Date.now() - 60_000 },
+      { runId: 'run_p', taskId: 't2', title: 'Fetch the feed', project: 'gocalc', status: 'PAUSED', updatedAt: Date.now() - 120_000 },
+    ],
+  });
+
+  it('opened with ?run= previews with that run at once and keeps the acknowledgement before Create', async () => {
+    const previews: unknown[] = [];
+    const r = mount(
+      <SupportScreen run="run_f" />,
+      testServices({ crashList: async () => ({ reports: [] }), supportbundleRecentRuns: recentRuns, supportbundlePreview: async (o) => (previews.push(o), bundlePreview({ includesRun: 'run_f' })) }),
+    );
+    await previewed(r);
+    expect(previews[0]).toEqual({ eventLimit: undefined, includeRun: 'run_f' });
+    const pick = await waitFor(() => tid(r.container, 'bundle-run-pick'), r);
+    expect(valueOf(pick)).toBe('run_f');
+    expect(optionsOf(pick).map((o) => o.label)).toEqual(['No run', 'Add Divide (failed)gocalc, 1 min ago', 'Fetch the feed (stopped part way)gocalc, 2 min ago', 'Another run id...']);
+    // no id field to type in while a listed run is picked
+    expect(r.container.textContent).not.toContain('Include one run');
+    expect(btn(r.container, 'Create the bundle').disabled).toBe(true);
+    expect(byLabel(r.container, /I have read the scrub report above for run run_f/)).toBeTruthy();
+  });
+
+  it('picks another listed run from the list, and Another run id... shows the field for a typed one', async () => {
+    const previews: unknown[] = [];
+    const r = mount(
+      <SupportScreen />,
+      testServices({ crashList: async () => ({ reports: [] }), supportbundleRecentRuns: recentRuns, supportbundlePreview: async (o) => (previews.push(o), bundlePreview()) }),
+    );
+    await previewed(r);
+    const pick = await waitFor(() => tid(r.container, 'bundle-run-pick'), r);
+    expect(valueOf(pick)).toBe('');
+    await r.act(() => choose(pick, 'run_p'));
+    await waitFor(() => expect(previews.at(-1)).toEqual({ eventLimit: undefined, includeRun: 'run_p' }), r);
+    await r.act(() => choose(tid(r.container, 'bundle-run-pick'), 'other'));
+    await r.act(() => type(byLabel(r.container, /Include one run/), 'run_typed'));
+    await waitFor(() => expect(previews.at(-1)).toEqual({ eventLimit: undefined, includeRun: 'run_typed' }), r);
+  });
+
+  it('a run the list does not have, from the address, is in the id field', async () => {
+    const r = mount(<SupportScreen run="run_old" />, testServices({ crashList: async () => ({ reports: [] }), supportbundleRecentRuns: recentRuns, supportbundlePreview: async () => bundlePreview() }));
+    await waitFor(() => expect(valueOf(tid(r.container, 'bundle-run-pick'))).toBe('other'), r);
+    expect((byLabel(r.container, /Include one run/) as HTMLInputElement).value).toBe('run_old');
   });
 });

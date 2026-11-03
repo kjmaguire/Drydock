@@ -209,6 +209,14 @@ describe('Merge gates of a pull request', () => {
     }
   });
 
+  it("the CI gate's primary is Keep waiting for the project's wait (C7), the same answer as checking again", async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={ciQuestion({ ...noCI, reason: 'running', running: ['e2e'], waitMinutes: 60 })} onChanged={() => undefined} />, svc({ runRespond }));
+    expect(buttons(r.container)).toEqual(['Keep waiting another 60 minutes', 'Merge without CI this time', 'Stop']);
+    await r.act(() => byText(r.container, 'button', 'Keep waiting another 60 minutes').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'ci-1', 'answered', {}]]), r);
+  });
+
   it('the CI gate names the missing required checks, the running ones, and what Drydock did not accept', () => {
     const r = mount(
       <ReviewPanel
@@ -280,7 +288,156 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-1', 'answered', {}]]), r);
   });
 
-  const repoConfig = (changed: unknown = ['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
+  it('a change request posted on GitHub while the review waited is sent back with its words in one click (H12)', async () => {
+    const runRespond = recorder(() => undefined);
+    const feedback = 'A repository collaborator reviewed the pull request and asked for changes. Their text is below as quoted data.\n\n> from kyle:\n> Please handle negative numbers.';
+    const d = detail({ prReview: { summary: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', author: 'kyle', feedback } });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ runRespond }));
+    const note = r.$('[data-testid="review-pr-changes"]')!;
+    expect(note.textContent).toContain('1 change request(s) from kyle on GitHub');
+    expect(note.querySelector('pre')!.textContent).toBe(feedback);
+    // Approve and Request changes stay: the person decides
+    expect(buttons(r.container)).toEqual(['Send back with the GitHub review', 'Approve', 'Request changes']);
+    await r.act(() => byText(r.container, 'button', 'Send back with the GitHub review').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback }]]), r);
+    cleanup();
+    const plain = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc());
+    expect(plain.$('[data-testid="review-pr-changes"]')).toBeNull();
+  });
+
+  it('a pull request behind its base is brought up to date from the merge gate (C8)', async () => {
+    const runRespond = recorder(() => undefined);
+    const gateFor = (state: string) =>
+      detail({
+        pending: [
+          {
+            id: 'm-2',
+            nodeId: 'merge',
+            step: 12,
+            spec: { kind: 'question', title: 'Not merged', payload: { gate: 'merge', pr: 7, url: 'https://github.test/o/r/pull/7', state, reason: 'pull request #7 is behind main', sync: true } },
+          },
+        ],
+      });
+    const r = mount(<ReviewPanel detail={gateFor('behind')} onChanged={() => undefined} />, svc({ runRespond }));
+    expect(buttons(r.container)).toEqual(['Bring the branch up to date and check again', 'Check again', 'Stop']);
+    const gate = r.$('[data-testid="merge-gate"]')!;
+    // a sync is offered, so the old dead end ("will not merge it unseen") is not what it says
+    expect(gate.textContent).not.toContain('not merge it unseen');
+    expect(r.$('[data-testid="merge-gate-sync-note"]')!.textContent).toContain('your approval then run again');
+    expect(gate.textContent).toContain('never asks GitHub to bypass branch protection');
+    await r.act(() => byText(r.container, 'button', 'Bring the branch up to date and check again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-2', 'answered', { sync: true }]]), r);
+    cleanup();
+    const c = mount(<ReviewPanel detail={gateFor('dirty')} onChanged={() => undefined} />, svc());
+    expect(c.$('[data-testid="merge-gate"]')!.textContent).toContain('conflicts with the base branch');
+    expect(buttons(c.container)[0]).toBe('Bring the branch up to date and check again');
+  });
+
+  it('a GitHub failure is Try again with its fix and Stop, not a free-text answer (C4)', async () => {
+    const runRespond = recorder(() => undefined);
+    const d = detail({
+      pending: [
+        {
+          id: 'gh-1',
+          nodeId: 'push_pr',
+          step: 9,
+          spec: {
+            kind: 'question',
+            title: 'Could not open the pull request on GitHub: github 401 on /pulls: Bad credentials. Fix the cause, then try again, or stop.',
+            payload: { gate: 'github', step: 'open the pull request', error: 'github 401 on /pulls: Bad credentials', fix: 'gh_signin' },
+          },
+        },
+      ],
+    });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ runRespond }));
+    const gate = r.$('[data-testid="github-trouble"]')!;
+    expect(gate.getAttribute('data-fix')).toBe('gh_signin');
+    expect(gate.textContent).toContain('Could not open the pull request: github 401 on /pulls: Bad credentials');
+    expect(r.$('[data-testid="github-trouble-fix"]')!.textContent).toContain('gh auth login');
+    expect(r.$('[data-testid="github-trouble-signin"]')!.getAttribute('href')).toBe('/github');
+    expect(r.container.querySelector('textarea')).toBeNull();
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+    await r.act(() => byText(r.container, 'button', 'Try again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'gh-1', 'answered', {}]]), r);
+  });
+
+  const sandboxQuestion = (payload: Record<string, unknown>) =>
+    detail({
+      pending: [
+        {
+          id: 'sb-1',
+          nodeId: 'work',
+          step: 2,
+          spec: { kind: 'question', title: "The task's sandbox could not start: x. Fix it, then try again.", payload: { gate: 'sandbox', step: 'sandbox', error: 'x', projectId: 'p1', ...payload } },
+        },
+      ],
+    });
+
+  it('a sandbox that could not start is Try again, Open sandbox settings and Stop, not a typed answer (X38)', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={sandboxQuestion({ reason: 'engine' })} onChanged={() => undefined} />, svc({ runRespond }));
+    const gate = r.$('[data-testid="sandbox-gate"]')!;
+    expect(gate.getAttribute('data-reason')).toBe('engine');
+    expect(r.$('[data-testid="sandbox-gate-fix"]')!.textContent).toContain('Start Docker Desktop');
+    expect(r.container.querySelector('textarea')).toBeNull();
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+    expect(r.$('[data-testid="sandbox-gate-settings"]')!.getAttribute('href')).toBe('/project');
+    await r.act(() => byText(r.container, 'button', 'Try again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'sb-1', 'answered', {}]]), r);
+  });
+
+  it('a changed sandbox definition lists what changed and confirms the definition shown, saying it is for the whole project (X38)', async () => {
+    const sandboxTrust = recorder(async () => ({ enabled: true }));
+    const runRespond = recorder(() => undefined);
+    let changed = 0;
+    const r = mount(
+      <ReviewPanel detail={sandboxQuestion({ reason: 'unconfirmed', fingerprint: 'fp9', changes: ['network "none" -> "open"', '<b>x</b>'] })} onChanged={() => changed++} />,
+      svc({ sandboxTrust, runRespond }),
+    );
+    const items = Array.from(r.container.querySelectorAll('[aria-label="What changed in the sandbox definition"] li')).map((li) => li.textContent);
+    expect(items).toEqual(['network "none" -> "open"', '<b>x</b>']);
+    expect(r.container.querySelector('b')).toBeNull();
+    expect(r.$('[data-testid="sandbox-gate-note"]')!.textContent).toContain('every task of it that waits for this confirmation goes on');
+    expect(buttons(r.container)).toEqual(['Confirm this definition and try again', 'Try again', 'Stop']);
+    await r.act(() => (r.$('[data-testid="sandbox-gate-confirm"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(sandboxTrust.calls).toEqual([['p1', 'fp9']]), r);
+    // the core answers the question itself: the panel does not answer it a second time
+    await waitFor(() => expect(changed).toBe(1), r);
+    expect(runRespond.calls).toEqual([]);
+  });
+
+  it('an older core\'s sandbox question (no gate, no reason) still gets the panel (X38)', async () => {
+    const d = detail({ pending: [{ id: 'sb-2', nodeId: 'work', step: 2, spec: { kind: 'question', title: "The task's sandbox could not start: x.", payload: { step: 'sandbox', error: 'x' } } }] });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({}));
+    expect(r.$('[data-testid="sandbox-gate"]')!.getAttribute('data-reason')).toBe('');
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+  });
+
+  it('the GitHub fix says only what is true: no tries claimed, and a changed branch leads to Stop and a new run (C4 review)', async () => {
+    const trouble = (fix: string) =>
+      detail({
+        pending: [
+          {
+            id: 'gh-2',
+            nodeId: 'merge',
+            step: 9,
+            spec: { kind: 'question', title: 'Could not merge the pull request on GitHub.', payload: { gate: 'github', step: 'merge the pull request', error: 'github 502', fix } },
+          },
+        ],
+      });
+    let r = mount(<ReviewPanel detail={trouble('network')} onChanged={() => undefined} />, svc({}));
+    const net = r.$('[data-testid="github-trouble-fix"]')!.textContent!;
+    expect(net).toContain('did not answer');
+    expect(net).not.toContain('tries');
+    cleanup();
+    r = mount(<ReviewPanel detail={trouble('review_again')} onChanged={() => undefined} />, svc({}));
+    const again = r.$('[data-testid="github-trouble-fix"]')!.textContent!;
+    expect(again).toContain('Stop, then run the task again so the new commits are reviewed');
+    expect(again).not.toContain('Look at the new commits');
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+  });
+
+  const repoConfig = (changed: unknown =['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
     detail({
       pending: [
         {

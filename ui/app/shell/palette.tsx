@@ -397,7 +397,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
     if (act.busy === it.id) return <p>{it.op?.kind === 'split' ? 'Asking the team lead...' : 'Working on it...'}</p>;
     if (it.op?.kind !== 'assign') return <p>{it.what ?? it.label}</p>;
     const p: AssignPreview | undefined = preview.data;
-    if (preview.error) return <ErrorNote error={preview.error} what="Could not tell what would happen" />;
+    if (preview.error) return <ErrorNote error={preview.error} retry={preview.reload} what="Could not tell what would happen" />;
     if (!p || p.assignee !== it.op.assignee || p.taskId !== ctx?.task.id) return <p>Reading what would happen...</p>;
     const steps = previewSteps(p);
     const block = previewBlock(p);

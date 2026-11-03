@@ -8,7 +8,7 @@ import { css, on, type Handle } from 'remix/component';
 import { ArrowRightLeft, Download, FileText, Paperclip, Plus, RefreshCw, Save, Trash2 } from 'lucide';
 import type { AttachmentText, ExternalItem, IntegrationAssignment, IntegrationAttachment, IntegrationMapping, IntegrationView, MappingField } from '../../api/extTypes.ts';
 import { formatDateTime, plural } from '../../lib/format.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -105,7 +105,7 @@ export function ItemAttachments(handle: Handle<{ item: ExternalItem }>) {
       <section aria-label="Attachments" mix={panel} data-testid="item-attachments">
         <p mix={faint}>Nothing is downloaded until you ask. A download is size-capped and kept in Drydock's data folder, not in the repository.</p>
         <p mix={faint}>A text file is kept only with its secrets removed, and that copy is the only text an agent is given. Links to other sites are never fetched.</p>
-        <ErrorNote error={q.error ?? act.error} what="Attachments" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Attachments" />
         <div mix={line}>
           <Button
             size="sm"
@@ -233,7 +233,7 @@ export function Mappings(handle: Handle<{ conn: IntegrationView; a: IntegrationA
           When a linked task enters a status mapped toward {label}, Drydock proposes the change; it waits for your approval unless you turned on Status sync under Auto-approve.
         </p>
         <p mix={faint}>A status {label} reports is offered to you on the item. It never moves a task by itself.</p>
-        <ErrorNote error={q.error ?? act.error} what="Mappings" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Mappings" />
         {q.loading && !q.data ? <Loading /> : null}
         <div mix={line}>
           <Button
@@ -388,7 +388,7 @@ export function AutoApprove(handle: Handle<{ conn: IntegrationView; projectId: s
           Every write to {kindLabel(conn.kind)} waits for your approval. A class lets one narrow kind of write Drydock itself makes go out without asking, approved in your name.
         </p>
         <p mix={faint}>Each is off until you turn it on. None covers a delete, an ignore, a snooze or a bulk change, and nothing an agent proposes is ever in one.</p>
-        <ErrorNote error={q.error ?? act.error} what="Auto-approve" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Auto-approve" />
         {q.loading && !q.data ? <Loading /> : null}
         {rows.map((c) => (
           <div key={c.class} data-testid="auto-class" data-class={c.class} data-enabled={String(c.enabled)}>

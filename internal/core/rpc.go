@@ -41,6 +41,20 @@ type idParam struct {
 	ID string `json:"id"`
 }
 
+// eventsReplayParams select a page of the event log: the events after `after`, oldest first, or, with `before`, the newest ones
+// older than it (X53), narrowed in the core to a task, project (withWorkspace: and the workspace's own events), run or agent.
+type eventsReplayParams struct {
+	After         uint64   `json:"after"`
+	Before        uint64   `json:"before,omitempty"`
+	Types         []string `json:"types"`
+	Task          string   `json:"taskId"`
+	Project       string   `json:"projectId,omitempty"`
+	Run           string   `json:"runId,omitempty"`
+	Agent         string   `json:"agentId,omitempty"`
+	WithWorkspace bool     `json:"withWorkspace,omitempty"`
+	Limit         int      `json:"limit"`
+}
+
 // taskFilterParams are the selection task.list and task.count share: a project (empty for every project), statuses, an assignee
 // (agent id), a label, and the tasks that ended at or after completedSince (ms since the epoch).
 type taskFilterParams struct {
@@ -76,7 +90,7 @@ func (c *Core) Methods() map[string]Method {
 		"app.info": bind(func(ctx context.Context, _ struct{}) (any, error) {
 			// the version and build the release set (-ldflags), shown in Settings > About (decision P129)
 			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir, "canRestart": c.cfg.Restart != nil,
-				"version": AppVersion, "build": AppBuild}, nil
+				"version": AppVersion, "build": AppBuild, "startReport": c.StartReport()}, nil
 		}),
 		"project.create": bind(func(ctx context.Context, p struct{ Name, RepoPath string }) (any, error) {
 			return c.CreateProject(ctx, p.Name, p.RepoPath)
@@ -159,11 +173,9 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.GitHubIssues(ctx, p.ProjectID, p.Labels)
 		}),
-		"github.importIssue": bind(func(ctx context.Context, p struct {
-			ProjectID string `json:"projectId"`
-			Number    int    `json:"number"`
-		}) (any, error) {
-			return c.ImportIssue(ctx, p.ProjectID, p.Number)
+		// with assignee (and reviewer) the imported task is assigned, with start it starts too (Import and start, C11)
+		"github.importIssue": bind(func(ctx context.Context, p ImportIssueReq) (any, error) {
+			return c.ImportIssueWith(ctx, p)
 		}),
 		"github.pullRequest": bind(func(ctx context.Context, p struct {
 			TaskID string `json:"taskId"`
@@ -221,7 +233,8 @@ func (c *Core) Methods() map[string]Method {
 			return c.Agents(ctx, p.ProjectID)
 		}),
 
-		"task.create": bind(func(ctx context.Context, p tasks.CreateReq) (any, error) { return c.CreateTask(ctx, p) }),
+		// task.create makes a task; with assignee (and reviewer) it is assigned, with start it starts too (Create and start)
+		"task.create": bind(func(ctx context.Context, p CreateTaskReq) (any, error) { return c.CreateTaskWith(ctx, p) }),
 		"task.list": bind(func(ctx context.Context, p struct {
 			taskFilterParams
 			// Limit is how many of the newest tasks to return (default and ceiling: see TaskListDefault and TaskListMax).
@@ -360,13 +373,12 @@ func (c *Core) Methods() map[string]Method {
 		"provider.test":   bind(func(ctx context.Context, p idParam) (any, error) { return c.Health.Test(ctx, p.ID) }),
 		"provider.models": bind(func(ctx context.Context, p idParam) (any, error) { return c.Providers.Models(ctx, p.ID) }),
 
-		"events.replay": bind(func(ctx context.Context, p struct {
-			After uint64   `json:"after"`
-			Types []string `json:"types"`
-			Task  string   `json:"taskId"`
-			Limit int      `json:"limit"`
-		}) (any, error) {
-			return c.Replay(ctx, p.After, events.Filter{Types: p.Types, TaskID: p.Task}, p.Limit)
+		"events.replay": bind(func(ctx context.Context, p eventsReplayParams) (any, error) {
+			f := events.Filter{Types: p.Types, TaskID: p.Task, ProjectID: p.Project, RunID: p.Run, AgentID: p.Agent, WithWorkspace: p.WithWorkspace}
+			if p.Before > 0 {
+				return c.ReplayBefore(ctx, p.Before, f, p.Limit)
+			}
+			return c.Replay(ctx, p.After, f, p.Limit)
 		}),
 	}
 	for k, v := range c.extMethods {

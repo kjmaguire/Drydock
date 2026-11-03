@@ -14,7 +14,7 @@ import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import type { PrebuiltAgent } from '../../api/types.ts';
 import { confirmationFor, needsConfirmation, skipsApprovals, splitConfirmation } from '../../lib/permission.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
@@ -313,7 +313,7 @@ export function LibraryScreen(handle: Handle<{ tab?: LibraryTab; onNavigate?: (h
           <div role="status" aria-live="polite" data-testid="library-note" mix={noteCss}>
             {note ? <Notice tone="ok">{note}</Notice> : null}
           </div>
-          <ErrorNote error={servers.error ?? templates.error} what="Agents" />
+          <ErrorNote error={servers.error ?? templates.error} retry={retryFor(servers, templates)} what="Agents" />
           {tab === 'mine' ? (
             <section aria-label="My agents" data-testid="library-mine" mix={sectionsCss}>
               {templates.loading && !templates.data ? <Loading /> : null}
@@ -341,7 +341,7 @@ export function LibraryScreen(handle: Handle<{ tab?: LibraryTab; onNavigate?: (h
             </section>
           ) : (
             <section aria-label="Starters" data-testid="library-prebuilt" mix={sectionsCss}>
-              <ErrorNote error={prebuilt.error} what="Could not load the starters" />
+              <ErrorNote error={prebuilt.error} retry={prebuilt.reload} what="Could not load the starters" />
               {prebuilt.loading && !prebuilt.data ? <Loading /> : null}
               {form?.kind !== 'starter' ? <ErrorNote error={failure} what="Not saved" /> : null}
               <AgentGallery entries={prebuilt.data ?? []} label="Starters" pickLabel="Use" busy={act.busy.startsWith('use:') ? act.busy.slice(4) : ''} onPick={(e) => void useStarter(e)} />

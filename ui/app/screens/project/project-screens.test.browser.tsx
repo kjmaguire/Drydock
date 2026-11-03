@@ -342,6 +342,8 @@ describe('Check settings and development flow', () => {
     type(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty detects Taskfile/), 'npx\nplaywright\ntest');
     // the preview command's label says what an empty one does, as the e2e command's does (X310)
     expect(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty detects a Taskfile target or package\.json script named preview\)$/)).toBeTruthy();
+    // the preview step is only in the Full Stack SaaS template, and the switch says so (X311)
+    expect(r.$('[data-testid="preview-template-note"]')!.textContent).toBe('Only the Full Stack SaaS template has a preview step: tasks of other templates go to approval without one.');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
@@ -445,6 +447,27 @@ describe('Check settings and development flow', () => {
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]).toMatchObject({ leadStallMinutes: 30 });
+  });
+
+  it('the CI waits (C7): empty means 5 and 60 minutes, out of range is explained, numbers are saved', async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const grace = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Minutes to wait for CI to start'), r);
+    const running = byLabel<HTMLInputElement>(r.container, 'Minutes to wait for running checks');
+    expect([grace.value, grace.placeholder, running.value, running.placeholder]).toEqual(['', '5', '', '60']);
+    type(running, '999');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')!.textContent).toContain('360'), r);
+    type(running, '');
+    type(grace, '120');
+    // C7 review: 120 minutes to start against the 60-minute default for running checks
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-grace-note"]')!.textContent).toContain('cannot be longer'), r);
+    type(running, '90');
+    type(grace, '10');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-grace-note"]')).toBe(null), r);
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')).toBe(null), r);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ ciGraceMinutes: 10, ciMaxWaitMinutes: 90 });
   });
 
   it('the context ceiling: empty means the default, out of range is explained, a number is saved', async () => {

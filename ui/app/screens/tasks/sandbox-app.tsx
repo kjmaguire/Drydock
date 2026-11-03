@@ -4,7 +4,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { ExternalLink, Square } from 'lucide';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -22,13 +22,20 @@ const boxCss = css({
   '& form': { display: 'flex', alignItems: 'end', gap: t.s3, flexWrap: 'wrap' },
   '& details > summary': { cursor: 'pointer', fontSize: t.textSm, color: t.textMuted },
   '& details > ul': { marginTop: t.s2 },
+  '& details > form': { marginTop: t.s2 },
+  '& .ports': { display: 'grid', gap: t.s2 },
+  '& .ports > ul': { display: 'flex', flexWrap: 'wrap', gap: t.s2 },
   '& input[type=number]': { width: '120px' },
 });
 
 const sameTask = (taskId: string) => (e: { type: string; taskId?: string }) =>
   e.taskId === taskId && (e.type.startsWith('sandbox.') || e.type === 'task.completed' || e.type === 'task.failed' || e.type === 'task.cancelled');
 
-export function SandboxApp(handle: Handle<{ taskId: string }>) {
+/** How often the list is read again while the sandbox runs: a process sandbox_start began says no event, and binds its port
+ * seconds later (X31). The core reads the sandbox's ports at most every few seconds, whatever the number of reads. */
+export const LISTENING_POLL_MS = 4000;
+
+export function SandboxApp(handle: Handle<{ taskId: string; pollMs?: number }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -37,6 +44,11 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
     key: () => handle.props.taskId,
     when: sameTask(handle.props.taskId),
   });
+  // while the sandbox runs, read again now and then so a port something starts listening on gets its button without an event
+  const poll = setInterval(() => {
+    if (q.data?.running && !q.loading && !act.busy && document.visibilityState !== 'hidden') q.reload();
+  }, handle.props.pollMs ?? LISTENING_POLL_MS);
+  handle.signal.addEventListener('abort', () => clearInterval(poll));
   let port = '';
   /** Whether the person typed in the port field: until then it holds the port forwarded last, so opening it again is one click. */
   let typed = false;
@@ -77,12 +89,46 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
     const ro = s.workspace.license.readOnly;
     const value = shownPort(v);
     const atMax = v.forwards.length >= v.max;
+    // a port whose window is open: Open brings that window to the front (X314)
+    const viewing = (port: number) => (v.viewing ?? []).includes(port);
+    const fieldShown = value !== '' && viewing(Number(value));
     // a port already forwarded opens again at the limit; a new one does not
     const canSubmit = v.canView || !atMax;
+    const forwarded = (port: number) => v.forwards.some((f) => f.port === port);
+    // the ports something listens on in the sandbox (X31), read from it: shown as numbers, with the checked process name
+    const listening = v.listening ?? [];
+    const portForm = (
+      <form novalidate mix={on('submit', (e) => (e.preventDefault(), void forward(value, v.canView)))}>
+        <Field label="Port in the sandbox" error={portError}>
+          {(id) => (
+            <input
+              id={id}
+              type="number"
+              min="1"
+              max="65535"
+              inputmode="numeric"
+              placeholder="3000"
+              value={value}
+              disabled={ro}
+              mix={on('input', (e) => set(() => ((port = e.currentTarget.value), (typed = true))))}
+            />
+          )}
+        </Field>
+        <Button
+          type="submit"
+          variant="primary"
+          icon={v.canView ? ExternalLink : undefined}
+          disabled={ro || value === '' || !!act.busy}
+          data-testid="sandbox-forward-add"
+        >
+          {act.busy === 'open' ? (v.canView ? 'Opening...' : 'Forwarding...') : v.canView ? (fieldShown ? 'Show the app' : 'Open the app') : 'Forward port'}
+        </Button>
+      </form>
+    );
     return (
       <section aria-label="Sandbox app" style={{ display: 'grid', gap: '12px' }} data-testid="sandbox-app">
         <h2 style={{ fontSize: 'var(--text-md)', fontWeight: '600' }}>Sandbox app</h2>
-        <ErrorNote error={act.error ?? q.error} what="Sandbox app" />
+        <ErrorNote error={act.error ?? q.error} retry={retryFor(act, q)} what="Sandbox app" />
         <div mix={[card, boxCss]}>
           <p mix={muted}>
             Show a web app a worker started in this task&apos;s sandbox. Its port is reachable from this computer only, and it opens in a Drydock window of its own that
@@ -90,27 +136,36 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
           </p>
           {v.error ? <p data-testid="sandbox-app-error">{v.error}</p> : null}
           {!v.canView ? <p mix={muted}>This window cannot open the app: use the Drydock desktop app.</p> : null}
+          {listening.length > 0 ? (
+            <div class="ports">
+              <span mix={muted}>{v.canView ? 'Open a port the sandbox listens on:' : 'Forward a port the sandbox listens on:'}</span>
+              <ul aria-label="Ports the sandbox listens on">
+                {listening.map((l) => (
+                  <li key={l.port}>
+                    <Button
+                      size="sm"
+                      icon={v.canView ? ExternalLink : undefined}
+                      disabled={ro || !!act.busy || (!forwarded(l.port) && !canSubmit)}
+                      title={v.canView ? `Forward port ${l.port} and open it` : `Forward port ${l.port}`}
+                      data-testid={`sandbox-listening-${l.port}`}
+                      mix={on('click', () => void forward(String(l.port), v.canView))}
+                    >
+                      {l.name ? `${l.port} · ${l.name}` : String(l.port)}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {canSubmit ? (
-            <form novalidate mix={on('submit', (e) => (e.preventDefault(), void forward(value, v.canView)))}>
-              <Field label="Port in the sandbox" error={portError}>
-                {(id) => (
-                  <input
-                    id={id}
-                    type="number"
-                    min="1"
-                    max="65535"
-                    inputmode="numeric"
-                    placeholder="3000"
-                    value={value}
-                    disabled={ro}
-                    mix={on('input', (e) => set(() => ((port = e.currentTarget.value), (typed = true))))}
-                  />
-                )}
-              </Field>
-              <Button type="submit" variant="primary" icon={v.canView ? ExternalLink : undefined} disabled={ro || value === '' || !!act.busy} data-testid="sandbox-forward-add">
-                {act.busy === 'open' ? (v.canView ? 'Opening...' : 'Forwarding...') : v.canView ? 'Open the app' : 'Forward port'}
-              </Button>
-            </form>
+            listening.length > 0 ? (
+              <details data-testid="sandbox-another-port">
+                <summary>Another port...</summary>
+                {portForm}
+              </details>
+            ) : (
+              portForm
+            )
           ) : null}
           {atMax ? <p mix={muted}>{v.max} ports are forwarded, the most a task can have. Stop one to forward another.</p> : null}
           {v.forwards.length > 0 ? (
@@ -126,11 +181,14 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
                       size="sm"
                       icon={ExternalLink}
                       disabled={ro || !v.canView || !!act.busy}
-                      title={v.canView ? undefined : 'Only the Drydock desktop window can open it'}
+                      title={v.canView ? (viewing(f.port) ? 'Bring its window to the front' : undefined) : 'Only the Drydock desktop window can open it'}
                       data-testid={`sandbox-forward-open-${f.port}`}
-                      mix={on('click', () => void act.run(`view${f.port}`, () => s.client.sandboxForwardView(taskId, f.port)))}
+                      mix={on('click', async () => {
+                        await act.run(`view${f.port}`, () => s.client.sandboxForwardView(taskId, f.port));
+                        q.reload();
+                      })}
                     >
-                      Open
+                      {viewing(f.port) ? 'Show' : 'Open'}
                     </Button>
                     <Button
                       size="sm"

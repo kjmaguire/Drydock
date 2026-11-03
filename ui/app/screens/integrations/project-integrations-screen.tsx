@@ -14,7 +14,7 @@ import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { newProjectHref } from '../../shell/new.ts';
-import { query, services, watch } from '../../state/services.tsx';
+import { query, retryFor, services, watch } from '../../state/services.tsx';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
@@ -138,7 +138,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
             title="Services"
             description={`The services connected for the workspace, and what ${project.name} imports from each by app sync, as untrusted text: its scope, items, rules and writes back. Choose a service to open it.`}
           >
-            <ErrorNote error={conns.error ?? kinds.error} what="Could not load the services" />
+            <ErrorNote error={conns.error ?? kinds.error} retry={retryFor(conns, kinds)} what="Could not load the services" />
             {conns.loading && !conns.data ? <Loading /> : null}
             {conns.data && list.length === 0 ? (
               <p mix={emptyLine} data-testid="no-connections">

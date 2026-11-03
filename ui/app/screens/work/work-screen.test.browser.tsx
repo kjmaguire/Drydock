@@ -7,6 +7,7 @@ import { cleanup, mount, testServices, type, waitFor } from '../../test/render.t
 import { SETUP_NOTES_KEY } from '../../lib/setup-notes.ts';
 import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
 import { closeAgentEditor } from '../team/agent-panel.tsx';
+import { Toasts } from '../../shell/toasts-host.tsx';
 import { WorkScreen } from './work-screen.tsx';
 
 afterEach(() => {
@@ -93,6 +94,35 @@ describe('Work (decision P141)', () => {
     const none = mount(<WorkScreen />, svc({ memoryList: async () => [] }));
     await waitFor(() => expect(none.$$('[data-testid="work-item"]').length).toBeGreaterThan(0), none);
     expect(none.$('[data-testid="memory-line"]')).toBeNull();
+  });
+
+  it('the rail names the next milestone due, with its progress, and says when it is overdue (X411)', async () => {
+    const m = (id: string, title: string, dueAt: string, overdue = false, percent = 60) =>
+      ({ id, projectId: 'prj_1', title, dueAt, overdue, status: 'open', created: '', updated: '', taskIds: [], progress: { total: 5, completed: 3, inProgress: 0, blocked: 0, open: 2, cancelled: 0, failed: 0, percent } }) as never;
+    const due = new Date(now + 3 * 86_400_000 + 3_600_000).toISOString();
+    const r = mount(<WorkScreen />, svc({ milestoneList: async () => [m('m2', 'GA', new Date(now + 30 * 86_400_000).toISOString()), m('m1', 'Beta', due)] }));
+    const link = await waitFor(() => {
+      const a = r.$('[data-testid="work-milestone"]');
+      if (!a) throw new Error('not yet');
+      return a;
+    }, r);
+    expect(link.textContent).toBe('Next milestone: Betadue in 3 days · 60%');
+    expect(link.getAttribute('href')).toBe('/milestones');
+    expect(link.getAttribute('data-overdue')).toBe(null);
+    cleanup();
+    const late = mount(<WorkScreen />, svc({ milestoneList: async () => [m('m1', 'Beta', new Date(now - 2 * 86_400_000).toISOString(), true, 40)] }));
+    const red = await waitFor(() => {
+      const a = late.$('[data-testid="work-milestone"]');
+      if (!a) throw new Error('not yet');
+      return a;
+    }, late);
+    expect(red.getAttribute('data-overdue')).toBe('true');
+    expect(red.querySelector('b')!.textContent).toBe('overdue by 2 days · 40%');
+    cleanup();
+    // no dated open milestone: no line
+    const none = mount(<WorkScreen />, svc({ milestoneList: async () => [] }));
+    await waitFor(() => expect(none.$('[data-testid="work-merged"]')).not.toBe(null), none);
+    expect(none.$('[data-testid="work-milestone"]')).toBe(null);
   });
 
   it("lists the project's tasks and chats as Needs you, Running and Earlier, opens the one that needs you, and shows the crew", async () => {
@@ -290,21 +320,13 @@ describe('Work (decision P141)', () => {
     closeAgentEditor();
   });
 
-  it('shows once, as one line, the note a start from Home left (P142)', async () => {
-    const s = svc();
-    s.ui.flash('calculator: The GitHub repository could not be made.', 'warn');
-    const r = mount(<WorkScreen />, s);
-    await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(4), r);
-    expect(r.$('[data-testid="work-flash"]')!.textContent).toBe('calculator: The GitHub repository could not be made.');
-    expect(s.ui.takeFlash()).toBeUndefined();
-  });
-
   it('says where the folder stands against GitHub in one line, and Sync now updates it (P143)', async () => {
     const synced: string[] = [];
     const state = { projectId: 'prj_1', remote: 'origin', github: true, branch: 'main', current: 'main', tracked: true, ahead: 0, behind: 2, checkedAt: now, checking: false };
     const s = svc({
       repoSyncState: async () => state,
       repoSync: async (id) => (synced.push(id), { ...state, behind: 1, outcome: 'local_changes' }),
+      projectList: async () => [{ id: 'prj_1', name: 'calculator', hasRepo: true, repoPath: 'C:\\code\\calculator' }] as never,
     });
     const r = mount(<WorkScreen />, s);
     const line = await waitFor(() => {
@@ -313,6 +335,8 @@ describe('Work (decision P141)', () => {
       return el;
     }, r);
     expect(line.textContent).toBe('2 behind');
+    // the folder outside Drydock, beside Sync now (X26)
+    await waitFor(() => expect(r.$('[data-testid="repo-open"]')!.getAttribute('aria-label')).toBe('More ways to open the repository'), r);
     // under the list, which every width keeps: not in the crew rail, which leaves under 1180 px
     expect(r.$('[data-testid="repo-sync"]')!.closest('aside[data-crew]')).toBeNull();
     expect(r.$('[data-testid="repo-sync"]')!.closest('section')!.querySelector('[data-testid="work-list"]')).not.toBeNull();
@@ -332,5 +356,40 @@ describe('Work (decision P141)', () => {
     await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(4), r);
     await new Promise((res) => setTimeout(res, 50));
     expect(r.$('[data-testid="repo-sync"]')).toBeNull();
+  });
+
+  it('the shell says nothing about the item Work has open, named or opened by default (G2)', async () => {
+    const texts = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="toast-text"]')).map((n) => n.textContent);
+    // no ?item: Work opens the task that needs you (t9), and the address does not name it
+    const s = svc();
+    const r = mount(
+      <>
+        <WorkScreen />
+        <Toasts here={{ inbox: false, work: true }} lifeMs={60_000} />
+      </>,
+      s,
+    );
+    await waitFor(() => expect(r.$('[data-testid="work-centre"]')!.getAttribute('data-item')).toBe('task:t9'), r);
+    await r.act(() => s.emit({ type: 'task.completed', projectId: 'prj_1', taskId: 't9' }));
+    expect(texts(r)).toEqual([]);
+    await r.act(() => s.emit({ type: 'task.completed', projectId: 'prj_1', taskId: 't12' }));
+    await waitFor(() => expect(texts(r)).toEqual(['Task finished']), r);
+    cleanup();
+    // a chat open on Work: its answer says nothing, another chat's does
+    const c = svc();
+    const rc = mount(
+      <>
+        <WorkScreen item="chat:c1" />
+        <Toasts here={{ inbox: false, work: true }} lifeMs={60_000} />
+      </>,
+      c,
+    );
+    await waitFor(() => expect(rc.$('[data-testid="work-centre"]')!.getAttribute('data-item')).toBe('chat:c1'), rc);
+    await rc.act(() => c.emit({ type: 'chat.turn', projectId: 'prj_1', data: { chatId: 'c1', status: 'done' } }));
+    expect(texts(rc)).toEqual([]);
+    await rc.act(() => c.emit({ type: 'chat.turn', projectId: 'prj_1', data: { chatId: 'c2', status: 'done' } }));
+    await waitFor(() => expect(texts(rc)).toEqual(['A chat answered']), rc);
+    cleanup();
+    expect(c.ui.workOpen).toBe(undefined); // Work left: what it had open is no longer here
   });
 });

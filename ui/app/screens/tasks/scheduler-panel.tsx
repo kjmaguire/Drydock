@@ -5,7 +5,7 @@ import { Gauge, Play } from 'lucide';
 import type { TickResult } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -75,7 +75,7 @@ export function SchedulerPanel(handle: Handle<{ projectId: string }>) {
             Start ready tasks now
           </Button>
         </div>
-        <ErrorNote error={q.error ?? act.error} what="Scheduler" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Scheduler" />
         <ReadOnlyNote />
         {tick ? (
           <div class="tick" role="status" data-testid="tick-result">

@@ -54,6 +54,10 @@ func TestACrashOfAnEarlierRunIsReportedAtTheNextStart(t *testing.T) {
 	if len(list.Reports) != 1 || !strings.Contains(list.Reports[0].Summary, "index out of range") {
 		t.Fatalf("crash.list %+v", list)
 	}
+	// the start report says it too, for the line Home shows (X511), though no marker was left
+	if r := c.StartReport(); !r.Unexpected || r.Crashes != 1 {
+		t.Fatalf("start report %+v", r)
+	}
 	var read struct {
 		Text string `json:"text"`
 	}

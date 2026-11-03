@@ -281,7 +281,7 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
             <h2 mix={panelTitle} id="knowledge-requirements-title">
               Requirements <a href={routes.requirements.href()}>All requirements</a>
             </h2>
-            <ErrorNote error={coverage.error} what="Could not read the requirements" />
+            <ErrorNote error={coverage.error} retry={coverage.reload} what="Could not read the requirements" />
             {coverage.data && traces.length === 0 ? (
               <p mix={quietCss}>
                 No requirements yet. <a href={routes.requirements.href()}>Add one</a> and link it to the tasks that cover it.
@@ -327,7 +327,7 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
             <h2 mix={panelTitle} id="knowledge-learned-title">
               Recently learned <a href={routes.memory.href()}>memory</a>
             </h2>
-            <ErrorNote error={memory.error} what="Could not read the memory" />
+            <ErrorNote error={memory.error} retry={memory.reload} what="Could not read the memory" />
             {memory.data && notes.length === 0 ? (
               <p mix={quietCss}>Nothing yet. Notes the crew proposes land here; agents read the ones you accept.</p>
             ) : (

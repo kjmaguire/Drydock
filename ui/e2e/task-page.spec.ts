@@ -26,7 +26,7 @@ test('steer, pause and resume a running task from its page', async ({ page }) =>
   await page.getByLabel('Task title').fill('Parse negative exponents');
   await page.getByLabel('Description').fill('"2e-3" should read as 0.002. drydock-e2e live run');
   await page.getByLabel('Acceptance criteria').fill('Given 2e-3 When parsed Then 0.002\nGiven 2e- When parsed Then it says what is missing');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Parse negative exponents' })).toBeVisible();
 
   // before it runs: the criteria are open, the steer box is off and says why

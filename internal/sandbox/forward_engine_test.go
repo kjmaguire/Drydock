@@ -96,3 +96,30 @@ esac`)
 		t.Fatalf("the container the failed run created was left behind:\n%s", b)
 	}
 }
+
+// Creating a sandbox says each step while it goes (X39): the images it pulls (not the ones it has), the services, the workspace
+// and each setup command by number, never by its text. A sandbox that is reused says nothing.
+func TestEnsureSaysEachStepOfCreatingTheSandbox(t *testing.T) {
+	e, _ := fakeEngine(t, "t1", `case "$1" in
+version) echo '{"Version":"29","Os":"linux","Arch":"amd64"}';;
+image) [ "$5" = "postgres:17" ]; exit $?;;
+inspect) [ -f "$STATE" ] && [ "$4" = "$WS" ] && { echo "true"; exit 0; }; echo "Error: No such object: $4" >&2; exit 1;;
+run) case "$*" in *"--name $WS"*) : > "$STATE";; esac;;
+esac
+exit 0`)
+	m := NewManager(e, "")
+	var steps []string
+	spec := Spec{TaskID: "t1", ProjectID: "p1", Worktree: t.TempDir(), Progress: func(s string) { steps = append(steps, s) },
+		Config: Config{Image: "node:24", Network: NetworkNone, Services: map[string]Service{"db": {Image: "postgres:17"}}, Setup: []string{"npm ci --token=SECRET", "npm run build"}}}
+	if _, err := m.Ensure(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"pulling node:24", "starting the db service", "starting the workspace", "running setup (1 of 2)", "running setup (2 of 2)"}
+	if strings.Join(steps, "|") != strings.Join(want, "|") {
+		t.Fatalf("steps %q", steps)
+	}
+	steps = nil
+	if _, err := m.Ensure(context.Background(), spec); err != nil || len(steps) != 0 {
+		t.Fatalf("a reused sandbox said %q (%v)", steps, err)
+	}
+}

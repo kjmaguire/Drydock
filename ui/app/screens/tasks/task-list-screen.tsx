@@ -957,7 +957,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
         testId="tasks"
       >
         <div mix={pageInnerCss}>
-          <ErrorNote error={summaries.error} what="Could not load tasks" />
+          <ErrorNote error={summaries.error} retry={summaries.reload} what="Could not load tasks" />
           <ErrorNote error={mergeAct.error} what="Could not merge" />
           {coverage ? <TaskTotalNotice coverage={coverage}>Older tasks are not on this board, and the filters and counts work on these only.</TaskTotalNotice> : null}
           {summaries.loading && !data ? <Loading label="Loading tasks..." /> : null}

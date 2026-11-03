@@ -8,7 +8,7 @@ import { BookOpen, Plus, X } from 'lucide';
 import type { LibrarySkill, Skill } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -157,7 +157,7 @@ export function AddSkills(handle: Handle<{ agent: Agent; projectId: string; skil
           placeholder="Search the project's skills and the Library"
           aria-label={`Search skills to add to ${agent.name}`}
         />
-        <ErrorNote error={lib.error ?? act.error} what="Skills" />
+        <ErrorNote error={lib.error ?? act.error} retry={retryFor(lib, act)} what="Skills" />
         {added ? (
           <p class="quiet" role="status" data-testid="agent-skill-added">
             {added} was given to {agent.name}.

@@ -136,6 +136,8 @@ func Run(assets fs.FS) error {
 		fmt.Fprintf(os.Stderr, "drydock: crash reports: %v\n", err)
 	}
 	defer crash.Disarm()
+	// the windows for a sandbox's app (decision P134): one per forwarded address, brought to the front when opened again (X314)
+	viewers := openSandboxApp(dir)
 	// the tools folder the download carries beside drydock.exe (decision P77): installed from there at the first start
 	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), AutoSetup: true, CrashOutput: crash.Path(), PickFile: func(_ context.Context, p core.FilePick) (string, error) {
 		// the window's own Open dialog (the Security page's "Choose file..."); "" when the person cancels
@@ -186,7 +188,7 @@ func Run(assets fs.FS) error {
 			return fmt.Errorf("the window is not open yet")
 		}
 		return wa.Browser.OpenURL(rawURL)
-	}, OpenSandboxApp: openSandboxApp(dir), Restart: func(context.Context) error {
+	}, OpenPath: openPath, OpenSandboxApp: viewers.open, SandboxAppShown: viewers.shown, CloseSandboxApp: viewers.close, Restart: func(context.Context) error {
 		// "Restart now" after a staged restore (decision P116)
 		if wa == nil {
 			return fmt.Errorf("the window is not open yet")
@@ -230,5 +232,9 @@ func Run(assets fs.FS) error {
 	keepWindowPlacement(wa, c, window, kept)
 	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
 	attachWindowIcons(window)
+	// something new needs the person while the window is behind: the taskbar button asks for attention (G1, notify_windows.go)
+	notifyCtx, stopNotify := context.WithCancel(context.Background())
+	defer stopNotify()
+	watchNeedsYou(notifyCtx, c, window)
 	return wa.Run()
 }

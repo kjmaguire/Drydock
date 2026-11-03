@@ -6,13 +6,13 @@
 // two asked twice), a changed repository git
 // configuration (gate repo_config_changed) its changed items with Trust and continue / Stop the run, a turn cut off by Drydock
 // stopping (gate interrupted) what was cut off and the crash report of that moment with Run the step again / Stop the run, a worker's permission
-// request (gate permission_prompt) the tool and its exact input with Allow for the rest of this task (where the core allows it) / Allow once / Refuse, anything else Approve / Reject. Read-only (license) turns off approving and answering; refusing
+// request (gate permission_prompt) the tool and its exact input with Allow for the rest of this task (where the core allows it) / Allow once / Refuse, a GitHub failure of a pull-request step (gate github) Try again / Stop with its fix, anything else Approve / Reject. Read-only (license) turns off approving and answering; refusing
 // work (reject, request changes, send the spec back) stays available.
 
 import { css, on, type Handle } from 'remix/component';
 import { FileDiff, GitBranch, Hand } from 'lucide';
 import type { SpecReviewPayload } from '../../api/extTypes.ts';
-import type { PendingRequest, TaskAllowRule, TaskDetail } from '../../api/types.ts';
+import type { PendingRequest, PRReviewNote, TaskAllowRule, TaskDetail } from '../../api/types.ts';
 import { visible } from '../../lib/visible.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { services, watch } from '../../state/services.tsx';
@@ -28,7 +28,8 @@ import { LimitPanel, limitPayload, WatchdogPanel, watchdogPayload } from '../sha
 import { InterruptedPanel, interruptedPayload } from '../shared/interrupted.tsx';
 import { PermissionPromptPanel, permissionPayload } from '../shared/permission-prompt.tsx';
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
-import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
+import { CIGatePanel, ciGatePayload, GitHubTroublePanel, githubTroublePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
+import { SandboxGatePanel, sandboxGatePayload } from './sandbox-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, newestDiffStat, payloadOf, type PayloadDiff, specPayload } from './tasks.ts';
 import { changeLine, changesDraft, type CriterionRow } from './task-page.ts';
 import { plural } from '../../lib/format.ts';
@@ -79,18 +80,89 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; criteria?: read
           Needs your decision
         </h2>
         {detail.pending.map((p) => (
-          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} criteria={criteria} onChanged={onChanged} />
+          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} criteria={criteria} prReview={p.spec.kind === 'review' ? detail.prReview : undefined} onChanged={onChanged} />
         ))}
       </section>
     );
   };
 }
 
+/**
+ * Whether a request is one of the gates a panel of its own answers (a budget pause, the limit question, a watchdog pause, the CI,
+ * merge or verdict gate, a cut-off turn, a changed repository configuration). A worker's permission request is not: it has its
+ * own panel with "for the rest of the task".
+ */
+export function hasGatePanel(p: PendingRequest): boolean {
+  if (permissionPayload(p)) return false;
+  return !!(budgetPayload(p) || limitPayload(p) || watchdogPayload(p) || ciGatePayload(p) || mergeGatePayload(p) || verdictGate(p) || interruptedPayload(p) || repoConfigPayload(p) || githubTroublePayload(p) || sandboxGatePayload(p));
+}
+
+/**
+ * The panel that answers a gate (hasGatePanel), bound to the request: the task page's decide card and the Inbox's detail pane
+ * (C3) show the same one, so answering in either is the same answer. The waivers keep their second click inside the panels.
+ */
+export function GateAnswer(
+  handle: Handle<{ p: PendingRequest; runId: string | undefined; busy: boolean; readOnly: boolean; onRespond: (decision: string, data?: unknown) => Promise<void>; onDone: () => void }>,
+) {
+  return () => {
+    const { p, runId, busy, readOnly, onRespond, onDone } = handle.props;
+    const budget = budgetPayload(p);
+    const limit = limitPayload(p);
+    const pause = limit ? undefined : watchdogPayload(p);
+    const ciGate = ciGatePayload(p);
+    const mergeGate = mergeGatePayload(p);
+    const verdict = verdictGate(p);
+    const interrupted = interruptedPayload(p);
+    const repoConfig = repoConfigPayload(p);
+    const github = githubTroublePayload(p);
+    const sandbox = sandboxGatePayload(p);
+    return budget ? (
+      <BudgetPausePanel payload={budget} runId={runId} requestId={p.id} onDone={onDone} />
+    ) : limit ? (
+      <LimitPanel payload={limit} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : pause ? (
+      <WatchdogPanel payload={pause} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : ciGate ? (
+      <CIGatePanel payload={ciGate} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : mergeGate ? (
+      <MergeGatePanel payload={mergeGate} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : verdict ? (
+      <VerdictGatePanel payload={verdict} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : interrupted ? (
+      <InterruptedPanel payload={interrupted} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : repoConfig ? (
+      <RepoConfigGatePanel payload={repoConfig} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : github ? (
+      <GitHubTroublePanel payload={github} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : sandbox ? (
+      <SandboxGatePanel payload={sandbox} busy={busy} readOnly={readOnly} onRespond={onRespond} onDone={onDone} />
+    ) : null;
+  };
+}
+
 const textareaCss = css({ width: '100%', resize: 'vertical' });
+const prReviewCss = css({
+  display: 'grid',
+  gap: t.s2,
+  padding: t.s3,
+  borderRadius: t.rMd,
+  border: `1px solid ${t.border}`,
+  '& p': { margin: '0' },
+  '& .what': { fontWeight: '500' },
+  '& pre': { margin: '0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm, maxHeight: '240px', overflow: 'auto' },
+});
 const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, fontSize: t.textSm });
 
 function PendingCard(
-  handle: Handle<{ p: PendingRequest; runId: string | undefined; diff: PayloadDiff | undefined; criteria: readonly CriterionRow[]; onChanged: () => void }>,
+  handle: Handle<{
+    p: PendingRequest;
+    runId: string | undefined;
+    diff: PayloadDiff | undefined;
+    criteria: readonly CriterionRow[];
+    /** A collaborator's change request on GitHub that arrived while this review waited (H12). */
+    prReview?: PRReviewNote;
+    onChanged: () => void;
+  }>,
 ) {
   const s = services(handle);
   watch(handle, s.workspace);
@@ -135,16 +207,9 @@ function PendingCard(
   };
 
   return () => {
-    const { p, runId, diff, criteria, onChanged } = handle.props;
+    const { p, runId, diff, criteria, prReview, onChanged } = handle.props;
     const info = payloadOf(p);
     const spec = specPayload(p);
-    const budget = budgetPayload(p);
-    const limit = limitPayload(p);
-    const pause = limit ? undefined : watchdogPayload(p);
-    const ciGate = ciGatePayload(p);
-    const mergeGate = mergeGatePayload(p);
-    const verdict = verdictGate(p);
-    const repoConfig = repoConfigPayload(p);
     const permission = permissionPayload(p);
     const interrupted = interruptedPayload(p);
     const ro = s.workspace.license;
@@ -224,22 +289,8 @@ function PendingCard(
 
         {permission ? (
           <PermissionPromptPanel payload={permission} busy={sending} readOnly={ro.readOnly} onRespond={respond} onAllowForTask={allowForTask} />
-        ) : budget ? (
-          <BudgetPausePanel payload={budget} runId={runId} requestId={p.id} onDone={onChanged} />
-        ) : limit ? (
-          <LimitPanel payload={limit} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
-        ) : pause ? (
-          <WatchdogPanel payload={pause} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
-        ) : ciGate ? (
-          <CIGatePanel payload={ciGate} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
-        ) : mergeGate ? (
-          <MergeGatePanel payload={mergeGate} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
-        ) : verdict ? (
-          <VerdictGatePanel payload={verdict} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
-        ) : interrupted ? (
-          <InterruptedPanel payload={interrupted} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
-        ) : repoConfig ? (
-          <RepoConfigGatePanel payload={repoConfig} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
+        ) : hasGatePanel(p) ? (
+          <GateAnswer p={p} runId={runId} busy={sending} readOnly={ro.readOnly} onRespond={respond} onDone={onChanged} />
         ) : spec ? (
           <SpecGate payload={spec} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : p.spec.kind === 'question' ? (
@@ -255,22 +306,36 @@ function PendingCard(
           </>
         ) : p.spec.kind === 'review' ? (
           mode === 'idle' ? (
-            <div mix={formActions}>
-              <Button variant="primary" disabled={busy} mix={on('click', () => void respond('approved'))}>
-                Approve
-              </Button>
-              <Button
-                disabled={sending}
-                mix={on('click', () => {
-                  mode = 'changes';
-                  // start from the criteria still to meet, so the person edits instead of retyping them
-                  if (!text.trim()) text = changesDraft(criteria);
-                  void handle.update();
-                })}
-              >
-                Request changes
-              </Button>
-            </div>
+            <>
+              {prReview ? (
+                <div mix={prReviewCss} data-testid="review-pr-changes">
+                  <p class="what">{visible(prReview.summary)}</p>
+                  <p mix={muted}>Send back sends the worker these words:</p>
+                  <pre>{visible(prReview.feedback)}</pre>
+                  <div mix={formActions}>
+                    <Button variant="primary" disabled={busy} mix={on('click', () => void respond('rejected', { feedback: prReview.feedback }))}>
+                      Send back with the GitHub review
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <div mix={formActions}>
+                <Button variant="primary" disabled={busy} mix={on('click', () => void respond('approved'))}>
+                  Approve
+                </Button>
+                <Button
+                  disabled={sending}
+                  mix={on('click', () => {
+                    mode = 'changes';
+                    // start from the criteria still to meet, so the person edits instead of retyping them
+                    if (!text.trim()) text = changesDraft(criteria);
+                    void handle.update();
+                  })}
+                >
+                  Request changes
+                </Button>
+              </div>
+            </>
           ) : (
             <>
               <Field label="Feedback for the worker">

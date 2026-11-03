@@ -2,6 +2,10 @@
 
 import type { BundleFileReport, BundleReport } from '../../api/pkgTypes.ts';
 import { parseWhole } from '../../lib/limits.ts';
+import { routes } from '../../routes.ts';
+
+/** Report this (X56): the Support page with that run picked and previewed, so nobody types a run id. */
+export const supportFor = (runId: string): string => `${routes.support.href()}?${new URLSearchParams({ run: runId }).toString()}`;
 
 export interface BundleOpts {
   eventLimit: number | undefined;

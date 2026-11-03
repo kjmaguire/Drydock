@@ -47,6 +47,15 @@ function servicesWith(client: Partial<Client>) {
 
 const box = (root: ParentNode, label: string) => byLabel<HTMLInputElement>(root, label);
 
+// the planner the Plan page remembers per project lives in this browser's storage (X45)
+const forgetPlanner = () => {
+  try {
+    localStorage.removeItem('drydock.planner.prj_1');
+  } catch {
+    // storage blocked: nothing remembered
+  }
+};
+
 describe('PlanReview', () => {
   it('accepting sends exactly the selected, dependency-closed tasks and only the edits to them', async () => {
     const calls: [string, string[], Record<string, ProposedTask>][] = [];
@@ -227,6 +236,17 @@ describe('Accept and start (X47)', () => {
     expect(saved[0]!.maxParallel).toBe(2);
   });
 
+  it('says on the accepted card when tasks could not be linked to the requirement, and nothing when all were (X48)', () => {
+    const missed = plan({ status: 'ACCEPTED', createdTasks: { a: 'task_a', b: 'task_b' }, requirementIds: ['req_1'], unlinked: [{ taskId: 'task_a', requirementId: 'req_1' }] });
+    const r = mount(<AfterAccept plan={missed} />, testServices({ projectdevGet: async () => dev }));
+    const note = must(r.$('[data-testid="plan-unlinked"]'));
+    expect(note.textContent).toContain('1 task could not be linked to its requirement in the trace.');
+    expect(must(note.querySelector('a')).getAttribute('href')).toBe('/requirements');
+    cleanup();
+    const ok = mount(<AfterAccept plan={{ ...missed, unlinked: null }} />, testServices({ projectdevGet: async () => dev }));
+    expect(ok.$('[data-testid="plan-unlinked"]')).toBe(null);
+  });
+
   it('shows the pass of an Accept and start without another click', () => {
     const r = mount(<AfterAccept plan={accepted} started={{ promoted: [], started: ['task_a', 'task_b'], skipped: [], active: 2, capacity: 2, max: 2 }} />, testServices({ projectdevGet: async () => dev }));
     r.root.flush();
@@ -310,11 +330,13 @@ describe('PlanScreen', () => {
     const r = mount(<PlanScreen />, s);
     await waitFor(() => byText(r.container, 'h2', 'No plans yet.'), r);
     expect(r.$('[data-testid="plan-stepper"]')!.getAttribute('data-stage')).toBe('GOAL');
-    await waitFor(() => byText(r.container, '[role="option"]', 'Priya (pm)'), r);
+    // one agent on the crew: no choice to make, it plans
+    await waitFor(() => expect(r.$('[data-testid="plan-planner"]')!.textContent).toBe('Priya plans.'), r);
+    expect(r.$('[data-testid="plan-no-planner"]')).toBe(null);
     type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'Add arithmetic');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
-    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '']]), r);
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '', []]]), r);
     await waitFor(() => expect(r.$('[role="status"]')!.textContent).toContain('planner is working'), r);
     expect(r.$('[data-testid="plan-stepper"]')!.getAttribute('data-stage')).toBe('PLANNING');
     expect(byLabel<HTMLTextAreaElement>(r.container, 'Goal').value).toBe('');
@@ -327,7 +349,7 @@ describe('PlanScreen', () => {
   it('sends the chosen planner agent and lets the human switch between plans', async () => {
     const proposed: unknown[][] = [];
     const s = servicesWith({
-      agentList: async () => [agent],
+      agentList: async () => [agent, { ...agent, id: 'agt_be', name: 'Dana', role: 'backend' }],
       planPropose: async (...args) => (proposed.push(args), { planId: 'plan_1', runId: 'r', plannerAgentId: 'agt_pm' }),
       planList: async () => [plan({ id: 'old', goal: 'Old goal', status: 'REJECTED', createdAt: 1 }), plan({ id: 'new', goal: 'New goal', createdAt: 2 })],
     });
@@ -342,7 +364,7 @@ describe('PlanScreen', () => {
     type(byLabel<HTMLElement>(r.container, 'Planner agent'), 'agt_pm');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
-    await waitFor(() => expect(proposed).toEqual([['prj_1', 'More', 'no deps', 'agt_pm']]), r);
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'More', 'no deps', 'agt_pm', []]]), r);
   });
 
   it('a proposal waiting for review leads; the goal form folds under it, and comes first again once the plan is decided (UI review P1-9)', async () => {
@@ -402,6 +424,83 @@ describe('PlanScreen', () => {
     const failed = await waitFor(() => must(r.$('[data-testid="plan-start-failed"]')), r);
     expect(failed.textContent).toContain('The tasks were created; starting them failed: database is locked');
     expect(r.container.textContent).not.toContain('Not sent');
+  });
+
+  it('a crew without a planner says so with Add a planner, and the lead plans for now (X45)', async () => {
+    forgetPlanner();
+    const proposed: unknown[][] = [];
+    const lead = { ...agent, id: 'agt_lead', name: 'Lena', role: 'team lead' };
+    const s = servicesWith({
+      agentList: async () => [{ ...agent, id: 'agt_be', name: 'Dana', role: 'backend' }, lead],
+      planPropose: async (...args) => (proposed.push(args), { planId: 'p', runId: 'r', plannerAgentId: 'agt_lead', fallback: true }),
+      planList: async () => [],
+    });
+    const r = mount(<PlanScreen />, s);
+    const note = await waitFor(() => must(r.$('[data-testid="plan-no-planner"]')), r);
+    expect(note.textContent).toContain('No planner on the crew');
+    const add = r.$('[data-testid="plan-add-planner"]') as HTMLAnchorElement;
+    expect(add.textContent).toBe('Add a planner');
+    expect(new URL(add.href).searchParams.get('describe')).toBe('Plans each feature and writes the spec before anyone codes.');
+    // automatic names the agent the core picks: the lead before anyone
+    await waitFor(() => expect(byLabel<HTMLElement>(r.container, 'Planner agent').textContent).toContain('Automatic: Lena'), r);
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'Add arithmetic');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '', []]]), r);
+  });
+
+  it('an empty crew cannot propose and is pointed at Add a planner (X45)', async () => {
+    const r = mount(<PlanScreen />, servicesWith({ agentList: async () => [], planList: async () => [] }));
+    const note = await waitFor(() => must(r.$('[data-testid="plan-no-planner"]')), r);
+    expect(note.textContent).toContain('A plan needs one agent on the crew.');
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'x');
+    r.root.flush();
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Propose a plan').disabled).toBe(true);
+  });
+
+  it('remembers the planner chosen for the project (X45)', async () => {
+    forgetPlanner();
+    const crew = [agent, { ...agent, id: 'agt_be', name: 'Dana', role: 'backend' }];
+    const first = mount(<PlanScreen />, servicesWith({ agentList: async () => crew, planList: async () => [] }));
+    await waitFor(() => byLabel<HTMLElement>(first.container, 'Planner agent'), first);
+    type(byLabel<HTMLElement>(first.container, 'Planner agent'), 'agt_be');
+    first.root.flush();
+    cleanup();
+    const proposed: unknown[][] = [];
+    const r = mount(
+      <PlanScreen />,
+      servicesWith({ agentList: async () => crew, planList: async () => [], planPropose: async (...args) => (proposed.push(args), { planId: 'p', runId: 'r', plannerAgentId: 'agt_be' }) }),
+    );
+    await waitFor(() => expect(valueOf(byLabel(r.container, 'Planner agent'))).toBe('agt_be'), r);
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'x');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'x', '', 'agt_be', []]]), r);
+    forgetPlanner();
+  });
+
+  it("plans from the project's requirement documents chosen as chips (X48)", async () => {
+    const proposed: unknown[][] = [];
+    const doc = (id: string, title: string, archived = false) => ({ id, projectId: 'prj_1', title, archived }) as never;
+    const r = mount(
+      <PlanScreen />,
+      servicesWith({
+        agentList: async () => [agent],
+        planList: async () => [],
+        requirementList: async () => [doc('req_a', 'Calculator PRD'), doc('req_b', 'Security notes'), doc('req_c', 'Old', true)],
+        planPropose: async (...args) => (proposed.push(args), { planId: 'p', runId: 'r', plannerAgentId: 'agt_pm' }),
+      }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="plan-req-chip"]').length).toBe(2), r);
+    const chip = byText<HTMLButtonElement>(r.container, '[data-testid="plan-req-chip"]', 'Calculator PRD');
+    expect(chip.getAttribute('aria-pressed')).toBe('false');
+    await r.act(() => chip.click());
+    expect(byText(r.container, '[data-testid="plan-req-chip"]', 'Calculator PRD').getAttribute('aria-pressed')).toBe('true');
+    expect(r.$('[data-testid="plan-req-note"]')!.textContent).toBe('Accepted tasks are linked to it in the trace.');
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'Add arithmetic');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '', ['req_a']]]), r);
   });
 
   it('read-only turns Propose off', async () => {

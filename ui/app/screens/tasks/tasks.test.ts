@@ -33,7 +33,6 @@ import {
   matchesFilter,
   mergeRequestOf,
   needsMe,
-  newestDiffId,
   ordinal,
   parseAcceptance,
   parseLabels,
@@ -350,16 +349,6 @@ describe('diff lines', () => {
 
   it('a trailing newline is not an extra line', () => {
     expect(diffLines('+a\n-b\n')).toEqual(['+a', '-b']);
-  });
-
-  it('the patch a card is about is the newest evidence of kind diff (L36)', () => {
-    const e = (id: number, kind: string) => ({ id, kind });
-    expect(newestDiffId([])).toBeUndefined();
-    expect(newestDiffId([e(1, 'test'), e(2, 'review')])).toBeUndefined();
-    expect(newestDiffId([e(1, 'test'), e(2, 'diff'), e(3, 'test')])).toBe(2);
-    expect(newestDiffId([e(2, 'diff'), e(5, 'test'), e(9, 'diff'), e(11, 'test')])).toBe(9);
-    // whatever order the core lists them in
-    expect(newestDiffId([e(9, 'diff'), e(2, 'diff'), e(5, 'diff')])).toBe(9);
   });
 });
 

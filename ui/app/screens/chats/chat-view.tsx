@@ -17,7 +17,7 @@ import { forgetFromLast, tookFromLast } from './from-last.ts';
 import { useDefaultRules } from './default-rules.tsx';
 import { CliFixButton } from '../shared/cli-fix.tsx';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
@@ -389,7 +389,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           ) : (
             <Empty title="Chat not found" icon={Bot}>
               <p>{feed.deleted ? 'This chat was deleted.' : 'It may have been deleted.'}</p>
-              <ErrorNote error={feed.error} />
+              <ErrorNote error={feed.error} retry={retryFor(feed)} />
             </Empty>
           )}
         </section>
@@ -828,7 +828,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
         </header>
         {feed.error ? (
           <div mix={noteCss}>
-            <ErrorNote error={feed.error} what="Could not load the chat" />
+            <ErrorNote error={feed.error} retry={retryFor(feed)} what="Could not load the chat" />
           </div>
         ) : null}
         <div mix={logWrap}>

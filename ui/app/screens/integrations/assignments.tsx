@@ -12,7 +12,7 @@ import type { ExternalItem, ExternalItemDetail, IntegrationAssignment, Integrati
 import { formatDateTime, plural } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -234,7 +234,7 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projectId: string }>) 
       <section aria-label="Outbound writes" mix={panel}>
         <h4>Outbound writes (need your approval)</h4>
         <p mix={faint}>Nothing is sent to the vendor until you approve the exact text below. Approval is bound to a hash of this exact call; a changed call is refused.</p>
-        <ErrorNote error={q.error ?? act.error} />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} />
         {ops.length === 0 ? (
           <p mix={muted}>This connection offers no write operations.</p>
         ) : (
@@ -391,7 +391,7 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
           A rule creates backlog tasks from matching items, or links them to a task that already exists. Only you can create, change or enable a rule. A new rule starts disabled and in dry-run: it lists what it would create and
           creates nothing until you turn both on. Items with an injection risk of 3 or more are never created by a rule, and item text cannot set a rule parameter.
         </p>
-        <ErrorNote error={q.error ?? act.error} what="Rules" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Rules" />
         {rules.map((r) => (
           <div key={r.id} mix={rowCard} data-testid="int-rule" data-rule={r.id}>
             <div mix={head}>
@@ -669,7 +669,7 @@ function AssignmentItems(handle: Handle<{ a: IntegrationAssignment; openTask: Op
     const rows: ExternalItem[] = list.data ?? [];
     return (
       <section aria-label="Items" mix={panel}>
-        <ErrorNote error={list.error} />
+        <ErrorNote error={list.error} retry={list.reload} />
         {list.loading && !list.data ? <Loading /> : null}
         {list.data && rows.length === 0 ? <p mix={muted}>No items yet. Run a sync.</p> : null}
         {rows.length > 0 ? (

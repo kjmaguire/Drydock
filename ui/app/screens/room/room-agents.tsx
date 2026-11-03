@@ -8,7 +8,7 @@ import { MessageSquareReply, Pencil, ScanSearch, Trash2, UserPlus } from 'lucide
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { formatCost } from '../../lib/format.ts';
 import { parseWhole } from '../../lib/limits.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { ExplainText } from '../shared/explain.tsx';
 import { routes } from '../../routes.ts';
@@ -125,7 +125,7 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
     const shownOrder = order.length ? order : defaultOrder(members);
     return (
       <div mix={railCss} class="room-agents" data-testid="room-agents">
-        <ErrorNote error={act.error ?? turns.error} />
+        <ErrorNote error={act.error ?? turns.error} retry={retryFor(act, turns)} />
         {dm ? null : (
           <section mix={cardCss} aria-label="Turn-taking mode">
             <h3>Turn-taking mode</h3>
@@ -476,11 +476,11 @@ export function RoomTab(handle: Handle<{ roomId: string }>) {
   });
   return () => {
     const r = room.data?.id === handle.props.roomId ? room.data : undefined;
-    if (!r) return room.error ? <ErrorNote error={room.error} what="Could not load the room" /> : <Loading label="Loading the room..." />;
+    if (!r) return room.error ? <ErrorNote error={room.error} retry={room.reload} what="Could not load the room" /> : <Loading label="Loading the room..." />;
     if (r.archived) return <p style={{ margin: '0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>This channel is archived: its members and mode cannot change.</p>;
     return (
       <>
-        <ErrorNote error={members.error} what="Could not load the members" />
+        <ErrorNote error={members.error} retry={members.reload} what="Could not load the members" />
         <RoomAgentsPanel key={r.id} room={r} agents={s.project.agentList} members={members.data ?? []} lastHumanMessageId={lastHumanMessageId(recent.data ?? [])} />
         {/* the decisions taken here, or in every room of the project in #decisions (X110) */}
         {r.kind === 'channel' || r.kind === 'task' ? <RoomDecisions key={`dec:${r.id}`} room={r} /> : null}

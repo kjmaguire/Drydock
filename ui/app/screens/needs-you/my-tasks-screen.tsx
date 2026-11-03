@@ -9,7 +9,7 @@ import { agoWords, statusLabel, statusTone } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
-import { query, services, watch } from '../../state/services.tsx';
+import { query, retryFor, services, watch } from '../../state/services.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
@@ -56,7 +56,7 @@ export function MyTasksList(handle: Handle) {
     const list = myTaskOrder(tasks.data ?? []);
     return (
       <div data-testid="my-tasks" data-open={tasks.data ? String(list.filter((x) => !isTerminal(x.status)).length) : undefined}>
-        <ErrorNote error={s.workspace.info.error ?? tasks.error} what="Could not load your tasks" />
+        <ErrorNote error={s.workspace.info.error ?? tasks.error} retry={retryFor(s.workspace.info, tasks)} what="Could not load your tasks" />
         {(tasks.loading || s.workspace.info.loading) && !tasks.data ? <Loading /> : null}
         {tasks.data && list.length === 0 ? (
           <Empty title="No task is assigned to you" icon={ListTodo}>
@@ -111,7 +111,7 @@ export function MyTasksScreen(handle: Handle) {
     const open = list.filter((x) => !isTerminal(x.status)).length;
     return (
       <Page title="My tasks" icon={ListTodo} subtitle={tasks.data ? `${open} open · every project's tasks that are yours` : undefined}>
-        <ErrorNote error={s.workspace.info.error ?? tasks.error} what="Could not load your tasks" />
+        <ErrorNote error={s.workspace.info.error ?? tasks.error} retry={retryFor(s.workspace.info, tasks)} what="Could not load your tasks" />
         {(tasks.loading || s.workspace.info.loading) && !tasks.data ? <Loading /> : null}
         {tasks.data && list.length === 0 ? (
           <Empty title="No task is assigned to you" icon={ListTodo}>

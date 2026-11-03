@@ -36,9 +36,16 @@ and volumes are removed.
    merged change still does not run until you confirm it: switching the sandbox on records the definition you saw, and a task
    whose definition differs is held in Needs you with the list of what changed (network, allowed hosts, image, setup commands,
    services). Confirm it in the project's sandbox settings (`sandbox.trust`, which takes the digest of the definition you were
-   shown and is recorded in the audit log) or switch the sandbox off and on again, then answer to try again. A sandbox that was
+   shown and is recorded in the audit log), with "Confirm this definition and try again" on the held task's card, or switch the
+   sandbox off and on again: confirming lets every task of the project that waits for it go on. A sandbox that was
    switched on before this existed is asked once.
-   Project settings > Sandbox suggests a starting point from the project's files.
+   Project settings > Sandbox suggests a starting point from the project's files: the language files (package.json, go.mod,
+   Python), and since effort review X35 what the project already says about its containers. A compose file's services that run an
+   image (not the one built from the repository, which is the project itself) become services with their environment and
+   command, and the built service's environment becomes `env`; a dev container's `image` (devcontainer.json, comments allowed),
+   else a Dockerfile's first `FROM`, becomes the image. A value naming a variable of the machine (`${...}`) is left out. The
+   settings name the files it read and say that their values are copied as they are, so the person reads them (and keeps
+   secrets out of `env`, which the agents see) before committing the suggestion.
 3. Project settings > Sandbox: check that the engine and the definition are found, press **Test the sandbox** (it starts the
    sandbox once without the setup commands, runs a command and removes it), then switch on **Run the agents' commands in a
    container for each task**. Only a human identity may switch it (`sandbox.set`, refused for an agent); the switch records
@@ -84,7 +91,17 @@ GitHub downloads (read-only: no credentials are ever put in the sandbox) and Pla
 - **Before a worker turn** (the plain work step, the template implementation step, and the template roles that write, such as
   the test writer) Drydock makes sure the task's sandbox runs: it pulls missing images, creates the network, starts the proxy and
   the services, starts the workspace and runs the setup commands. That can take minutes the first time. If it fails (no engine,
-  a bad definition, an image that cannot be pulled), the task waits in Needs you with the reason; answering tries again.
+  a bad definition, an image that cannot be pulled), the task waits in Needs you with the reason; answering tries again. While it
+  is created, each step is said (effort review X39): `sandbox.Spec.Progress` names the images it pulls, the services and the
+  workspace it starts and each setup command by number (never its text), the core publishes `sandbox.starting` (`step`) task
+  events and then `sandbox.ready` or `sandbox.start_failed`, and `task.get` carries `sandboxStart` (the steps of the last start
+  while Drydock runs) so the task page's status pill reads "Starting the sandbox: pulling node:24" and a folded line keeps the
+  steps. The question names why (payload `gate` "sandbox", `reason` unconfirmed, engine, definition, start or agent; for an
+  unconfirmed definition its `fingerprint` and `changes`), and the task page and the Inbox answer it with buttons (effort review
+  X38): **Try again**, **Open sandbox settings**, **Stop**, and for a changed definition **Confirm this definition and try
+  again**, which calls `sandbox.trust` with the fingerprint shown. Confirming the definition (or switching the sandbox on) answers
+  every question of the project that waits for that confirmation, as the person, so the page says the confirmation is for the
+  whole project; questions for other reasons are left for the person.
 - **The worker turn** starts Claude Code with `--restricted` and `--permission-mode acceptEdits` (restricted mode refuses
   `bypassPermissions`), Drydock's own instructions plus the project's CLAUDE.md (restricted mode does not load it; contract
   CLAUDE-RESTRICTED-02), a description of the sandbox, and these gateway tools:
@@ -249,7 +266,9 @@ app on 127.0.0.1, cookies are not separated by port, and the page is code an age
   engine (`Manager.Forwards`), survives a restart of Drydock, and goes with the sandbox: the task's end, `Remove` and the cleanup
   at start remove it and its network with everything else of the task. Nothing is kept in the database.
 - **Methods** (a person only; an agent has no way to open a port or a window): `sandbox.forward.list` (`running`, the forwards,
-  `canView`, the limit), `sandbox.forward.open`, `sandbox.forward.close`, `sandbox.forward.view`, and `sandbox.forward.show`
+  `canView`, the limit, and `listening`: the ports something listens on in the workspace, read from its /proc/net/tcp and
+  tcp6 with the name of the sandbox_start process that holds each where its session shows it, effort review X31; a port bound to
+  the workspace's loopback is left out, the forwarder cannot reach it; only a number and a checked name are kept), `sandbox.forward.open`, `sandbox.forward.close`, `sandbox.forward.view`, and `sandbox.forward.show`
   (the task page's one **Open the app**: open, then view, each recorded as itself; a window with no viewer is refused before
   anything is forwarded). Opening, closing and showing are in the audit log (`sandbox.forward.opened`, `.closed`, `.viewed`, by
   the person, with the port) and are task events. `sandbox.forward.view` takes the address from the engine's record of the
@@ -263,7 +282,10 @@ app on 127.0.0.1, cookies are not separated by port, and the page is code an age
   what the page stores (cookies, local storage, cache) is its own and ends with it; the profile is why it is a process and not a
   second window of the app (WebView2 takes one profile folder per process). The title ends "- Drydock isolated window". It accepts
   only `http://127.0.0.1:<port>/` (no other host, name, scheme, credentials or path), at most four are open, and it is a child
-  of the app's Job Object so it dies with the app. A window of the browser harness has no viewer: the page says so and never
+  of the app's Job Object so it dies with the app. One forwarded address has one window (effort review X314): opening it again
+  brings that window to the front (by the viewer's process id, from the app, never through the page), `sandbox.forward.list`
+  says which ports have one (`viewing`, so the page's button reads Show), and Stop on the forward ends its window. A window the
+  person closes is known at the next read of the list. Raising the window is proven only by the release workflow's install-test. A window of the browser harness has no viewer: the page says so and never
   falls back to a browser.
 - **Limits:** the page can still navigate away from 127.0.0.1 inside that window (it is not a browser with an address bar, but
   it does not stop a link); it holds nothing of Drydock's, and what it stores goes when it closes. A forwarder is not a security

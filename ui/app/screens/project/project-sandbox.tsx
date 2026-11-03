@@ -131,7 +131,7 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
       >
         {!st ? (
           <div mix={errorPad}>
-            <ErrorNote error={q.error} what="Could not read the sandbox status" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not read the sandbox status" />
             {q.error ? null : <Loading />}
           </div>
         ) : (
@@ -171,6 +171,12 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
                   Commit this as <code>{st.configPath}</code> on <code>{st.branch}</code> to start from it. Drydock reads the definition from that branch only, so a
                   change an agent makes to it counts after you merged it.
                 </p>
+                {st.starterFrom?.length ? (
+                  <p data-testid="sandbox-starter-from">
+                    Read from {st.starterFrom.join(', ')}. Their values are copied as they are: read them before you commit, and keep secrets out of{' '}
+                    <code>env</code>, which the agents see.
+                  </p>
+                ) : null}
                 <pre mix={preCss}>{st.starter}</pre>
               </div>
             ) : null}
@@ -192,6 +198,9 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
                         <li key={i}>{c}</li>
                       ))}
                     </ul>
+                    <p data-testid="sandbox-confirm-note">
+                      Confirming it, or switching the sandbox off and on again, lets every task of this project that waits for it go on, each with its agent&apos;s next turn.
+                    </p>
                     <div class="row">
                       <Button size="sm" variant="primary" disabled={act.busy === 'trust'} data-testid="sandbox-confirm" mix={on('click', () => void confirm(st.fingerprint!))}>
                         {act.busy === 'trust' ? 'Confirming...' : 'Confirm this definition'}
