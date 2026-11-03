@@ -1,9 +1,6 @@
 {
-  "generated": "2026-11-03T20:58:30Z",
-  "commit": "1cc7314",
-  "lookupsFailed": [
-    "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
-  ],
+  "generated": "2026-11-03T21:26:43Z",
+  "commit": "fe5c5e0",
   "summary": {
     "current": 170,
     "major": 2,
@@ -6729,7 +6726,7 @@
   ],
   "vulnerabilities": [],
   "vulnerabilityScans": {
-    "govulncheck": "did not run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden",
+    "govulncheck": "0 known vulnerabilities in what is built, 0 of them in code that is called",
     "npm audit": "0 advisories against installed UI packages"
   },
   "counts": {
