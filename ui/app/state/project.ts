@@ -9,9 +9,12 @@ import { Live, starts } from './live.ts';
 import { Model } from './services.tsx';
 import type { Workspace } from './workspace.ts';
 
-/** The events after which Needs you may have changed: every list or count of it reloads on these, so all of them agree. */
+/**
+ * The events after which Needs you may have changed: every list or count of it reloads on these, so all of them agree. Its agent-CLI
+ * items come from the CLIs' last check, so Drydock's own check (connection.checked, A2) and a sign-in's end count too.
+ */
 export const needsChanged = (e: DrydockEvent): boolean =>
-  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.read_cursor', 'room.archived', 'chat.permission', 'needsyou.');
+  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.read_cursor', 'room.archived', 'chat.permission', 'needsyou.', 'connection.checked', 'connection.sign_in_finished');
 
 /** The project's tasks as one read: the newest ones the core lists, and how many the project has in all (when the count answered). */
 export interface TaskPage {

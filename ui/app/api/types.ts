@@ -253,6 +253,17 @@ export interface SetupResult {
   clone?: CloneResult;
   /** What did not work after the project was created (the project exists). */
   warnings: string[];
+  /** The same, one line each with what kind of thing failed (B2); an older core sends none. */
+  problems?: SetupWarning[];
+}
+
+/** core.SetupWarning: one thing that failed after the project was made, and what kind (the action on Work follows from it). */
+export interface SetupWarning {
+  /** cli: an agent's CLI is not usable here (adapter, status); decision: waits for the person; connector; other. */
+  kind: 'cli' | 'decision' | 'connector' | 'other' | string;
+  text: string;
+  adapter?: string;
+  status?: string;
 }
 
 /** core.MaxSetupAgents */
@@ -1055,6 +1066,8 @@ export interface Prereq {
   ok: boolean;
   /** Plain-language guidance, never a command to run. */
   guide?: string;
+  /** The tool's own download page (A5). */
+  link?: string;
 }
 
 export interface GateStatus {
@@ -1090,6 +1103,8 @@ export interface Connection extends Detection {
   account?: string;
   /** The adapter of a custom manifest (a CLI you described, not a vendor's): listed after the vendors' CLIs. */
   custom?: boolean;
+  /** When this answer was made (connection.list {cached}: the last check of each, A2); absent on a fresh check. */
+  at?: string;
 }
 
 /** connection.custom.list (decision P115): where a person's own CLIs are kept, and every manifest file there. */

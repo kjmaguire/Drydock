@@ -3,9 +3,11 @@ import { describe, it } from 'remix/test';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import type { Agent, Project, SetupRequest } from '../../api/types.ts';
 import { projectWorkHref } from '../../lib/project-work.ts';
-import { CATALOG } from '../project/wizard-fixtures.ts';
+import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
 import {
   chatSettings,
+  cliProblem,
+  cliReadiness,
   crewFor,
   crewKinds,
   crewLabel,
@@ -23,6 +25,7 @@ import {
   pickPair,
   planStart,
   projectName,
+  readyAlternative,
   recall,
   recallDraft,
   remember,
@@ -380,5 +383,42 @@ describe('the unsent description (B10)', () => {
     expect(recallDraft(throwing)).toBe('');
     keepDraft(throwing, 'x');
     expect(recallDraft(undefined)).toBe('');
+  });
+});
+
+describe("whether the builder's CLI is ready, before Enter (A1)", () => {
+  const signedOut = { ...adapterInfo('claude'), detection: { adapter: 'claude', installed: true, status: 'unauthenticated' } };
+  const codex = adapterInfo('codex');
+  const missing = adapterInfo('claude', false);
+
+  it('reads the state adapter.list found, a ready WSL install counting as ready', () => {
+    expect(cliReadiness('claude', [adapterInfo('claude')]).state).toBe('ready');
+    expect(cliReadiness('claude', [signedOut])).toEqual({ adapter: 'claude', state: 'sign-in', text: 'Claude Code is not signed in.' });
+    expect(cliReadiness('claude', [missing]).state).toBe('install');
+    expect(cliReadiness('claude', [{ ...missing, wslDistro: 'Ubuntu' }]).state).toBe('ready');
+    expect(cliReadiness('claude', undefined).state).toBe('unknown');
+    expect(cliProblem(['claude', 'codex'], [adapterInfo('claude'), adapterInfo('codex', false)])?.adapter).toBe('codex');
+    expect(cliProblem(['gemini'], [adapterInfo('claude')])).toBe(undefined);
+  });
+
+  it('offers another CLI that is ready', () => {
+    expect(readyAlternative('claude', [signedOut, codex])).toBe('codex');
+    expect(readyAlternative('claude', [signedOut])).toBe(undefined);
+  });
+
+  it('refuses Enter while the CLI is not usable, so no project is made to fail afterwards', () => {
+    const p = planStart({ where: { kind: 'new', path: '/c/x' }, text: 'Build it', crew: solo, tuning, catalog: CATALOG, templates: [], projects: [], adapters: [signedOut, codex] });
+    expect(p).toEqual({ problem: 'Claude Code is not signed in. Sign in first, or choose another CLI.' });
+    const inProject = planStart({ where: { kind: 'project', projectId: 'p1' }, text: 'Build it', crew: solo, tuning, catalog: CATALOG, templates: [], projects: [project('p1')], adapters: [missing] });
+    expect(inProject).toEqual({ problem: 'Claude Code is not installed on this PC. Install it first, or choose another CLI.' });
+    // the project's own crew runs on its agents' CLIs: not refused here
+    expect('problem' in planStart({ where: { kind: 'project', projectId: 'p1' }, text: 'Build it', crew: { ...solo, kind: 'project' }, tuning, catalog: CATALOG, templates: [], projects: [project('p1')], adapters: [missing] })).toBe(false);
+  });
+
+  it('Use Codex instead puts the builder on that CLI, with its own defaults', () => {
+    const p = planStart({ where: { kind: 'new', path: '/c/x' }, text: 'Build it', crew: solo, tuning: { model: '', effort: '', permission: 'acceptEdits', adapter: 'codex' }, catalog: CATALOG, templates: [], projects: [], adapters: [signedOut, codex] });
+    if ('problem' in p) throw new Error(p.problem);
+    expect(p.adapter).toBe('codex');
+    expect(p.setup!.agents.map((a) => a.adapter)).toEqual(['codex']);
   });
 });

@@ -20,9 +20,19 @@ var toolGuide = map[string]string{
 	"gh":   "GitHub CLI is required: install it from cli.github.com or your package manager, then re-check.",
 }
 
+// toolLink is the download page of a prerequisite's own vendor, for the guidance's link (A5). Only the vendors' sites: a page,
+// never an installer Drydock fetches or runs.
+var toolLink = map[string]string{
+	"node": "https://nodejs.org/en/download",
+	"npx":  "https://nodejs.org/en/download",
+	"npm":  "https://nodejs.org/en/download",
+	"git":  "https://git-scm.com/downloads/win",
+	"gh":   "https://cli.github.com/",
+}
+
 // checkTool looks a tool up on PATH (PATHEXT resolves npx.cmd on Windows) and, for versioned tools, runs `--version`.
 func checkTool(ctx context.Context, tool, min string, o Options) Prereq {
-	pr := Prereq{Tool: tool, Min: min}
+	pr := Prereq{Tool: tool, Min: min, Link: toolLink[tool]}
 	guide := toolGuide[tool]
 	if strings.Contains(guide, "%s") {
 		guide = fmt.Sprintf(guide, min)

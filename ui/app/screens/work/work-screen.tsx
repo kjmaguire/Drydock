@@ -15,7 +15,7 @@ import { modelName } from '../../lib/model-name.ts';
 import { parseWorkItem, workItemHref, workItemKey, type WorkItemRef } from '../../lib/route.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Button } from '../../ui/button.tsx';
 import { Avatar, presenceColor } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -29,6 +29,8 @@ import { AgentPanelHost } from '../team/agent-panel.tsx';
 import { editAgent, editAgentHref, newAgentHref } from './edit-agent.ts';
 import { RecommendLine } from './recommend-line.tsx';
 import { RepoSyncLine } from './repo-sync-line.tsx';
+import { SetupNotes } from './setup-notes.tsx';
+import { StartBox } from '../workspace/start-box.tsx';
 import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, roomsUnread, workRows, type WorkGroup, type WorkRow } from './work.ts';
 import { AddReviewerNote } from '../shared/add-reviewer.tsx';
 
@@ -102,7 +104,19 @@ const footCss = css({
 });
 const countCss = css({ marginLeft: '6px', color: t.accentText, fontFamily: t.mono, fontSize: t.textXs, fontWeight: '600' });
 const centreCss = css({ display: 'flex', flexDirection: 'column', minWidth: '0', minHeight: '0', overflow: 'hidden', '& > *': { flex: '1', minHeight: '0' } });
-const emptyCss = css({ display: 'grid', placeItems: 'center', alignContent: 'center', gap: t.s3, padding: t.s6, color: t.textMuted, fontSize: t.textMd, textAlign: 'center' });
+const emptyCss = css({
+  display: 'grid',
+  alignContent: 'center',
+  gap: t.s3,
+  width: '100%',
+  maxWidth: '720px',
+  margin: '0 auto',
+  padding: t.s6,
+  color: t.textMuted,
+  fontSize: t.textMd,
+  '& > p': { margin: '0', textAlign: 'center' },
+  '& > a': { justifySelf: 'center', fontSize: t.textSm },
+});
 const crewCss = css({
   display: 'flex',
   flexDirection: 'column',
@@ -241,6 +255,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
               </Notice>
             </div>
           ) : null}
+          {/* what failed when the project was made, a line each with its fix, until dismissed or resolved (B2) */}
+          {pid() ? <SetupNotes key={`notes:${pid()}`} projectId={pid()!} /> : null}
           <ErrorNote error={act.error ?? chats.error} what={act.error ? 'Could not start a chat' : 'Could not read the chats'} />
           <div mix={listCss} data-testid="work-list">
             {(['needs', 'running', 'earlier'] as WorkGroup[]).map((g) =>
@@ -290,9 +306,12 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             <ChatConversation key={open.id} chatId={open.id} onNavigate={handle.props.onNavigate} />
           ) : (
             <div mix={emptyCss} data-testid="work-empty">
-              <p>Describe a task and the crew takes it from there.</p>
-              <a href={routes.taskNew.href()} mix={buttonStyle('primary')}>
-                Describe a task
+              {/* one description and Enter, as on Home with Where fixed to this project (B11): a task when the crew can run one,
+                  else a chat; nothing starts before Enter (P143) */}
+              <p>Describe what the crew should do first.</p>
+              {pid() ? <StartBox key={`start:${pid()}`} projectId={pid()!} onNavigate={handle.props.onNavigate} /> : null}
+              <a href={routes.taskNew.href()} data-testid="work-task-form">
+                Or write a task in full
               </a>
             </div>
           )}

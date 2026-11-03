@@ -3,12 +3,14 @@
 // Enter does: make the project when the place is new, then the first piece of work, a task when the crew has a worker and a
 // different reviewer and the project has a repository, else a chat in the project.
 
-import { PROJECT_BRIEF_MAX, projectHasRepo, type Agent, type PrebuiltAgent, type Project, type SetupRequest, type SetupResult, type Task } from '../../api/types.ts';
+import { PROJECT_BRIEF_MAX, projectHasRepo, type AdapterInfo, type Agent, type PrebuiltAgent, type Project, type SetupRequest, type SetupResult, type SetupWarning, type Task } from '../../api/types.ts';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import type { Chat, ChatCreate } from '../../api/chatClient.ts';
 import type { WorkItem } from '../../lib/project-work.ts';
+import { setupLines } from '../../lib/setup-notes.ts';
 import { PERMISSION_SEGMENTS } from '../team/agent-edit.ts';
 import { adapterName } from '../team/team.ts';
+import { adapterLabel } from '../shared/cli-name.ts';
 import { buildSetup, cloneTarget, emptyWizard, memberFromPrebuilt, stepProblem, suggestTeam, uniqueName, type TeamMember, type WizardState } from '../project/wizard.ts';
 
 /** Where the work happens: a new folder, a folder already on this PC, a GitHub repository to clone, or a project. */
@@ -48,6 +50,8 @@ export interface Tuning {
   model: string;
   effort: string;
   permission: string;
+  /** The builder's CLI when the person chose another than the catalog's ("Use Codex instead", A1); absent: the catalog's. */
+  adapter?: string;
 }
 
 /** The catalog's builder: Solo is this agent, and the suggested team's worker. */
@@ -148,7 +152,7 @@ export function builderAdapter(catalog: readonly PrebuiltAgent[], fallback = 'cl
 
 /** The setup's agents for a crew, with the chips' model, effort and permission on the builder. */
 export function crewMembers(crew: Crew, catalog: readonly PrebuiltAgent[], templates: readonly AgentTemplate[], tuning: Tuning, fallbackAdapter = 'claude'): TeamMember[] {
-  const tune = (m: TeamMember): TeamMember => ({ ...m, model: tuning.model, effort: tuning.effort, permissionMode: tuning.permission });
+  const tune = (m: TeamMember): TeamMember => ({ ...m, adapter: tuning.adapter || m.adapter, model: tuning.model, effort: tuning.effort, permissionMode: tuning.permission });
   let team: TeamMember[] = [];
   if (crew.kind === 'solo' || crew.kind === 'team') {
     const e = builderEntry(catalog);
@@ -309,6 +313,53 @@ export function chatSettings(tuning: Tuning | undefined, adapter: string, agents
   return a ? clean({ adapter: a.adapter, model: a.model, effort: a.effort, permissionMode: a.permissionMode }) : {};
 }
 
+// ---- whether the CLI is ready (A1) ----
+
+/** An agent CLI as adapter.list last found it: ready, not signed in, not installed, too old, or not known yet. */
+export interface CliReadiness {
+  adapter: string;
+  state: 'ready' | 'sign-in' | 'install' | 'update' | 'unknown';
+  /** One sentence for the line under the chips ("" when ready or unknown). */
+  text: string;
+}
+
+/** Whether an adapter's CLI can run here, from adapter.list (its Windows install, else an install ready inside WSL). */
+export function cliReadiness(adapter: string, adapters: readonly AdapterInfo[] | undefined): CliReadiness {
+  const a = adapters?.find((x) => x.id === adapter);
+  const name = adapterLabel(adapter);
+  if (!a) return { adapter, state: 'unknown', text: '' };
+  if (a.wslDistro) return { adapter, state: 'ready', text: '' };
+  switch (a.detection.status) {
+    case 'unauthenticated':
+      return { adapter, state: 'sign-in', text: `${name} is not signed in.` };
+    case 'not_installed':
+      return { adapter, state: 'install', text: `${name} is not installed on this PC.` };
+    case 'unsupported_version':
+      return { adapter, state: 'update', text: `${name} needs an update before Drydock can use it.` };
+    default:
+      return { adapter, state: 'ready', text: '' };
+  }
+}
+
+/** The first of the CLIs a start needs that is known not to be usable (one still unknown does not stop it). */
+export function cliProblem(needed: readonly string[], adapters: readonly AdapterInfo[] | undefined): CliReadiness | undefined {
+  for (const id of new Set(needed)) {
+    const r = cliReadiness(id, adapters);
+    if (r.state !== 'ready' && r.state !== 'unknown') return r;
+  }
+  return undefined;
+}
+
+/** Another CLI that is ready, to offer instead ("Use Codex instead"); the catalog's own CLIs come first. */
+export function readyAlternative(adapter: string, adapters: readonly AdapterInfo[] | undefined): string | undefined {
+  const order = ['claude', 'codex', 'gemini', 'opencode', 'cline', 'goose'];
+  const rank = (id: string) => (order.indexOf(id) < 0 ? order.length : order.indexOf(id));
+  return (adapters ?? [])
+    .filter((a) => a.id !== adapter && cliReadiness(a.id, adapters).state === 'ready')
+    .map((a) => a.id)
+    .sort((x, y) => rank(x) - rank(y) || x.localeCompare(y))[0];
+}
+
 /** What Enter does, worked out before anything is sent. */
 export interface StartPlan {
   text: string;
@@ -331,19 +382,30 @@ export function planStart(o: {
   templates: readonly AgentTemplate[];
   projects: readonly Project[];
   fallbackAdapter?: string;
+  /** adapter.list: a CLI the start needs that is known not to be usable refuses it before anything is made (A1). */
+  adapters?: readonly AdapterInfo[];
 }): StartPlan | { problem: string } {
-  const adapter = builderAdapter(o.catalog, o.fallbackAdapter);
+  const adapter = o.tuning.adapter || builderAdapter(o.catalog, o.fallbackAdapter);
   const tuning = tuningApplies(o.crew) ? o.tuning : undefined;
+  const cliRefusal = (needed: readonly string[]) => {
+    const c = cliProblem(needed, o.adapters);
+    return c ? { problem: `${c.text} ${c.state === 'sign-in' ? 'Sign in first' : c.state === 'install' ? 'Install it first' : 'Update it first'}, or choose another CLI.` } : undefined;
+  };
   if (o.where.kind === 'project') {
     const id = o.where.projectId;
     const project = o.projects.find((p) => p.id === id);
     if (!project) return { problem: 'That project is gone: choose another place.' };
     if (!o.text.trim()) return { problem: 'Describe what you want to build.' };
+    // Solo runs a chat on the builder's CLI; the project's crew runs on its agents' own CLIs, which their pages show
+    const refused = tuning ? cliRefusal([adapter]) : undefined;
+    if (refused) return refused;
     return { text: o.text.trim(), crew: o.crew.kind, project, tuning, adapter };
   }
   const team = crewMembers(o.crew, o.catalog, o.templates, o.tuning, adapter);
   const problem = startProblem(o.where, o.text, team);
   if (problem) return { problem };
+  const refused = cliRefusal(team.map((m) => m.adapter));
+  if (refused) return refused;
   return { text: o.text.trim(), crew: o.crew.kind, setup: startSetup(o.where, o.text, team, o.crew.drafted), tuning, adapter };
 }
 
@@ -362,6 +424,8 @@ export interface StartOutcome {
   project: Pick<Project, 'id' | 'name'>;
   item: WorkItem;
   warnings: string[];
+  /** The warnings as lines with their kind (B2): the project's Work page shows them. */
+  problems: SetupWarning[];
 }
 
 /** A start that failed after the project was made: the next try works in that project instead of making another. */
@@ -384,6 +448,7 @@ export async function runStart(c: StartClient, plan: StartPlan, progress: (step:
   let hasRepo = projectHasRepo(plan.project);
   let agents: Agent[] = [];
   let warnings: string[] = [];
+  let problems: SetupWarning[] = [];
   try {
     if (plan.setup) {
       progress('Creating project…');
@@ -393,6 +458,7 @@ export async function runStart(c: StartClient, plan: StartPlan, progress: (step:
       hasRepo = projectHasRepo(r.project);
       agents = r.agents;
       warnings = r.warnings;
+      problems = setupLines(r);
       created?.(r.project);
     } else if (projectId) {
       agents = await c.agentList(projectId);
@@ -404,12 +470,12 @@ export async function runStart(c: StartClient, plan: StartPlan, progress: (step:
       const task = await c.taskCreate({ projectId, title: taskTitle(plan.text), description: plan.text });
       await c.taskAssign(task.id, work.worker, work.reviewer);
       await c.taskStart(task.id);
-      return { project, item: { kind: 'task', id: task.id }, warnings };
+      return { project, item: { kind: 'task', id: task.id }, warnings, problems };
     }
     progress('Starting chat…');
     const chat = await c.chatCreate({ projectId, ...chatSettings(plan.tuning, plan.adapter, agents) });
     await c.chatSend(chat.id, plan.text);
-    return { project, item: { kind: 'chat', id: chat.id }, warnings };
+    return { project, item: { kind: 'chat', id: chat.id }, warnings, problems };
   } catch (e) {
     throw new StartError(e instanceof Error ? e.message : String(e), projectId);
   }

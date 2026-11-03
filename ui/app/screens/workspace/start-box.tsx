@@ -4,11 +4,12 @@
 // work yet is Home's New project (P143); the box has no way to the old wizard any more.
 
 import { css, navigate, on, ref, type Handle, type MixInput, type RemixNode } from 'remix/component';
-import { ArrowDownToLine, Check, ChevronDown, CornerDownLeft, FolderOpen, FolderPlus, MessagesSquare, Plus, Users } from 'lucide';
+import { ArrowDownToLine, Check, ChevronDown, CornerDownLeft, FolderOpen, FolderPlus, MessagesSquare, Plus, TriangleAlert, Users } from 'lucide';
 import type { RepoFolder } from '../../api/folderClient.ts';
 import type { AgentDraft } from '../../api/libraryClient.ts';
 import type { GitHubRepo } from '../../api/types.ts';
 import { projectWorkHref } from '../../lib/project-work.ts';
+import { keepSetupNotes } from '../../lib/setup-notes.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -24,12 +25,15 @@ import { FolderField } from '../project/folder-field.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
 import { cloneTarget, folderProblem, currentCheck, initChosen } from '../project/wizard.ts';
 import { DescribeAgent } from '../team/new-agent.tsx';
+import { CliFixButton } from '../shared/cli-fix.tsx';
+import { adapterLabel } from '../shared/cli-name.ts';
 import { pickPill, pickUp } from './workspace.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
 import { effortList, modelList, PERMISSION_SEGMENTS } from '../team/agent-edit.ts';
 import {
   browserStore,
   builderAdapter,
+  cliReadiness,
   crewFor,
   crewKinds,
   crewLabel,
@@ -38,6 +42,7 @@ import {
   newFolderPath,
   permissionLabel,
   planStart,
+  readyAlternative,
   recall,
   recallDraft,
   remember,
@@ -101,6 +106,17 @@ const chipCss = css({
 const endCss = css({ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: t.s2, '& small': { color: t.textFaint, fontSize: t.textXs, whiteSpace: 'nowrap' } });
 const progressCss = css({ color: t.textMuted, fontSize: t.textSm });
 const errorLine = css({ margin: '0', color: t.danger, fontSize: t.textSm });
+// whether the builder's CLI is ready, under the chips (A1): one line, with the fix and another CLI that is ready
+const cliLine = css({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: t.s2,
+  margin: '0',
+  color: t.textMuted,
+  fontSize: t.textSm,
+  '& > svg': { flex: 'none', color: t.warning },
+});
 const orCss = css({
   display: 'flex',
   alignItems: 'center',
@@ -171,15 +187,21 @@ function chip(mix: MixInput<HTMLElement>, expanded: boolean, testId: string, lab
   );
 }
 
-export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>) {
+/**
+ * The start box. `projectId` fixes Where to that project (the project's Work page with nothing in it yet, B11): no Where chip,
+ * no Or row, and Enter starts the first task or chat there.
+ */
+export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; projectId?: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
   const store = browserStore();
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href).catch(() => {}));
 
-  let text = recallDraft(store); // a description left unsent here before (B10)
-  let where: Where = { kind: 'new', path: '' };
+  const fixed = handle.props.projectId;
+  // a description left unsent here before (B10); the box on a project's Work page starts empty (Home keeps its own draft)
+  let text = fixed ? '' : recallDraft(store);
+  let where: Where = fixed ? { kind: 'project', projectId: fixed } : { kind: 'new', path: '' };
   /** The new folder as the person typed it; undefined: it follows the description. */
   let newPath: string | undefined;
   let crew: Crew = { kind: 'solo', templates: [], drafted: [] };
@@ -227,7 +249,9 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
     });
 
   const effectiveWhere = (): Where => (where.kind === 'new' ? { kind: 'new', path: newPath ?? (baseDir.data ? newFolderPath(baseDir.data, text) : '') } : where);
-  const adapterId = () => builderAdapter(catalog.data ?? [], adapters.data?.find((a) => a.detection.installed)?.id ?? 'claude');
+  const adapterId = () => tuning?.adapter || builderAdapter(catalog.data ?? [], adapters.data?.find((a) => a.detection.installed)?.id ?? 'claude');
+  /** "Use Codex instead" (A1): the builder on another CLI that is ready, with that CLI's own model and effort. */
+  const useAdapter = (id: string) => set(() => ((tuning = { ...tuned(), model: '', effort: '', adapter: id }), (error = '')));
   // nothing chosen or remembered for this place: the model, effort and mode the person last chose in a chat of the same place
   // and CLI (chat.lastChoice, D2), the same source a new chat starts from
   const lastChat = query(handle, {
@@ -263,6 +287,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
       templates: templates.data ?? [],
       projects: s.workspace.projectList,
       fallbackAdapter: adapterId(),
+      adapters: adapters.data,
     });
     if ('problem' in plan) return set(() => (error = plan.problem));
     const w = effectiveWhere();
@@ -285,9 +310,10 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
     }
     const tu = tuned();
     remember(store, [whereKey(w), `project:${out.project.id}`], { crew: crew.kind === 'project' ? 'project' : crew.kind, templates: crew.templates, model: tu.model, effort: tu.effort, permission: tu.permission });
-    if (out.warnings.length) s.ui.flash(`${out.project.name}: ${out.warnings.join(' ')}`, 'warn');
+    // what failed after the project was made: a line each on its Work page, with the action that fixes it (B2)
+    keepSetupNotes(store, out.project.id, out.problems);
     text = '';
-    keepDraft(store, '');
+    if (!fixed) keepDraft(store, '');
     newPath = undefined;
     s.workspace.selectProject(out.project.id);
     s.workspace.projects.reload();
@@ -494,6 +520,9 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
     const projects = s.workspace.projectList;
     const cl = crewLabel(crew, { adapter: adapterId(), catalog: catalog.data ?? [], projectAgents: crewOf.data?.length });
     const fp = folderProblem(currentCheck({ localPath: folder.path, localCheck: folder.check }), folder.init);
+    // the builder's CLI, when the start runs on it (not the project's own crew, whose agents have their own)
+    const cli = where.kind !== 'project' || tuningApplies(crew) ? cliReadiness(adapterId(), adapters.data) : undefined;
+    const alt = cli && cli.state !== 'ready' && cli.state !== 'unknown' ? readyAlternative(cli.adapter, adapters.data) : undefined;
     return (
       <div style={{ display: 'grid', gap: 'var(--space-3)' }} data-testid="start">
         <form
@@ -521,7 +550,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
                 box = n as HTMLTextAreaElement;
                 requestAnimationFrame(() => box?.focus());
               }),
-              on('input', (e) => set(() => ((text = e.currentTarget.value), (error = ''), keepDraft(store, text)))),
+              on('input', (e) => set(() => ((text = e.currentTarget.value), (error = ''), fixed ? undefined : keepDraft(store, text)))),
               on('keydown', (e) => {
                 const k = e as KeyboardEvent;
                 if (k.key === 'Enter' && !k.shiftKey && !k.isComposing && !k.ctrlKey && !k.altKey && !k.metaKey) {
@@ -532,7 +561,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
             ]}
           />
           <div mix={barCss}>
-            {popover('where', 'Where', (mix) => chip(mix, menu === 'where', 'start-where', 'Where', where.kind === 'new' ? FolderPlus : FolderOpen, whereLabel(w, projects), undefined, busy), whereMenu)}
+            {fixed ? null : popover('where', 'Where', (mix) => chip(mix, menu === 'where', 'start-where', 'Where', where.kind === 'new' ? FolderPlus : FolderOpen, whereLabel(w, projects), undefined, busy), whereMenu)}
             {popover('who', 'Who works on it', (mix) => chip(mix, menu === 'who', 'start-who', 'Who', Users, cl.name, cl.detail, busy), whoMenu)}
             {tuningApplies(crew) ? (
               <>
@@ -553,27 +582,47 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
               </Button>
             </span>
           </div>
+          {cli && cli.state !== 'ready' && cli.state !== 'unknown' ? (
+            <p mix={cliLine} data-testid="start-cli" data-state={cli.state} data-adapter={cli.adapter}>
+              <Icon icon={TriangleAlert} size={13} />
+              <span>{cli.text}</span>
+              <CliFixButton
+                adapter={cli.adapter}
+                label={cli.state === 'sign-in' ? 'Sign in' : cli.state === 'install' ? 'How to install' : 'How to update'}
+                testId="start-cli-fix"
+                onOther={alt ? () => useAdapter(alt) : undefined}
+                otherLabel={alt ? `Use ${adapterLabel(alt)} instead` : undefined}
+              />
+              {alt ? (
+                <Button size="sm" variant="ghost" data-testid="start-cli-other" mix={on('click', () => useAdapter(alt))}>
+                  Use {adapterLabel(alt)} instead
+                </Button>
+              ) : null}
+            </p>
+          ) : null}
         </form>
         {error ? (
           <p role="alert" mix={errorLine} data-testid="start-error">
             {error}
           </p>
         ) : null}
-        <div mix={orCss} data-testid="start-or">
-          <span>Or:</span>
-          <button type="button" data-testid="or-new-folder" disabled={busy} mix={on('click', () => choose({ kind: 'new', path: '' }))}>
-            <Icon icon={Plus} size={13} /> New folder
-          </button>
-          <button type="button" data-testid="or-clone" disabled={busy} mix={on('click', () => set(() => (dialog = 'clone')))}>
-            <Icon icon={ArrowDownToLine} size={13} /> Clone from GitHub
-          </button>
-          <button type="button" data-testid="or-folder" disabled={busy} mix={on('click', () => set(() => (dialog = 'folder')))}>
-            <Icon icon={FolderOpen} size={13} /> Open a folder…
-          </button>
-          <button type="button" data-testid="or-chat" disabled={busy} mix={on('click', () => void justChat())}>
-            <Icon icon={MessagesSquare} size={13} /> Just chat
-          </button>
-        </div>
+        {fixed ? null : (
+          <div mix={orCss} data-testid="start-or">
+            <span>Or:</span>
+            <button type="button" data-testid="or-new-folder" disabled={busy} mix={on('click', () => choose({ kind: 'new', path: '' }))}>
+              <Icon icon={Plus} size={13} /> New folder
+            </button>
+            <button type="button" data-testid="or-clone" disabled={busy} mix={on('click', () => set(() => (dialog = 'clone')))}>
+              <Icon icon={ArrowDownToLine} size={13} /> Clone from GitHub
+            </button>
+            <button type="button" data-testid="or-folder" disabled={busy} mix={on('click', () => set(() => (dialog = 'folder')))}>
+              <Icon icon={FolderOpen} size={13} /> Open a folder…
+            </button>
+            <button type="button" data-testid="or-chat" disabled={busy} mix={on('click', () => void justChat())}>
+              <Icon icon={MessagesSquare} size={13} /> Just chat
+            </button>
+          </div>
+        )}
 
         <Dialog open={dialog === 'folder'} title="Open a folder" onClose={() => set(() => (dialog = ''))} testId="start-folder-dialog">
           {dialog === 'folder' ? (

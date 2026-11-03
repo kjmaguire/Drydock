@@ -205,6 +205,10 @@ func TestNodePrerequisite(t *testing.T) {
 		if strings.Contains(strings.Join(c.Problems, " "), "npm install") || strings.Contains(strings.Join(c.Problems, " "), "curl") {
 			t.Fatal("guidance for a missing prerequisite must not be an installer command")
 		}
+		// A5: the vendor's download page goes with the guidance, as a link the person opens
+		if c.Prereqs[0].Link != "https://nodejs.org/en/download" {
+			t.Fatalf("link %q", c.Prereqs[0].Link)
+		}
 	})
 	t.Run("node 20 is too old (decision D9 sets 22)", func(t *testing.T) {
 		stubEnv(t, stubTable{"gemini": geminiOK, "node": {"--version": ok1("v20.11.0\n")}})

@@ -3,11 +3,20 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Task } from '../../api/types.ts';
 import { budgetStatus } from '../../test/fixtures.ts';
-import { cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { SETUP_NOTES_KEY } from '../../lib/setup-notes.ts';
+import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
 import { closeAgentEditor } from '../team/agent-panel.tsx';
 import { WorkScreen } from './work-screen.tsx';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  try {
+    localStorage.removeItem(SETUP_NOTES_KEY);
+  } catch {
+    /* nothing kept */
+  }
+});
 
 const now = Date.now();
 const task = (over: Partial<Task>): Task => ({ id: 't1', projectId: 'prj_1', seq: 1, title: 'Task', description: '', status: 'IN_PROGRESS', priority: 0, iteration: 0, maxIterations: 3, costUsd: 0, created: now, updated: now, version: 1, ...over });
@@ -46,6 +55,10 @@ function svc(over: Partial<Client> = {}) {
     connectionList: never,
     adapterList: async () => [],
     chatGet: never,
+    // the start box of the empty centre (B11)
+    agentCatalogList: async () => CATALOG,
+    githubCloneDir: async () => '',
+    chatLastChoice: async () => undefined as never,
     ...over,
   });
   s.workspace.start();
@@ -135,11 +148,16 @@ describe('Work (decision P141)', () => {
     expect(t.$('[data-testid="work-centre"]')!.getAttribute('data-item')).toBe('task:t12');
   });
 
-  it('with nothing running or waiting: one line and Describe a task; the search narrows the list', async () => {
+  it("with nothing running or waiting: Home's start box for this project, the task form a link; the search narrows the list", async () => {
     const r = mount(<WorkScreen />, svc({ needsYouList: async () => [], taskList: async () => [task({ id: 't8', title: 'Fix divide by zero', status: 'COMPLETED' })] }));
     await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(2), r);
-    expect(r.$('[data-testid="work-empty"]')!.textContent).toBe('Describe a task and the crew takes it from there.Describe a task');
-    expect(r.$('[data-testid="work-empty"] a')!.getAttribute('href')).toBe('/tasks/new');
+    const empty = r.$('[data-testid="work-empty"]')!;
+    expect(empty.querySelector('p')!.textContent).toBe('Describe what the crew should do first.');
+    expect(empty.querySelector('[data-testid="start-box"]')).not.toBeNull();
+    // Where is this project: no Where chip and no Or row
+    expect(empty.querySelector('[data-testid="start-where"]')).toBeNull();
+    expect(empty.querySelector('[data-testid="start-or"]')).toBeNull();
+    expect(r.$('[data-testid="work-task-form"]')!.getAttribute('href')).toBe('/tasks/new');
     const box = r.$('[data-testid="work-search"]') as HTMLInputElement;
     expect(box.getAttribute('aria-label')).toBe('Search this project');
     await r.act(() => {
@@ -153,6 +171,62 @@ describe('Work (decision P141)', () => {
     });
     expect(r.$$('[data-testid="work-item"]')).toHaveLength(0);
     expect(r.$('[data-testid="work-list"]')!.textContent).toBe('Nothing matches "qqq".');
+  });
+
+  it('the empty centre takes one description and Enter: a crew that cannot run a task gets a chat in this project (B11)', async () => {
+    const made: unknown[] = [];
+    const sent: string[] = [];
+    const went: string[] = [];
+    const s = svc({
+      needsYouList: async () => [],
+      taskList: async () => [],
+      chatList: async () => [],
+      chatCreate: async (p) => (made.push(p), { id: 'c7' }) as never,
+      chatSend: async (_id, text) => (sent.push(text), { turnId: 't', version: 1 }),
+    });
+    const r = mount(<WorkScreen onNavigate={(h) => went.push(h)} />, s);
+    const box = await waitFor(() => {
+      const el = r.$('[data-testid="work-empty"] [data-testid="start-text"]');
+      if (!el) throw new Error('no box yet');
+      return el as HTMLTextAreaElement;
+    }, r);
+    await waitFor(() => expect(r.$('[data-testid="start-who"]')!.textContent).toContain('2 agents'), r);
+    await r.act(() => type(box, 'Add a Divide function'));
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    await waitFor(() => expect(went).toEqual(['/?item=chat:c7']), r);
+    expect((made[0] as { projectId: string }).projectId).toBe('prj_1');
+    expect(sent).toEqual(['Add a Divide function']);
+  });
+
+  it('shows what failed when the project was made as a line each with its fix, until dismissed or resolved (B2)', async () => {
+    localStorage.setItem(
+      SETUP_NOTES_KEY,
+      JSON.stringify({
+        prj_1: [
+          { kind: 'cli', text: 'Backend Engineer cannot work yet: the claude CLI is not usable on this machine (unauthenticated).', adapter: 'claude', status: 'unauthenticated' },
+          { kind: 'decision', text: 'Backend Engineer: skill wrangler waits for your decision: new source' },
+          { kind: 'connector', text: 'connector docs not added: offline' },
+        ],
+      }),
+    );
+    let ready = false;
+    const s = svc({ adapterList: async () => [ready ? adapterInfo('claude') : { ...adapterInfo('claude'), detection: { adapter: 'claude', installed: true, status: 'unauthenticated' } }] });
+    const r = mount(<WorkScreen />, s);
+    const lines = () => Array.from(r.$$('[data-testid="setup-note"]')) as HTMLElement[];
+    await waitFor(() => expect(lines()).toHaveLength(3), r);
+    expect(lines().map((l) => l.dataset.kind)).toEqual(['cli', 'decision', 'connector']);
+    expect(lines()[0]!.querySelector('[data-testid="setup-note-fix"]')!.textContent).toBe('Sign in');
+    expect(lines()[1]!.querySelector('a')!.getAttribute('href')).toBe('/needs-you');
+    expect(lines()[1]!.querySelector('a')!.textContent).toBe('Decide');
+    expect(lines()[2]!.querySelector('a')!.getAttribute('href')).toBe('/project/integrations');
+    await r.act(() => (lines()[2]!.querySelector('[data-testid="setup-note-dismiss"]') as HTMLButtonElement).click());
+    expect(lines()).toHaveLength(2);
+    expect(JSON.parse(localStorage.getItem(SETUP_NOTES_KEY)!).prj_1).toHaveLength(2);
+    // signed in elsewhere: the CLI line goes by itself
+    ready = true;
+    s.emit({ type: 'connection.sign_in_finished' });
+    await waitFor(() => expect(lines().map((l) => l.dataset.kind)).toEqual(['decision']), r);
+    expect(JSON.parse(localStorage.getItem(SETUP_NOTES_KEY)!).prj_1).toHaveLength(1);
   });
 
   it('starts a chat in the project and opens it in the centre', async () => {

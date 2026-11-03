@@ -80,7 +80,7 @@ export function createSetupClient(t: Transport): SetupClient {
   return {
     projectSetup: async (req) => {
       const r = await t.call<SetupResult>('project.setup', req);
-      return { ...r, agents: arr(r.agents), warnings: arr(r.warnings) };
+      return { ...r, agents: arr(r.agents), warnings: arr(r.warnings), problems: arr(r.problems) };
     },
     projectAttachRepo: (id, repoPath) => t.call('project.attachRepo', { id, repoPath }),
     projectSetBrief: (id, brief) => t.call('project.setBrief', { id, brief }),

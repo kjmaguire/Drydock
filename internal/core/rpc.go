@@ -166,7 +166,14 @@ func (c *Core) Methods() map[string]Method {
 			return c.PullRequest(ctx, p.TaskID)
 		}),
 
-		"connection.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
+		"connection.list": bind(func(ctx context.Context, p struct {
+			// Cached answers at once with the last check of each Connection (Drydock's own background check, a page's list, a
+			// check again), each with when it was made, and starts no CLI (A2); without it every CLI and distro is probed afresh.
+			Cached bool `json:"cached"`
+		}) (any, error) {
+			if p.Cached {
+				return c.Connections.LastList(), nil
+			}
 			c.recheckCustom(ctx, "") // a person's CLI whose manifest file changed asks for the acknowledgement again (P117)
 			return c.Connections.DetectAll(ctx), nil
 		}),

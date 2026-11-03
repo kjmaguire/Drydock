@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -164,4 +165,20 @@ func (c *Core) TestRunScheduledStandups(ctx context.Context, now time.Time, run 
 		}
 	}
 	c.runScheduledStandups(ctx, now, run)
+}
+
+// The background check of the agent CLIs (ext_clicheck.go) waits an hour after start in this test binary, so it never runs in
+// the middle of another test; TestDrydockChecksTheCLIsItself sets it short with SetCLICheckFirst before opening its core.
+func init() { cliCheckFirst = time.Hour }
+
+// SetCLICheckFirst sets how long the CLI check waits after start for the cores opened next; the returned func restores it.
+func SetCLICheckFirst(d time.Duration) func() {
+	old := cliCheckFirst
+	cliCheckFirst = d
+	return func() { cliCheckFirst = old }
+}
+
+// TestPublish publishes an event as the core does (a test standing in for what a sign-in or the runtime would publish).
+func (c *Core) TestPublish(typ string, data []byte) {
+	_, _ = c.Bus.Publish(context.Background(), events.Event{Type: typ, Data: data})
 }

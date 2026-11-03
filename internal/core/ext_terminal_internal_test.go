@@ -22,3 +22,18 @@ func TestRunningShellIn(t *testing.T) {
 		t.Fatal("reused an exited shell or a sign-in")
 	}
 }
+
+// A5: what is typed for the person is one line with no line break, so typing it runs nothing.
+func TestTypedLineNeverEndsALine(t *testing.T) {
+	for in, want := range map[string]string{
+		"npm install -g x":  "npm install -g x",
+		"  npm i x\n":       "npm i x",
+		"first\r\nrm -rf /": "first",
+		"":                  "",
+		"\nsecond":          "",
+	} {
+		if got := typedLine(in); got != want {
+			t.Errorf("typedLine(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

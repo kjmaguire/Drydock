@@ -4,7 +4,7 @@ import type { Client } from '../api/client.ts';
 import type { Project, Room, Task } from '../api/types.ts';
 import { FakeTransport, ManualScheduler } from '../test/fakes.ts';
 import { EventStore } from './eventStore.ts';
-import { ProjectData } from './project.ts';
+import { needsChanged, ProjectData } from './project.ts';
 import { Workspace } from './workspace.ts';
 
 const task = (seq: number): Task => ({ id: `t${seq}`, projectId: 'p1', seq, title: `Task ${seq}`, description: '', status: 'BACKLOG', priority: 0, iteration: 0, maxIterations: 3, costUsd: 0, created: 0, updated: 0, version: 1 });
@@ -113,5 +113,14 @@ describe('a direct message opened from a page is in the room list before it is s
     const before = reads;
     await data.openDM('p2', 'a7');
     expect(reads).toBe(before);
+  });
+});
+
+describe('needsChanged', () => {
+  it("reloads Needs you after Drydock's own check of the agent CLIs and after a sign-in, not after one starts (A2)", () => {
+    const ev = (type: string) => ({ type, seq: 1, ts: 0 }) as never;
+    expect(needsChanged(ev('connection.checked'))).toBe(true);
+    expect(needsChanged(ev('connection.sign_in_finished'))).toBe(true);
+    expect(needsChanged(ev('connection.sign_in_started'))).toBe(false);
   });
 });

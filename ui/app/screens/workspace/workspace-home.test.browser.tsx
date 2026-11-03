@@ -6,6 +6,7 @@ import type { AgentDraft } from '../../api/libraryClient.ts';
 import type { Project, SetupRequest, TaskSummary } from '../../api/types.ts';
 import { byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
+import { SETUP_NOTES_KEY } from '../../lib/setup-notes.ts';
 import { DRAFT_KEY, START_KEY } from './start.ts';
 import { WorkspaceHomeScreen } from './workspace-home.tsx';
 
@@ -14,6 +15,7 @@ afterEach(() => {
   try {
     localStorage.removeItem(START_KEY);
     localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(SETUP_NOTES_KEY);
   } catch {
     /* nothing kept */
   }
@@ -141,6 +143,49 @@ describe('Home is the start screen (P142)', () => {
     expect(sent).toEqual(['A small Go CLI that converts CSV to JSON']);
     expect(s.workspace.setupOpen).toBe(false);
     expect(chosen).toEqual(['p9']);
+  });
+
+  it("says under the chips that the builder's CLI is not signed in, refuses Enter, and offers another CLI that is ready (A1)", async () => {
+    const setups: SetupRequest[] = [];
+    const { r } = show({
+      adapterList: async () => [{ ...adapterInfo('claude', true, ['sonnet']), detection: { adapter: 'claude', installed: true, status: 'unauthenticated' } }, adapterInfo('codex', true, ['gpt-5'])],
+      projectSetup: async (req) => (setups.push(req), { project: project('p9', req.name), agents: [], warnings: [] }),
+      chatCreate: async () => ({ id: 'c9' }) as never,
+      chatSend: async () => ({ turnId: 't', version: 1 }),
+    });
+    const line = await waitFor(() => {
+      const el = r.$('[data-testid="start-cli"]');
+      if (!el) throw new Error('no line yet');
+      return el as HTMLElement;
+    }, r);
+    expect(line.dataset.state).toBe('sign-in');
+    expect(line.textContent).toContain('Claude Code is not signed in.');
+    expect(line.querySelector('[data-testid="start-cli-fix"]')!.textContent).toBe('Sign in');
+    await r.act(() => type(box(r), 'A small Go CLI'));
+    await r.act(() => enter(box(r)));
+    expect(r.$('[data-testid="start-error"]')!.textContent).toBe('Claude Code is not signed in. Sign in first, or choose another CLI.');
+    expect(setups).toHaveLength(0);
+    await r.act(() => click(r, '[data-testid="start-cli-other"]'));
+    expect(r.$('[data-testid="start-cli"]')).toBeNull();
+    expect(chipText(r, 'start-who')).toBe('Solo · Codex');
+    await r.act(() => enter(box(r)));
+    await waitFor(() => expect(setups).toHaveLength(1), r);
+    expect(setups[0]!.agents.map((a) => a.adapter)).toEqual(['codex']);
+  });
+
+  it('keeps what failed after the project was made as lines for its Work page, not one flash (B2)', async () => {
+    const cli = { kind: 'cli', text: 'Backend Engineer cannot work yet', adapter: 'claude', status: 'unauthenticated' };
+    const { r, s, navigated } = show({
+      projectSetup: async (req) => ({ project: project('p9', req.name), agents: [], warnings: [cli.text], problems: [cli] }),
+      chatCreate: async () => ({ id: 'c9' }) as never,
+      chatSend: async () => ({ turnId: 't', version: 1 }),
+    });
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await r.act(() => type(box(r), 'A small Go CLI'));
+    await r.act(() => enter(box(r)));
+    await waitFor(() => expect(navigated).toEqual(['/?item=chat:c9']), r);
+    expect(JSON.parse(localStorage.getItem(SETUP_NOTES_KEY)!)).toEqual({ p9: [cli] });
+    expect(s.ui.takeFlash()).toBeUndefined();
   });
 
   it('says what is missing, and an error under the box keeps the text', async () => {

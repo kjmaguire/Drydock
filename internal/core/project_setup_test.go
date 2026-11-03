@@ -59,6 +59,26 @@ func TestProjectSetupMakesTheWholeProject(t *testing.T) {
 	if !strings.Contains(joined, "Broken") || !strings.Contains(joined, "nonesuch") {
 		t.Fatalf("warnings must name what failed: %v", res.Warnings)
 	}
+	// each warning is also a line of its own with its kind (B2), so Work can offer the action that fixes it
+	if len(res.Problems) != len(res.Warnings) {
+		t.Fatalf("problems %+v for warnings %v", res.Problems, res.Warnings)
+	}
+	kinds := map[string]bool{}
+	for i, w := range res.Problems {
+		if w.Text != res.Warnings[i] {
+			t.Errorf("problem %d says %q, warning %q", i, w.Text, res.Warnings[i])
+		}
+		kinds[w.Kind] = true
+		if strings.Contains(w.Text, "connector nonesuch") && w.Kind != "connector" {
+			t.Errorf("a connector not granted is kind %q", w.Kind)
+		}
+		if strings.Contains(w.Text, "agent Broken not added") && w.Kind != "other" {
+			t.Errorf("an agent not added is kind %q", w.Kind)
+		}
+	}
+	if !kinds["connector"] || !kinds["other"] {
+		t.Fatalf("kinds %v in %+v", kinds, res.Problems)
+	}
 	var servers []core.MCPServerView
 	a.call("mcpserver.list", map[string]string{"projectId": res.Project.ID}, &servers)
 	if len(servers) != 1 || servers[0].ID != "docs" {
@@ -120,7 +140,28 @@ func TestProjectSetupWarnsWhenTheTeamsCLIIsNotUsable(t *testing.T) {
 		t.Fatalf("agents %+v", res.Agents)
 	}
 	joined := strings.Join(res.Warnings, "\n")
-	if !strings.Contains(joined, "Wren, Robin cannot work yet: the claude CLI is not usable") || !strings.Contains(joined, "Connections page") {
+	if !strings.Contains(joined, "Wren, Robin cannot work yet: the claude CLI is not usable") || !strings.Contains(joined, "Settings > Agent CLIs") || strings.Contains(joined, "Connections page") {
 		t.Fatalf("warnings %v", res.Warnings)
+	}
+}
+
+// An agent whose CLI is not usable here is a line of kind cli that names the CLI and its state and says where to set it up
+// (Settings > Agent CLIs; the Connections page is gone), not a sentence lost in one paragraph (B2).
+func TestProjectSetupNamesTheCLIThatCannotWork(t *testing.T) {
+	a := openWith(t, nil)
+	t.Setenv("PATH", t.TempDir()) // no codex on this PATH
+	var res core.SetupResult
+	a.call("project.setup", core.SetupRequest{Name: "Cli", Agents: []core.SetupAgent{{Name: "Cody", Role: "backend", Adapter: "codex"}}}, &res)
+	var cli *core.SetupWarning
+	for i, w := range res.Problems {
+		if w.Kind == "cli" {
+			cli = &res.Problems[i]
+		}
+	}
+	if cli == nil {
+		t.Fatalf("no cli line: agents %+v problems %+v", res.Agents, res.Problems)
+	}
+	if cli.Adapter != "codex" || cli.Status != "not_installed" || !strings.Contains(cli.Text, "Cody") || !strings.Contains(cli.Text, "Settings > Agent CLIs") || strings.Contains(cli.Text, "Connections page") {
+		t.Fatalf("cli line %+v", *cli)
 	}
 }

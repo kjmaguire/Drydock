@@ -60,6 +60,24 @@ func (s *Service) Last() map[string]Checked {
 	return out
 }
 
+// LastList is Last as a list in the order DetectAll lists Connections: the Windows installs by adapter id, then the installs
+// inside WSL distros by key. Nothing here starts a CLI: the Agents page shows it at once while a fresh check runs (A2).
+func (s *Service) LastList() []Checked {
+	last := s.Last()
+	out := make([]Checked, 0, len(last))
+	for _, c := range last {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		wi, wj := out[i].RunMode == agents.RunModeWSL, out[j].RunMode == agents.RunModeWSL
+		if wi != wj {
+			return wj
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out
+}
+
 // options is a snapshot of the detection options (the maps in it are replaced, never changed in place).
 func (s *Service) options() Options {
 	s.mu.RLock()

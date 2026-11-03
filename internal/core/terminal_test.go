@@ -114,3 +114,56 @@ func TestTerminalOpenReusesTheRunningShell(t *testing.T) {
 		t.Fatalf("list %+v", list)
 	}
 }
+
+// A5: Install and update opens a shell of no project in the home folder with the CLI's install command typed at the prompt and
+// not run: nothing happens until the person presses Enter (here the line is cleared instead, and the shell is still there).
+func TestInstallTerminalTypesTheCommandWithoutRunningIt(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	a := open(t, "")
+	var conn struct {
+		InstallHint string `json:"installHint"`
+	}
+	a.call("connection.check", map[string]string{"adapter": "codex"}, &conn)
+	if conn.InstallHint == "" {
+		t.Fatal("codex names no install command")
+	}
+	var in terminal.Info
+	a.call("connection.installTerminal", map[string]any{"adapter": "codex", "cols": 200, "rows": 20}, &in)
+	if in.ProjectID != "" || in.Cwd != home || !strings.HasPrefix(in.Title, "Install: codex") {
+		t.Fatalf("opened %+v", in)
+	}
+	var all string
+	var from int64
+	read := func(until string) {
+		deadline := time.Now().Add(10 * time.Second)
+		for !strings.Contains(all, until) && time.Now().Before(deadline) {
+			var c terminal.Chunk
+			a.call("terminal.read", map[string]any{"id": in.ID, "from": from, "waitMs": 300}, &c)
+			all += string(c.Data)
+			from = c.Next
+			if c.Exited {
+				t.Fatalf("the shell ended: %q", all)
+			}
+		}
+	}
+	typed := strings.TrimSpace(conn.InstallHint)[:12]
+	read(typed)
+	if !strings.Contains(all, typed) {
+		t.Fatalf("the command was not typed: %q", all)
+	}
+	time.Sleep(500 * time.Millisecond)
+	var more terminal.Chunk // whatever else came
+	a.call("terminal.read", map[string]any{"id": in.ID, "from": from, "waitMs": 300}, &more)
+	all += string(more.Data)
+	from = more.Next
+	if strings.Contains(all, "not found") || strings.Contains(all, "rror") {
+		t.Fatalf("the command ran: %q", all)
+	}
+	a.call("terminal.write", map[string]any{"id": in.ID, "data": "\x15echo typed-$((6*7))\n"}, nil)
+	read("typed-42")
+	if !strings.Contains(all, "typed-42") {
+		t.Fatalf("output %q", all)
+	}
+}

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -149,8 +150,65 @@ func init() {
 				c.publish(ctx, "connection.sign_in_started", "", map[string]any{"key": conn.Key, "by": c.Human()})
 				return info, nil
 			}),
+			// connection.installTerminal opens a shell that belongs to no project (in the person's home folder; inside the distro
+			// for a WSL install) with the CLI's install or update command typed at its prompt and NOT run (A5): the person reads it
+			// and presses Enter themselves, so Drydock still installs nothing (D9). The Agents page checks the CLI again when the
+			// shell ends.
+			"connection.installTerminal": bind(func(ctx context.Context, p struct {
+				Adapter string `json:"adapter"`
+				Distro  string `json:"distro"`
+				Cols    int    `json:"cols"`
+				Rows    int    `json:"rows"`
+			}) (any, error) {
+				key := p.Adapter
+				if p.Distro != "" {
+					key = connections.WSLKey(p.Adapter, p.Distro)
+				}
+				conn, err := c.Connections.CheckKey(ctx, key)
+				if err != nil {
+					return nil, err
+				}
+				line := typedLine(conn.InstallHint)
+				if line == "" {
+					return nil, errors.New("this CLI names no install command")
+				}
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				title := "Install: " + conn.Adapter
+				var info terminal.Info
+				if p.Distro != "" {
+					if c.wsl == nil {
+						return nil, errors.New("WSL is not available here")
+					}
+					exe, err := c.wsl.Path()
+					if err != nil {
+						return nil, err
+					}
+					title += " WSL"
+					info, err = m.OpenProgram(home, title, p.Cols, p.Rows, terminal.Program{Path: exe, Args: []string{"-d", p.Distro, "--cd", "~"}})
+					if err != nil {
+						return nil, err
+					}
+				} else if info, err = m.OpenFor(terminal.Owner{}, home, title, p.Cols, p.Rows); err != nil {
+					return nil, err
+				}
+				if err := m.Write(info.ID, []byte(line)); err != nil {
+					_ = m.Close(info.ID)
+					return nil, err
+				}
+				return info, nil
+			}),
 		}, m.CloseAll, nil
 	}})
+}
+
+// typedLine is an install command as it is typed at a prompt for the person to run: its first line only, with no line break, so
+// typing it runs nothing (A5, D9).
+func typedLine(hint string) string {
+	line, _, _ := strings.Cut(strings.ReplaceAll(hint, "\r", "\n"), "\n")
+	return strings.TrimSpace(line)
 }
 
 // terminalDir is a task's worktree while it exists, else its project's repository (or, before one is attached, the project's

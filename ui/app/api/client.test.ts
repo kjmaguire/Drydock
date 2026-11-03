@@ -476,7 +476,7 @@ describe('project setup client methods', () => {
     });
     const c = createClient(transport(f as unknown as typeof fetch));
     const req = { name: 'x', brief: '', repo: { kind: 'none' as const }, mode: 'local_merge' as const, libraryServers: [], catalogServers: ['cf'], agents: [{ prebuilt: 'team-lead' }], installSkills: true };
-    expect(await c.projectSetup(req)).toEqual({ project: { id: 'p1' } as never, agents: [], warnings: [] });
+    expect(await c.projectSetup(req)).toEqual({ project: { id: 'p1' } as never, agents: [], warnings: [], problems: [] });
     expect(await c.githubOwners()).toEqual([]);
     expect(await c.githubRepos()).toEqual([]);
     expect(await c.githubCloneDir()).toBe('');

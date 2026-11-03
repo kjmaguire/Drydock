@@ -146,7 +146,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   eventsHead(): Promise<number>;
   usageList(filter: { taskId?: string; agentId?: string; limit?: number }): Promise<UsageRow[]>;
   agentGet(id: string): Promise<AgentDetail>;
-  connectionList(): Promise<Connection[]>;
+  /**
+   * Every agent CLI, probed afresh. With `cached`, at once: the last check of each (Drydock's own background check, A2), each with
+   * when it was made (`at`); nothing is started, and a CLI not checked yet is missing.
+   */
+  connectionList(cached?: boolean): Promise<Connection[]>;
   connectionAcknowledge(gateId: string): Promise<void>;
   /** With prompt, also one tiny prompt on the adapter's cheapest model (uses the person's account). */
   /** distro tests the install inside that WSL distro (its own Connection) instead of the Windows one. */
@@ -155,6 +159,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   connectionSignIn(adapter: string, distro?: string): Promise<TerminalInfo>;
   /** Checks one Connection again now, its sign-in included (the card's "Check again", and when its sign-in ends). */
   connectionCheck(adapter: string, distro?: string): Promise<Connection>;
+  /**
+   * A5: a shell of no project (in the home folder, inside the distro for a WSL install) with the CLI's install command typed at its
+   * prompt and not run: the person presses Enter.
+   */
+  connectionInstallTerminal(adapter: string, distro?: string): Promise<TerminalInfo>;
   /** An install's kept Test connection runs, newest first, and its capability matrix (decision P132). */
   connectionHistory(adapter: string, distro?: string): Promise<ConnectionHistory>;
   /** A person's own CLIs (decision P115): the folder they are kept in and every file, with why one did not load. */
@@ -258,7 +267,7 @@ export function createClient(t: Transport): Client {
       const d = await t.call<AgentDetail>('agent.get', { id });
       return { ...d, runs: arr(d.runs), usage: arr(d.usage), usageTotals: usageTotals(d.usageTotals) };
     },
-    connectionList: async () => arr(await t.call<Connection[] | null>('connection.list')),
+    connectionList: async (cached = false) => arr(await t.call<Connection[] | null>('connection.list', cached ? { cached: true } : undefined)),
     connectionAcknowledge: async (gateId) => {
       await t.call('connection.acknowledge', { gateId });
     },
@@ -268,6 +277,7 @@ export function createClient(t: Transport): Client {
     },
     connectionSignIn: (adapter, distro = '') => t.call<TerminalInfo>('connection.signIn', { adapter, distro }),
     connectionCheck: (adapter, distro = '') => t.call<Connection>('connection.check', { adapter, distro }),
+    connectionInstallTerminal: (adapter, distro = '') => t.call<TerminalInfo>('connection.installTerminal', { adapter, distro, cols: 100, rows: 24 }),
     connectionHistory: async (adapter, distro = '') => {
       const h = await t.call<ConnectionHistory | null>('connection.history', { adapter, distro });
       return { key: h?.key ?? adapter, runs: arr(h?.runs), matrix: h?.matrix ?? {}, matrixAt: h?.matrixAt ?? 0 };

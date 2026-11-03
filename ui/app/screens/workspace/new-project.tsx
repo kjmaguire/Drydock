@@ -9,6 +9,7 @@ import { css, navigate, on, type Handle } from 'remix/component';
 import type { RepoFolder } from '../../api/folderClient.ts';
 import type { GitHubRepo } from '../../api/types.ts';
 import { projectWorkHref } from '../../lib/project-work.ts';
+import { keepSetupNotes, setupLines } from '../../lib/setup-notes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import type { NewProjectWhere } from '../../shell/new.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -21,7 +22,7 @@ import { t } from '../../ui/tokens.ts';
 import { FolderField } from '../project/folder-field.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
 import { currentCheck, folderProblem, initChosen } from '../project/wizard.ts';
-import { defaultProjectName, newProjectFolder, newProjectSetup, type Where } from './start.ts';
+import { browserStore, defaultProjectName, newProjectFolder, newProjectSetup, type Where } from './start.ts';
 
 const bodyCss = css({
   display: 'grid',
@@ -91,7 +92,8 @@ export function NewProjectDialog(handle: Handle<{ open: boolean; where?: NewProj
     progress = '';
     s.workspace.setSetupOpen(false);
     if (!r) return void handle.update();
-    if (r.warnings.length) s.ui.flash(`${r.project.name}: ${r.warnings.join(' ')}`, 'warn');
+    // what failed after the project was made: a line each on its Work page, with the action that fixes it (B2)
+    keepSetupNotes(browserStore(), r.project.id, setupLines(r));
     s.workspace.selectProject(r.project.id);
     s.workspace.projects.reload();
     reset();

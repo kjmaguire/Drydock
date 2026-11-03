@@ -211,7 +211,7 @@ describe('Agents page', () => {
       ctl.set = (k) => ((initial = k), void handle.update());
       return () => <AgentsScreen key="agents" initial={initial} onNavigate={() => {}} />;
     }
-    const s = testServices({ connectionList: async () => (reads++, list), mcpStatus: async () => ({ running: true, address: '', adapters: [] }), adapterList: async () => [] });
+    const s = testServices({ connectionList: async (cached) => (cached ? [] : (reads++, list)), mcpStatus: async () => ({ running: true, address: '', adapters: [] }), adapterList: async () => [] });
     const r = mount(<Host />, s);
     await waitFor(() => expect(r.$('[data-testid="agent-detail"]')?.getAttribute('data-key')).toBe('gemini'), r);
     await r.act(() => ctl.set!('claude'));
@@ -229,7 +229,7 @@ describe('Agents page', () => {
   it('reads the CLIs again when the window gets focus back, once a minute at most (F11)', async () => {
     let reads = 0;
     let signedIn = false;
-    const s = testServices({ connectionList: async () => (reads++, [signedIn ? ready({ key: 'claude' }) : conn({ key: 'claude' })]), mcpStatus: async () => ({ running: true, address: '', adapters: [] }), adapterList: async () => [] });
+    const s = testServices({ connectionList: async (cached) => cached ? [] : (reads++, [signedIn ? ready({ key: 'claude' }) : conn({ key: 'claude' })]), mcpStatus: async () => ({ running: true, address: '', adapters: [] }), adapterList: async () => [] });
     const r = mount(<AgentsScreen onNavigate={() => {}} />, s);
     await waitFor(() => expect(reads).toBe(1), r);
     // focus soon after the first read starts none (the read probes every CLI)
@@ -688,11 +688,68 @@ describe('Agents page', () => {
     expect(checks.length).toBe(2);
   });
 
+  it("opens on the last check at once, with when it was made, and swaps in the fresh one when it answers (A2)", async () => {
+    const at = new Date(Date.now() - 12 * 60_000).toISOString();
+    let answer: (() => void) | undefined;
+    const r = show({
+      connectionList: async (cached) => {
+        if (cached) return [ready({ key: 'claude', at }), conn({ adapter: 'codex', key: 'codex', installed: false, status: 'not_installed', at })];
+        await new Promise<void>((res) => (answer = res));
+        return [ready({ key: 'claude' }), ready({ adapter: 'codex', key: 'codex' })];
+      },
+    }, { initial: 'claude' });
+    const c = await detail(r, 'claude');
+    expect(r.$('[data-testid="agents-cached"]')!.textContent).toBe('Last checked 12 min ago. Checking again...');
+    expect(c.querySelector('[data-testid="agent-header"]')!.textContent).toContain('12 min ago');
+    expect(row(r, 'codex').dataset.state).toBe('install');
+    await waitFor(() => expect(typeof answer).toBe('function'), r);
+    answer!();
+    await waitFor(() => expect(row(r, 'codex').dataset.state).toBe('ready'), r);
+    expect(r.$('[data-testid="agents-cached"]')).toBeNull();
+  });
+
+  it('Install and update opens a terminal with the command typed and not run, then checks again when it ends; prerequisites link their download page (A5)', async () => {
+    const opened: [string, string | undefined][] = [];
+    const checks: string[] = [];
+    let release: () => void = () => undefined;
+    const missing = conn({ installed: false, status: 'not_installed', installHint: 'npm install -g @anthropic-ai/claude-code', prereqs: [{ tool: 'node', min: '22', found: false, ok: false, guide: 'Install Node.', link: 'https://nodejs.org/en/download' }] });
+    const r = show({
+      connectionList: async () => [missing],
+      connectionInstallTerminal: async (adapter: string, distro?: string) => (opened.push([adapter, distro]), { id: 'term-i' }) as never,
+      connectionCheck: async (adapter: string) => (checks.push(adapter), missing),
+      terminalRead: async (_id, from) => {
+        if (from === 0) return { data: new TextEncoder().encode('PS> npm install -g @anthropic-ai/claude-code'), next: 44, dropped: 0, exited: false, exitCode: 0 };
+        await new Promise<void>((res) => (release = res));
+        return { data: new Uint8Array(0), next: 44, dropped: 0, exited: true, exitCode: 0 };
+      },
+      terminalWrite: async () => {},
+      terminalResize: async () => {},
+      terminalClose: async () => {},
+    });
+    const c = await detail(r);
+    await tab(r, c, 'install');
+    const link = c.querySelector('[data-testid="prereq-link"]') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('https://nodejs.org/en/download');
+    expect(link.getAttribute('target')).toBe('_blank');
+    const btn = c.querySelector('[data-testid="install-open"]') as HTMLButtonElement;
+    expect(btn.textContent).toBe('Open in a terminal here');
+    expect(btn.closest('[data-testid="install-tab"]')!.textContent).toContain('The command is typed for you and not run');
+    await r.act(() => btn.click());
+    const box = await find(r, '[data-testid="install-terminal"]', c);
+    expect(opened).toEqual([['claude', undefined]]);
+    expect(box.querySelector('[data-testid="install-state"]')!.textContent).toBe('The command is typed at the prompt. Press Enter there to run it.');
+    await waitFor(() => expect(terminals.length).toBe(1), r);
+    release();
+    await waitFor(() => expect(checks).toEqual(['claude']), r);
+    await waitFor(() => expect(box.querySelector('[data-testid="install-state"]')!.textContent).toBe('The terminal closed. The CLI is still not found.'), r);
+  });
+
   it('Check all again reads every CLI again', async () => {
     let reads = 0;
     let answer: (() => void) | undefined;
     const r = show({
-      connectionList: async () => {
+      connectionList: async (cached) => {
+        if (cached) return []; // the last check (A2): nothing kept here
         reads++;
         if (reads > 1) await new Promise<void>((res) => (answer = res));
         return [ready({ key: 'claude' })];
