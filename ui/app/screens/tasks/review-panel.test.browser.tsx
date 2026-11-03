@@ -361,6 +361,58 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'gh-1', 'answered', {}]]), r);
   });
 
+  const sandboxQuestion = (payload: Record<string, unknown>) =>
+    detail({
+      pending: [
+        {
+          id: 'sb-1',
+          nodeId: 'work',
+          step: 2,
+          spec: { kind: 'question', title: "The task's sandbox could not start: x. Fix it, then answer to try again.", payload: { gate: 'sandbox', step: 'sandbox', error: 'x', projectId: 'p1', ...payload } },
+        },
+      ],
+    });
+
+  it('a sandbox that could not start is Try again, Open sandbox settings and Stop, not a typed answer (X38)', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={sandboxQuestion({ reason: 'engine' })} onChanged={() => undefined} />, svc({ runRespond }));
+    const gate = r.$('[data-testid="sandbox-gate"]')!;
+    expect(gate.getAttribute('data-reason')).toBe('engine');
+    expect(r.$('[data-testid="sandbox-gate-fix"]')!.textContent).toContain('Start Docker Desktop');
+    expect(r.container.querySelector('textarea')).toBeNull();
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+    expect(r.$('[data-testid="sandbox-gate-settings"]')!.getAttribute('href')).toBe('/project');
+    await r.act(() => byText(r.container, 'button', 'Try again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'sb-1', 'answered', {}]]), r);
+  });
+
+  it('a changed sandbox definition lists what changed and confirms the definition shown, saying it is for the whole project (X38)', async () => {
+    const sandboxTrust = recorder(async () => ({ enabled: true }));
+    const runRespond = recorder(() => undefined);
+    let changed = 0;
+    const r = mount(
+      <ReviewPanel detail={sandboxQuestion({ reason: 'unconfirmed', fingerprint: 'fp9', changes: ['network "none" -> "open"', '<b>x</b>'] })} onChanged={() => changed++} />,
+      svc({ sandboxTrust, runRespond }),
+    );
+    const items = Array.from(r.container.querySelectorAll('[aria-label="What changed in the sandbox definition"] li')).map((li) => li.textContent);
+    expect(items).toEqual(['network "none" -> "open"', '<b>x</b>']);
+    expect(r.container.querySelector('b')).toBeNull();
+    expect(r.$('[data-testid="sandbox-gate-note"]')!.textContent).toContain('every task of it that waits for this confirmation goes on');
+    expect(buttons(r.container)).toEqual(['Confirm this definition and try again', 'Try again', 'Stop']);
+    await r.act(() => (r.$('[data-testid="sandbox-gate-confirm"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(sandboxTrust.calls).toEqual([['p1', 'fp9']]), r);
+    // the core answers the question itself: the panel does not answer it a second time
+    await waitFor(() => expect(changed).toBe(1), r);
+    expect(runRespond.calls).toEqual([]);
+  });
+
+  it('an older core\'s sandbox question (no gate, no reason) still gets the panel (X38)', async () => {
+    const d = detail({ pending: [{ id: 'sb-2', nodeId: 'work', step: 2, spec: { kind: 'question', title: "The task's sandbox could not start: x.", payload: { step: 'sandbox', error: 'x' } } }] });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({}));
+    expect(r.$('[data-testid="sandbox-gate"]')!.getAttribute('data-reason')).toBe('');
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+  });
+
   it('the GitHub fix says only what is true: no tries claimed, and a changed branch leads to Stop and a new run (C4 review)', async () => {
     const trouble = (fix: string) =>
       detail({

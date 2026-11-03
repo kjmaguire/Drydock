@@ -702,10 +702,22 @@ export interface TaskDetail {
   runAgainWhy?: string;
   /** The task's project runs its commands in a sandbox: the preview on demand does not run on this machine there. Absent otherwise. */
   sandboxed?: boolean;
+  /**
+   * How the last start of the task's sandbox went while Drydock runs (X39): the steps so far in plain words ("pulling node:24",
+   * "running setup (1 of 2)"), then ready or failed. Absent when the sandbox was not created since Drydock started.
+   */
+  sandboxStart?: SandboxStart;
   /** A collaborator's change request on GitHub that arrived while the review and merge waited (H12, core.PRReviewNote). */
   prReview?: PRReviewNote;
   /** The task names a worktree whose folder is not there any more (removed after the merge): nothing offers to open it outside Drydock (X26). Absent otherwise. */
   worktreeGone?: boolean;
+}
+
+/** core.SandboxStart: the steps of creating a task's sandbox; neither ready nor failed while it goes on. */
+export interface SandboxStart {
+  steps: string[];
+  ready?: boolean;
+  failed?: boolean;
 }
 
 /**

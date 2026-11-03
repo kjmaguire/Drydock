@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -45,7 +46,7 @@ func (d Deps) prepareWorker(ctx context.Context, in workflow.NodeInput, t tasks.
 		return nil, nil
 	}
 	if serr := d.sandboxTurn(ctx, t, cfg); serr != nil {
-		o, err := sandboxTrouble(in, serr)
+		o, err := sandboxTrouble(in, t, serr)
 		return &o, err
 	}
 	return nil, nil
@@ -64,11 +65,11 @@ func (d Deps) sandboxTurn(ctx context.Context, t tasks.Task, cfg *rt.Config) err
 		}
 	}
 	if !isClaude && !acpOK {
-		return fmt.Errorf("this project runs commands in a sandbox, and %s cannot be kept from running commands on this machine (its manifest names no way to make it ask first). Assign a Claude Code, Gemini CLI, Goose or Cline agent, or turn the sandbox off in the project settings", cfg.Adapter)
+		return sandboxAgentError{fmt.Errorf("this project runs commands in a sandbox, and %s cannot be kept from running commands on this machine (its manifest names no way to make it ask first). Assign a Claude Code, Gemini CLI, Goose or Cline agent, or turn the sandbox off in the project settings", cfg.Adapter)}
 	}
 	if cfg.Spec.IsWSL() {
 		// decision P41: the sandbox's container runs the commands of an agent on Windows; one inside WSL would run its own there
-		return fmt.Errorf("this project runs commands in a sandbox, which needs the agent to run on Windows; this turn's agent runs in WSL (%s). Run it natively (its settings), or turn the sandbox off in the project settings", cfg.Spec.WSLDistro)
+		return sandboxAgentError{fmt.Errorf("this project runs commands in a sandbox, which needs the agent to run on Windows; this turn's agent runs in WSL (%s). Run it natively (its settings), or turn the sandbox off in the project settings", cfg.Spec.WSLDistro)}
 	}
 	desc, err := d.Sandbox.Prepare(ctx, t)
 	if err != nil {
@@ -127,9 +128,28 @@ func SandboxTextACP(describe string) string {
 	return b.String()
 }
 
+// SandboxGate is an error that says why a task's sandbox could not start (effort review X38), so the question the person
+// answers offers the fix that fits: try again, confirm the changed definition, or open the sandbox settings.
+type SandboxGate interface {
+	// SandboxGate returns the reason (SandboxUnconfirmed, SandboxEngine, SandboxDefinition, SandboxStart) and, for a definition
+	// the person has not confirmed, its fingerprint and what changed (text from the repository, shown as text).
+	SandboxGate() (reason, fingerprint string, changes []string)
+}
+
+// Why a task's sandbox could not start (the "reason" of the question's payload).
+const (
+	SandboxUnconfirmed = "unconfirmed" // the definition changed since the person confirmed it
+	SandboxEngine      = "engine"      // no container engine answers
+	SandboxDefinition  = "definition"  // the definition is missing or invalid
+	SandboxStart       = "start"       // the engine answered, and starting the sandbox failed (an image, a service, a setup step)
+	SandboxAgent       = "agent"       // the turn's agent cannot run in the sandbox (its CLI, or it runs in WSL)
+)
+
 // sandboxTrouble turns a sandbox that cannot start into a question for the human instead of a failed run: answering runs the
-// same step again (after the human fixed the engine or the definition); rejecting stops the run.
-func sandboxTrouble(in workflow.NodeInput, err error) (workflow.NodeOutput, error) {
+// same step again (after the human fixed the engine or the definition); rejecting stops the run. Its payload (gate "sandbox")
+// says why, so the task page offers the fix: the core also answers the project's waiting questions when the person confirms the
+// definition or switches the sandbox (core.answerSandboxQuestions).
+func sandboxTrouble(in workflow.NodeInput, t tasks.Task, err error) (workflow.NodeOutput, error) {
 	if h := humanResponse(in); h.decision == "rejected" && strings.HasPrefix(h.by, "human:") {
 		return workflow.NodeOutput{}, fmt.Errorf("the sandbox could not start and %s stopped the run: %w", h.by, err)
 	}
@@ -137,10 +157,29 @@ func sandboxTrouble(in workflow.NodeInput, err error) (workflow.NodeOutput, erro
 	if len(msg) > 600 {
 		msg = msg[:600] + "..."
 	}
-	p, _ := json.Marshal(map[string]any{"step": "sandbox", "error": msg})
+	payload := map[string]any{"gate": "sandbox", "step": "sandbox", "error": msg, "projectId": t.ProjectID, "reason": SandboxStart}
+	var g SandboxGate
+	if errors.As(err, &g) {
+		reason, fp, changes := g.SandboxGate()
+		payload["reason"] = reason
+		if fp != "" {
+			payload["fingerprint"] = fp
+		}
+		if len(changes) > 0 {
+			payload["changes"] = changes
+		}
+	}
+	p, _ := json.Marshal(payload)
 	return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Payload: p,
 		Title: "The task's sandbox could not start: " + msg + ". Fix it (is the container engine running? is " + ".drydock/sandbox.json right?), then answer to try again."}}, nil
 }
+
+// sandboxAgentError is a turn whose agent cannot run in the sandbox.
+type sandboxAgentError struct{ error }
+
+func (e sandboxAgentError) Unwrap() error { return e.error }
+
+func (sandboxAgentError) SandboxGate() (string, string, []string) { return SandboxAgent, "", nil }
 
 // sandboxChecks rewrites the command checks of a sandboxed task so they run in its container. In-process checks (the secret
 // scan of the diff, the dependency audit) read files and stay on this machine.

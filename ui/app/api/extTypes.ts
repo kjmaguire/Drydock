@@ -1500,6 +1500,11 @@ export interface SandboxStatus {
   hosts?: string[];
   /** A definition to start from, when the project has none. */
   starter?: string;
+  /**
+   * The project's files the starter took something from (a compose file, a dev container, a Dockerfile; X35). Their values are
+   * copied as they are. Absent when it read only the language files, or from an older core.
+   */
+  starterFrom?: string[];
   egressError?: string;
   configPath: string;
   /**
@@ -1544,6 +1549,11 @@ export interface SandboxForwards {
   error?: string;
   /** The ports whose window is open now: Open brings that window to the front (X314). */
   viewing?: number[];
+  /**
+   * The ports something listens on in the sandbox, lowest first (X31): one click forwards and opens each. Read from the sandbox,
+   * so only a number and the name of a background process the sandbox checked. Absent from an older core.
+   */
+  listening?: { port: number; name?: string }[];
 }
 export interface SandboxTestStep {
   name: string;

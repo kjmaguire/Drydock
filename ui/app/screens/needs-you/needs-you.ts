@@ -55,6 +55,9 @@ export function needsHint(it: NeedsYouItem): string {
   // the question a blocking gate asks when none of its checks could judge (pipeline.noVerdict, gate "verdict")
   if (it.kind === 'question' && /^No check gave a result for /i.test(it.title))
     return 'No check could judge this work, so nothing says it is fine. Open the task to check again, go on without a result this time, or stop.';
+  // the question a task asks when its sandbox could not start (pipeline.sandboxTrouble, gate "sandbox"; X38)
+  if (it.kind === 'question' && /^The task's sandbox could not start/i.test(it.title))
+    return "The task's sandbox could not start. Try again once it is fixed, confirm a changed sandbox definition, or open the sandbox settings.";
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return "An agent wants to call a tool that is not marked read-only. Open the project's Integrations page to see the exact call and approve or reject it.";
   if (it.kind === 'approval' && /^Permission request: /.test(it.title))
     return "A worker asks to use a tool its rules do not allow, and its turn waits. Open the task to see the exact tool and input; allow it once or refuse.";

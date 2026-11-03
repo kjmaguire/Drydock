@@ -54,6 +54,11 @@ describe('Needs you targets and hints', () => {
     expect(needsHint({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toContain("project's Integrations page");
   });
 
+  it("says what a task whose sandbox could not start needs, and the Inbox answers it with the task page's panel (X38)", () => {
+    const it1 = { ...base, kind: 'question', title: "The task's sandbox could not start: no container engine is reachable.", taskId: 't1' };
+    expect(needsHint(it1)).toBe("The task's sandbox could not start. Try again once it is fixed, confirm a changed sandbox definition, or open the sandbox settings.");
+  });
+
   it("opens a chat whose agent waits to be allowed a tool call, where Allow once and Refuse are", () => {
     const ask = { ...base, kind: 'chat_permission', title: 'Asks to use Bash: go test ./...', chatId: 'chat 1' };
     expect(needsTarget(ask)).toBe('/chats/chat%201');
@@ -189,6 +194,8 @@ describe('the Inbox helpers', () => {
     // with the task page's panel for it, a gate is answered in place (C3); one without a panel stays on its page
     expect(answerOf(d({ kind: 'question', payload: { gate: 'ci' } }), (p) => (p.spec.payload as { gate?: string }).gate === 'ci')).toEqual({ kind: 'gate', runId: 'run1' });
     expect(answerOf(d({ payload: { gate: 'outbound' } }), () => false).kind).toBe('open');
+    // the sandbox question's payload names its gate, so the Inbox answers it with the task page's panel (X38)
+    expect(answerOf(d({ kind: 'question', payload: { gate: 'sandbox', reason: 'engine' } }), (p) => (p.spec.payload as { gate?: string }).gate === 'sandbox')).toEqual({ kind: 'gate', runId: 'run1' });
     expect(answerOf(d({ kind: 'review', phase: 'plan' })).kind).toBe('open');
     expect(answerOf(d({ kind: 'question' })).kind).toBe('open');
     // answered already, or not answered on a run (an outbound write, a mode change recorded decided)

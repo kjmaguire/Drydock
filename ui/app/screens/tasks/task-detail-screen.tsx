@@ -9,7 +9,7 @@
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { ClipboardList, Columns2, MessagesSquare } from 'lucide';
 import type { AssignPreview } from '../../api/controlClient.ts';
-import type { Connection, SummaryCheck, Task, TaskDetail } from '../../api/types.ts';
+import type { Connection, SandboxStart, SummaryCheck, Task, TaskDetail } from '../../api/types.ts';
 import { agentName } from '../../lib/format.ts';
 import { LEAD_ORIGIN_WAITS, leadStep } from '../../lib/task-origin.ts';
 import { routes } from '../../routes.ts';
@@ -36,7 +36,7 @@ import { SandboxApp } from './sandbox-app.tsx';
 import { AllowRules, ReviewPanel } from './review-panel.tsx';
 import { SteerBox } from './steer-box.tsx';
 import { TaskControls } from './task-controls.tsx';
-import { criteriaRows, statusDot, statusPill } from './task-page.ts';
+import { criteriaRows, sandboxStartWords, statusDot, statusPill } from './task-page.ts';
 import { TaskProperties } from './task-properties.tsx';
 import { TaskTools } from './task-tools.tsx';
 import { isWaitingForTask } from './tasks.ts';
@@ -153,6 +153,32 @@ const blockedCss = css({
   '& button': { justifySelf: 'start' },
 });
 
+const startCss = css({
+  fontSize: t.textSm,
+  '& > summary': { cursor: 'pointer', color: t.textMuted },
+  '& > ol': { margin: `${t.s2} 0 0`, paddingLeft: '20px', color: t.textMuted, display: 'grid', gap: '2px' },
+});
+
+/** The steps of creating the task's sandbox (X39), one folded line: what it did while the task said nothing else. */
+function SandboxStartLine(handle: Handle<{ start: SandboxStart }>) {
+  return () => {
+    const { start } = handle.props;
+    const head = start.ready ? 'Sandbox started' : start.failed ? 'The sandbox did not start' : 'Starting the sandbox';
+    return (
+      <details mix={startCss} data-testid="sandbox-start">
+        <summary>
+          {head} · {start.steps.length} {start.steps.length === 1 ? 'step' : 'steps'}
+        </summary>
+        <ol aria-label="Sandbox steps">
+          {start.steps.map((step, i) => (
+            <li key={`${i}:${step}`}>{step}</li>
+          ))}
+        </ol>
+      </details>
+    );
+  };
+}
+
 /** A section after the Activity, headed like it. */
 function Part(handle: Handle<{ title: string; label?: string; testId?: string; actions?: RemixNode; children?: RemixNode }>) {
   return () => {
@@ -256,7 +282,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                   ) : null}
                   <span mix={pillCss} data-testid="task-status" data-tone={tone}>
                     <span class="d" aria-hidden="true" />
-                    {statusPill(task, d.paused, checks)}
+                    {sandboxStartWords(d.sandboxStart) ?? statusPill(task, d.paused, checks)}
                   </span>
                 </span>
               </header>
@@ -281,6 +307,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                 <ReviewPanel detail={d} criteria={criteria} onChanged={reload} />
                 <AllowRules rules={d.allowRules ?? []} onChanged={reload} />
                 <TaskControls key={task.id} detail={d} onChanged={reload} />
+                {d.sandboxStart && d.sandboxStart.steps.length > 0 ? <SandboxStartLine start={d.sandboxStart} /> : null}
                 <TaskActivity taskId={task.id} agents={agents} />
                 <Part title="Evidence">
                   <EvidenceList evidence={d.evidence} />

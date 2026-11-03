@@ -171,6 +171,12 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
                   Commit this as <code>{st.configPath}</code> on <code>{st.branch}</code> to start from it. Drydock reads the definition from that branch only, so a
                   change an agent makes to it counts after you merged it.
                 </p>
+                {st.starterFrom?.length ? (
+                  <p data-testid="sandbox-starter-from">
+                    Read from {st.starterFrom.join(', ')}. Their values are copied as they are: read them before you commit, and keep secrets out of{' '}
+                    <code>env</code>, which the agents see.
+                  </p>
+                ) : null}
                 <pre mix={preCss}>{st.starter}</pre>
               </div>
             ) : null}

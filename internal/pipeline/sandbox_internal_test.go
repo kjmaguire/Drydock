@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -155,5 +156,50 @@ func TestSandboxedChecksRunInTheSandboxExceptTheInProcessOnes(t *testing.T) {
 	sb.on, sb.prepErr = true, errors.New("no engine")
 	if _, err := d.sandboxChecks(ctx, task, specs); err == nil {
 		t.Fatal("checks do not run on this machine when the sandbox cannot start")
+	}
+}
+
+// gateErr is a sandbox error that names its reason, as the core's do (a labelled test double of core.SandboxUnconfirmedError).
+type gateErr struct{}
+
+func (gateErr) Error() string { return "the definition is not the one you confirmed" }
+func (gateErr) SandboxGate() (string, string, []string) {
+	return SandboxUnconfirmed, "fp123", []string{`network "none" -> "open"`}
+}
+
+// The question a sandbox that cannot start asks says why (X38): the task page offers the fix that fits, and the core finds the
+// project's questions to answer when the person confirms the definition.
+func TestTheSandboxQuestionSaysWhyItCouldNotStart(t *testing.T) {
+	ctx := context.Background()
+	task := tasks.Task{ID: "task_1", ProjectID: "prj_1", Worktree: "/w"}
+	sb := &fakeSandbox{on: true}
+	d := Deps{Sandbox: sb}
+	payload := func(cfg rt.Config) map[string]any {
+		t.Helper()
+		q, err := d.prepareWorker(ctx, workflow.NodeInput{}, task, &cfg)
+		if err != nil || q == nil || q.Request == nil {
+			t.Fatalf("%+v %v", q, err)
+		}
+		var p map[string]any
+		if err := json.Unmarshal(q.Request.Payload, &p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	sb.prepErr = fmt.Errorf("wrapped: %w", gateErr{})
+	p := payload(rt.Config{Adapter: "claude"})
+	if p["gate"] != "sandbox" || p["step"] != "sandbox" || p["reason"] != "unconfirmed" || p["fingerprint"] != "fp123" || p["projectId"] != "prj_1" {
+		t.Fatalf("%v", p)
+	}
+	if ch, _ := p["changes"].([]any); len(ch) != 1 || ch[0] != `network "none" -> "open"` {
+		t.Fatalf("changes %v", p["changes"])
+	}
+	sb.prepErr = errors.New("boom")
+	if p := payload(rt.Config{Adapter: "claude"}); p["reason"] != "start" || p["fingerprint"] != nil {
+		t.Fatalf("%v", p)
+	}
+	sb.prepErr = nil
+	if p := payload(rt.Config{Adapter: "claude", Spec: agents.RunSpec{RunMode: agents.RunModeWSL, WSLDistro: "Ubuntu"}}); p["reason"] != "agent" {
+		t.Fatalf("%v", p)
 	}
 }

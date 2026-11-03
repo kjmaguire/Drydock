@@ -115,6 +115,22 @@ func (c *Core) TestSandboxDefinition(ctx context.Context, projectID string) (san
 	return cfg, err
 }
 
+// TestStartTaskSandbox starts a task's sandbox in worktree, as a worker turn does (the pipeline's Prepare).
+func (c *Core) TestStartTaskSandbox(ctx context.Context, taskID, worktree string) error {
+	t, err := c.Tasks.Get(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	t.Worktree = worktree
+	_, err = sandboxHook{c}.Prepare(ctx, t)
+	return err
+}
+
+// TestRemoveTaskSandbox removes a task's sandbox, as the end of the task does.
+func (c *Core) TestRemoveTaskSandbox(ctx context.Context, taskID string) error {
+	return c.sandboxes().Remove(ctx, taskID)
+}
+
 // TestMCPApprove asks the MCP servers' approval service about a call, as the gateway does.
 func (c *Core) TestMCPApprove(ctx context.Context, req mcp.ApprovalRequest) (bool, error) {
 	return c.mcpServerSvc().Approve(ctx, req)

@@ -48,6 +48,9 @@ type SandboxForwards struct {
 	// Viewing are the ports whose window is open now (effort review X314): Open brings that window to the front, so the page
 	// says Show.
 	Viewing []int `json:"viewing"`
+	// Listening are the ports something listens on in the workspace (effort review X31), so the page offers them as one click
+	// each. Read from the workspace: a number and a checked process name only.
+	Listening []sandbox.ListeningPort `json:"listening"`
 }
 
 // sandboxAppURL is the address Drydock's viewer shows a forward at.
@@ -122,7 +125,7 @@ func (fc *forwardCache) drop(taskID string) {
 
 // SandboxForwardList lists the task's forwarded ports.
 func (c *Core) SandboxForwardList(ctx context.Context, taskID string) (SandboxForwards, error) {
-	out := SandboxForwards{Forwards: []sandbox.Forward{}, CanView: c.cfg.OpenSandboxApp != nil, Max: sandbox.MaxForwards}
+	out := SandboxForwards{Forwards: []sandbox.Forward{}, CanView: c.cfg.OpenSandboxApp != nil, Max: sandbox.MaxForwards, Listening: []sandbox.ListeningPort{}}
 	if _, err := c.forwardTask(ctx, taskID); err != nil {
 		return out, err
 	}
@@ -155,6 +158,10 @@ func (c *Core) listForwards(ctx context.Context, taskID string, out SandboxForwa
 	}
 	if fw != nil {
 		out.Forwards = fw
+	}
+	// a workspace that cannot be read (an image without a shell) offers no ports: the port field still works
+	if lp, err := m.Listening(ectx, taskID); err == nil {
+		out.Listening = lp
 	}
 	return out, nil
 }

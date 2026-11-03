@@ -167,7 +167,8 @@ type Core struct {
 	// folderSync is held for writing while Sync now checks that no agent works in a project's folder and fast-forwards it
 	// (ext_reposync.go), and for reading while a chat claims its turn (chats.Deps.HoldFolders): a turn cannot start in between.
 	folderSync  sync.RWMutex
-	fwdCache    forwardCache // what sandbox.forward.list last asked the engine, for a few seconds
+	fwdCache    forwardCache  // what sandbox.forward.list last asked the engine, for a few seconds
+	sbStarts    sandboxStarts // how the last start of each task's sandbox went, step by step (X39)
 	DB          *storage.DB
 	Bus         *events.SQLBus
 	Tasks       *tasks.Service

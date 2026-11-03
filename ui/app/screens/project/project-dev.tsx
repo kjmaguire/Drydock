@@ -342,6 +342,9 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
 
             <h3 mix={subhead}>Preview</h3>
             <ToggleRow label="Start a preview of the task before approval" checked={d.preview.enabled} onChange={(v) => patch({ preview: { ...d.preview, enabled: v } })} />
+            <p mix={noteRow} data-testid="preview-template-note">
+              Only the Full Stack SaaS template has a preview step: tasks of other templates go to approval without one.
+            </p>
             <div mix={stackRow}>
               <label for={prevId}>Command (one argument per line; empty detects a Taskfile target or package.json script named preview)</label>
               <textarea id={prevId} rows={2} spellcheck={false} value={prevCmd} mix={on('input', (e) => touch(() => (prevCmd = e.currentTarget.value)))} />

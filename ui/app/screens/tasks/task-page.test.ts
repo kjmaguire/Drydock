@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { TASK_LABELS_MAX } from '../../api/types.ts';
-import { addLabel, changeLine, changesDraft, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, findingsByCriterion, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
+import { addLabel, changeLine, changesDraft, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, findingsByCriterion, personName, runMs, runNumber, sandboxStartWords, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
 
 describe('the status pill of the task page', () => {
   it('says Building while the agent works, Running checks while a check runs, and which run it is on', () => {
@@ -143,5 +143,15 @@ describe('what Request changes starts from', () => {
     expect(changesDraft(rows)).toBe('- Not met: AC3: c\n- Not confirmed yet: AC1: a');
     expect(changeLine(rows[1]!)).toBe('');
     expect(changesDraft([])).toBe('');
+  });
+});
+
+describe('sandboxStartWords (X39)', () => {
+  it('says the step the sandbox start is at, and nothing once it is ready or failed', () => {
+    expect(sandboxStartWords({ steps: ['pulling node:24', 'starting the db service'] })).toBe('Starting the sandbox: starting the db service');
+    expect(sandboxStartWords({ steps: [] })).toBe('Starting the sandbox');
+    expect(sandboxStartWords({ steps: ['pulling node:24'], ready: true })).toBe(undefined);
+    expect(sandboxStartWords({ steps: ['pulling node:24'], failed: true })).toBe(undefined);
+    expect(sandboxStartWords(undefined)).toBe(undefined);
   });
 });

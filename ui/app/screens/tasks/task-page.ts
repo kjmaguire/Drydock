@@ -2,7 +2,7 @@
 // "Paused by kyle"), a criterion's state and its own status with what showed it (P125), the check kinds of the Checks grid,
 // "This run"'s time and test runs, and the labels a person types. Pure: no DOM and no client.
 
-import type { CriterionState, CriterionStatus, Evidence, SummaryCheck, Task, TaskPause } from '../../api/types.ts';
+import type { CriterionState, CriterionStatus, Evidence, SandboxStart, SummaryCheck, Task, TaskPause } from '../../api/types.ts';
 import { TASK_LABEL_LEN, TASK_LABELS_MAX } from '../../api/types.ts';
 import { statusLabel } from '../../lib/format.ts';
 import { toMs } from './tasks.ts';
@@ -31,6 +31,13 @@ export function statusPill(task: Pick<Task, 'status' | 'iteration' | 'started'>,
   const words = statusWords(task, paused, checks);
   const n = runNumber(task);
   return n ? `${words} · run ${n}` : words;
+}
+
+/** The step the task's sandbox is at while it is being created (X39), for the pill: "Starting the sandbox: pulling node:24". */
+export function sandboxStartWords(start?: SandboxStart): string | undefined {
+  if (!start || start.ready || start.failed) return undefined;
+  const last = start.steps[start.steps.length - 1];
+  return last ? `Starting the sandbox: ${last}` : 'Starting the sandbox';
 }
 
 /** The tone of the status dot: accent while it works, warning while it waits on you or is paused, success done, danger failed. */

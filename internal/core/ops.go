@@ -391,6 +391,9 @@ type TaskDetail struct {
 	// Sandboxed says the task's project runs its commands in a sandbox (sandbox.set): the preview on demand does not run on this
 	// machine there (errSandboxedHere), so the task page does not offer it.
 	Sandboxed bool `json:"sandboxed,omitempty"`
+	// SandboxStart is how the last start of the task's sandbox went while Drydock runs (X39): the steps so far, ready or failed.
+	// While neither, the task page says the step it is at. Absent when the sandbox was not created since Drydock started.
+	SandboxStart *SandboxStart `json:"sandboxStart,omitempty"`
 	// PRReview is a collaborator's change request on GitHub that arrived while the task's review and merge waited (H12): the
 	// decision card offers to send the task back with it; absent otherwise.
 	PRReview *PRReviewNote `json:"prReview,omitempty"`
@@ -407,6 +410,7 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	}
 	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}, Sandboxed: c.sandboxSwitch(ctx, t.ProjectID).Enabled}
 	d.WorktreeGone = t.Worktree != "" && !worktreeExists(t)
+	d.SandboxStart = c.sbStarts.get(t.ID)
 	if t.Status == tasks.Failed || t.Status == tasks.Cancelled {
 		d.RunAgainWhy = runAgainRefusal(t)
 		d.RunAgain = d.RunAgainWhy == ""

@@ -145,6 +145,22 @@ describe('Task view: header, properties and content', () => {
     expect(r.$('section[aria-label="Preview"]')).toBe(null);
   });
 
+  it('says the step the sandbox is at while it starts, and keeps the steps as one folded line (X39)', async () => {
+    let d = detail({ task: task({ status: 'IN_PROGRESS', iteration: 0, started: Date.now(), worktree: '/w/t1' }), sandboxed: true, sandboxStart: { steps: ['pulling node:24'] } });
+    const s = svc({ taskGet: async () => d });
+    const r = mount(<TaskDetailScreen id="t1" />, s);
+    await waitFor(() => expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Starting the sandbox: pulling node:24'), r);
+    const line = r.$('[data-testid="sandbox-start"]') as HTMLDetailsElement;
+    expect(line.open).toBe(false);
+    expect(line.querySelector('summary')!.textContent).toBe('Starting the sandbox · 1 step');
+    // the core says the next step, then that it is ready: the pill goes back to the task's status
+    d = { ...d, sandboxStart: { steps: ['pulling node:24', 'running setup (1 of 1)'], ready: true } };
+    await r.act(() => s.emit({ type: 'sandbox.ready', taskId: 't1' }));
+    await waitFor(() => expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Building · run 1'), r);
+    expect(r.$('[data-testid="sandbox-start"] summary')!.textContent).toBe('Sandbox started · 2 steps');
+    expect(Array.from(r.container.querySelectorAll('[data-testid="sandbox-start"] li')).map((li) => li.textContent)).toEqual(['pulling node:24', 'running setup (1 of 1)']);
+  });
+
   it('the Checks grid shows the check kinds of the task with their state, from task.summaries', async () => {
     const taskSummaries = recorder(async () => ({
       summaries: [

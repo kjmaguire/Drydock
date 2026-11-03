@@ -29,6 +29,7 @@ import { InterruptedPanel, interruptedPayload } from '../shared/interrupted.tsx'
 import { PermissionPromptPanel, permissionPayload } from '../shared/permission-prompt.tsx';
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
 import { CIGatePanel, ciGatePayload, GitHubTroublePanel, githubTroublePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
+import { SandboxGatePanel, sandboxGatePayload } from './sandbox-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, newestDiffStat, payloadOf, type PayloadDiff, specPayload } from './tasks.ts';
 import { changeLine, changesDraft, type CriterionRow } from './task-page.ts';
 import { plural } from '../../lib/format.ts';
@@ -93,7 +94,7 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; criteria?: read
  */
 export function hasGatePanel(p: PendingRequest): boolean {
   if (permissionPayload(p)) return false;
-  return !!(budgetPayload(p) || limitPayload(p) || watchdogPayload(p) || ciGatePayload(p) || mergeGatePayload(p) || verdictGate(p) || interruptedPayload(p) || repoConfigPayload(p) || githubTroublePayload(p));
+  return !!(budgetPayload(p) || limitPayload(p) || watchdogPayload(p) || ciGatePayload(p) || mergeGatePayload(p) || verdictGate(p) || interruptedPayload(p) || repoConfigPayload(p) || githubTroublePayload(p) || sandboxGatePayload(p));
 }
 
 /**
@@ -114,6 +115,7 @@ export function GateAnswer(
     const interrupted = interruptedPayload(p);
     const repoConfig = repoConfigPayload(p);
     const github = githubTroublePayload(p);
+    const sandbox = sandboxGatePayload(p);
     return budget ? (
       <BudgetPausePanel payload={budget} runId={runId} requestId={p.id} onDone={onDone} />
     ) : limit ? (
@@ -132,6 +134,8 @@ export function GateAnswer(
       <RepoConfigGatePanel payload={repoConfig} busy={busy} readOnly={readOnly} onRespond={onRespond} />
     ) : github ? (
       <GitHubTroublePanel payload={github} busy={busy} readOnly={readOnly} onRespond={onRespond} />
+    ) : sandbox ? (
+      <SandboxGatePanel payload={sandbox} busy={busy} readOnly={readOnly} onRespond={onRespond} onDone={onDone} />
     ) : null;
   };
 }

@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/tasks"
+	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
 // commitSandboxDefinition writes .drydock/sandbox.json on the repository's default branch, the way a merge would.
@@ -133,5 +136,93 @@ func setSettingLive(t *testing.T, a *app, key, value string) {
 	t.Helper()
 	if _, err := a.c.DB.Writer().Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Confirming the changed definition answers the project's tasks that wait for it (X38): their step runs again, as if the person
+// had answered each. A task waiting for another reason (no engine) is left asking: confirming does not fix it. The graph is a
+// test's own, registered on the app's engine; its node asks the question the pipeline asks (pipeline.sandboxTrouble's payload).
+func TestConfirmingTheDefinitionResumesTheTasksThatWaitForIt(t *testing.T) {
+	a := open(t, "")
+	repo := newRepo(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	commitSandboxDefinition(t, repo, `{"image":"golang:1.27","network":"none"}`)
+	a.call("sandbox.set", map[string]any{"projectId": p.ID, "enabled": true}, nil)
+	commitSandboxDefinition(t, repo, `{"image":"golang:1.27","network":"open"}`)
+
+	asks := func(reason string) workflow.NodeHandler {
+		return func(_ context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
+			// the answer, as delivered to the node (the watchdog's middleware passes an answer on as its notice)
+			for _, m := range in.Inbox {
+				var r struct {
+					Decision string `json:"decision"`
+					Watchdog string `json:"watchdog"`
+				}
+				if json.Unmarshal(m.Value, &r) == nil && (r.Decision != "" || r.Watchdog != "") {
+					return workflow.NodeOutput{Value: json.RawMessage(`"ran"`)}, nil
+				}
+			}
+			payload, _ := json.Marshal(map[string]any{"gate": "sandbox", "step": "sandbox", "reason": reason, "error": "x", "projectId": p.ID})
+			return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Payload: payload, Title: "The task's sandbox could not start: x"}}, nil
+		}
+	}
+	for _, g := range []*workflow.Graph{
+		workflow.Sequential("test-sandbox-unconfirmed", workflow.AgentTask("work", asks("unconfirmed"))),
+		workflow.Sequential("test-sandbox-engine", workflow.AgentTask("work", asks("engine"))),
+	} {
+		if err := a.c.Engine.Register(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	start := func(wf string) workflow.RunID {
+		var tk tasks.Task
+		a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: wf}, &tk)
+		run, err := a.c.Engine.Start(ctx, wf, map[string]string{"taskId": tk.ID}, workflow.StartOptions{ProjectID: p.ID, TaskID: tk.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.waitFor("the question", func() bool {
+			info, err := a.c.Engine.Status(ctx, run)
+			if info.Status.Terminal() {
+				t.Fatalf("%s ended without asking: %s %v", wf, info.Status, err)
+			}
+			return info.Status == workflow.StatusWaitingHuman
+		})
+		return run
+	}
+	unconfirmed1, unconfirmed2, engine := start("test-sandbox-unconfirmed"), start("test-sandbox-unconfirmed"), start("test-sandbox-engine")
+
+	var st core.SandboxStatus
+	a.call("sandbox.status", map[string]string{"projectId": p.ID}, &st)
+	a.call("sandbox.trust", map[string]any{"projectId": p.ID, "fingerprint": st.Fingerprint}, nil)
+	for _, run := range []workflow.RunID{unconfirmed1, unconfirmed2} {
+		a.waitFor("the resumed run", func() bool { info, _ := a.c.Engine.Status(ctx, run); return info.Status == workflow.StatusCompleted })
+	}
+	var by string
+	if err := a.c.DB.Reader().QueryRow(`SELECT decided_by FROM approvals WHERE run_id=?`, string(unconfirmed1)).Scan(&by); err != nil || by != "human:kyle" {
+		t.Fatalf("answered by %q: %v", by, err)
+	}
+	if info, _ := a.c.Engine.Status(ctx, engine); info.Status != workflow.StatusWaitingHuman {
+		t.Fatalf("a task waiting for the engine was answered: %s", info.Status)
+	}
+}
+
+// The starter the settings suggest reads the compose file the project already has (X35), and says which file it read.
+func TestTheSandboxStarterReadsTheProjectsComposeFile(t *testing.T) {
+	a := open(t, "")
+	repo := newRepo(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	if err := os.WriteFile(filepath.Join(repo, "docker-compose.yml"), []byte("services:\n  db:\n    image: postgres:17\n    environment:\n      POSTGRES_PASSWORD: app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "docker-compose.yml")
+	gitIn(t, repo, "commit", "-q", "-m", "compose")
+	var st core.SandboxStatus
+	a.call("sandbox.status", map[string]string{"projectId": p.ID}, &st)
+	if !strings.Contains(st.Starter, `"postgres:17"`) || !strings.Contains(st.Starter, `"POSTGRES_PASSWORD": "app"`) || len(st.StarterFrom) != 1 || st.StarterFrom[0] != "docker-compose.yml" {
+		t.Fatalf("%q %v", st.Starter, st.StarterFrom)
 	}
 }

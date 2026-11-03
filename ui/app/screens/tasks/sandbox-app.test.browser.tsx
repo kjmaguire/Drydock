@@ -8,12 +8,12 @@ import { SandboxApp } from './sandbox-app.tsx';
 afterEach(cleanup);
 
 /** The core's forwarding as a labelled test double: what is forwarded is kept and listed sorted by port, the way sandbox.forward.* does. */
-function double(opts: { running?: boolean; canView?: boolean; max?: number } = {}) {
+function double(opts: { running?: boolean; canView?: boolean; max?: number; listening?: { port: number; name?: string }[] } = {}) {
   const forwards: SandboxForward[] = [];
   const calls: string[] = [];
   /** The ports whose window is open (X314): the viewer's one window per forward. */
   const windows = new Set<number>();
-  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards].sort((a, b) => a.port - b.port), canView: opts.canView ?? true, max: opts.max ?? 5, viewing: [...windows] });
+  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards].sort((a, b) => a.port - b.port), canView: opts.canView ?? true, max: opts.max ?? 5, viewing: [...windows], listening: opts.listening ?? [] });
   const client: Partial<Client> = {
     sandboxForwards: async () => view(),
     sandboxForwardOpen: async (taskId, port) => {
@@ -71,6 +71,31 @@ describe("A task's sandbox app (P134)", () => {
     await r.act(() => (r.$('[data-testid="sandbox-forward-stop-3000"]') as HTMLButtonElement).click());
     await waitFor(() => expect(r.$('[data-testid="sandbox-forwards"]')).toBe(null), r);
     expect(windows.size).toBe(0);
+  });
+
+  it('offers the ports the sandbox listens on as one click each, and folds the typed port under Another port (X31)', async () => {
+    const { client, calls } = double({ listening: [{ port: 3000, name: 'dev' }, { port: 5432 }] });
+    const r = mount(<SandboxApp taskId="t1" />, testServices(client));
+    await waitFor(() => expect(r.$('[data-testid="sandbox-listening-3000"]')).not.toBe(null), r);
+    const chip = r.$('[data-testid="sandbox-listening-3000"]') as HTMLButtonElement;
+    expect(chip.textContent).toBe('3000 · dev');
+    expect((r.$('[data-testid="sandbox-listening-5432"]') as HTMLButtonElement).textContent).toBe('5432');
+    // the typed field is still there, folded
+    const other = r.$('[data-testid="sandbox-another-port"]') as HTMLDetailsElement;
+    expect(other.open).toBe(false);
+    expect(other.querySelector('summary')?.textContent).toBe('Another port...');
+    expect(other.contains(byLabel(r.container, 'Port in the sandbox'))).toBe(true);
+    await r.act(() => chip.click());
+    await waitFor(() => expect(calls).toEqual(['show 3000']), r);
+    await waitFor(() => expect(r.$('[data-testid="sandbox-forward-3000"]')).not.toBe(null), r);
+  });
+
+  it('without listening ports the port field is not folded', async () => {
+    const { client } = double();
+    const r = mount(<SandboxApp taskId="t1" />, testServices(client));
+    await waitFor(() => expect(r.$('[data-testid="sandbox-app"]')).not.toBe(null), r);
+    expect(r.$('[data-testid="sandbox-another-port"]')).toBe(null);
+    expect(byLabel(r.container, 'Port in the sandbox')).not.toBe(null);
   });
 
   it('shows nothing for a task with no running sandbox', async () => {

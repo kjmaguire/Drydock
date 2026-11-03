@@ -22,6 +22,9 @@ const boxCss = css({
   '& form': { display: 'flex', alignItems: 'end', gap: t.s3, flexWrap: 'wrap' },
   '& details > summary': { cursor: 'pointer', fontSize: t.textSm, color: t.textMuted },
   '& details > ul': { marginTop: t.s2 },
+  '& details > form': { marginTop: t.s2 },
+  '& .ports': { display: 'grid', gap: t.s2 },
+  '& .ports > ul': { display: 'flex', flexWrap: 'wrap', gap: t.s2 },
   '& input[type=number]': { width: '120px' },
 });
 
@@ -82,6 +85,37 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
     const fieldShown = value !== '' && viewing(Number(value));
     // a port already forwarded opens again at the limit; a new one does not
     const canSubmit = v.canView || !atMax;
+    const forwarded = (port: number) => v.forwards.some((f) => f.port === port);
+    // the ports something listens on in the sandbox (X31), read from it: shown as numbers, with the checked process name
+    const listening = v.listening ?? [];
+    const portForm = (
+      <form novalidate mix={on('submit', (e) => (e.preventDefault(), void forward(value, v.canView)))}>
+        <Field label="Port in the sandbox" error={portError}>
+          {(id) => (
+            <input
+              id={id}
+              type="number"
+              min="1"
+              max="65535"
+              inputmode="numeric"
+              placeholder="3000"
+              value={value}
+              disabled={ro}
+              mix={on('input', (e) => set(() => ((port = e.currentTarget.value), (typed = true))))}
+            />
+          )}
+        </Field>
+        <Button
+          type="submit"
+          variant="primary"
+          icon={v.canView ? ExternalLink : undefined}
+          disabled={ro || value === '' || !!act.busy}
+          data-testid="sandbox-forward-add"
+        >
+          {act.busy === 'open' ? (v.canView ? 'Opening...' : 'Forwarding...') : v.canView ? (fieldShown ? 'Show the app' : 'Open the app') : 'Forward port'}
+        </Button>
+      </form>
+    );
     return (
       <section aria-label="Sandbox app" style={{ display: 'grid', gap: '12px' }} data-testid="sandbox-app">
         <h2 style={{ fontSize: 'var(--text-md)', fontWeight: '600' }}>Sandbox app</h2>
@@ -93,27 +127,36 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
           </p>
           {v.error ? <p data-testid="sandbox-app-error">{v.error}</p> : null}
           {!v.canView ? <p mix={muted}>This window cannot open the app: use the Drydock desktop app.</p> : null}
+          {listening.length > 0 ? (
+            <div class="ports">
+              <span mix={muted}>{v.canView ? 'Open a port the sandbox listens on:' : 'Forward a port the sandbox listens on:'}</span>
+              <ul aria-label="Ports the sandbox listens on">
+                {listening.map((l) => (
+                  <li key={l.port}>
+                    <Button
+                      size="sm"
+                      icon={v.canView ? ExternalLink : undefined}
+                      disabled={ro || !!act.busy || (!forwarded(l.port) && !canSubmit)}
+                      title={v.canView ? `Forward port ${l.port} and open it` : `Forward port ${l.port}`}
+                      data-testid={`sandbox-listening-${l.port}`}
+                      mix={on('click', () => void forward(String(l.port), v.canView))}
+                    >
+                      {l.name ? `${l.port} · ${l.name}` : String(l.port)}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {canSubmit ? (
-            <form novalidate mix={on('submit', (e) => (e.preventDefault(), void forward(value, v.canView)))}>
-              <Field label="Port in the sandbox" error={portError}>
-                {(id) => (
-                  <input
-                    id={id}
-                    type="number"
-                    min="1"
-                    max="65535"
-                    inputmode="numeric"
-                    placeholder="3000"
-                    value={value}
-                    disabled={ro}
-                    mix={on('input', (e) => set(() => ((port = e.currentTarget.value), (typed = true))))}
-                  />
-                )}
-              </Field>
-              <Button type="submit" variant="primary" icon={v.canView ? ExternalLink : undefined} disabled={ro || value === '' || !!act.busy} data-testid="sandbox-forward-add">
-                {act.busy === 'open' ? (v.canView ? 'Opening...' : 'Forwarding...') : v.canView ? (fieldShown ? 'Show the app' : 'Open the app') : 'Forward port'}
-              </Button>
-            </form>
+            listening.length > 0 ? (
+              <details data-testid="sandbox-another-port">
+                <summary>Another port...</summary>
+                {portForm}
+              </details>
+            ) : (
+              portForm
+            )
           ) : null}
           {atMax ? <p mix={muted}>{v.max} ports are forwarded, the most a task can have. Stop one to forward another.</p> : null}
           {v.forwards.length > 0 ? (

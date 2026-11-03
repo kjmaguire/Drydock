@@ -133,17 +133,6 @@ func (e *Engine) Pull(ctx context.Context, image string) error {
 	return err
 }
 
-// ensureImage pulls the image when it is not present.
-func (e *Engine) ensureImage(ctx context.Context, image string) error {
-	if e.HasImage(ctx, image) {
-		return nil
-	}
-	if err := e.Pull(ctx, image); err != nil {
-		return fmt.Errorf("could not get image %s: %w", image, err)
-	}
-	return nil
-}
-
 // list returns the ids of objects of a kind ("container", "network", "volume") carrying a label (key=value).
 func (e *Engine) list(ctx context.Context, kind, label string) ([]string, error) {
 	var args []string
