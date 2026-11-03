@@ -62,16 +62,24 @@ export function taskGroups(free: readonly { id: string; labels?: string[] }[], p
 
 const DAY = 86_400_000;
 
+/** The start of the local calendar day that holds `t`. */
+const startOfDay = (t: number): number => {
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
 /**
- * Where an open milestone stands against its date (X411): "due today", "due in 3 days", "overdue by 2 days", or "" with no date.
- * Overdue is the core's word (an open milestone past its date); the days are counted from `now`.
+ * Where an open milestone stands against its date (X411): "due today", "due in 3 days", "was due today", "overdue by 2 days",
+ * or "" with no date. Overdue is the core's word (an open milestone past its date); the days are calendar days in local time,
+ * counted from `now`'s day to the due date's day (rounded, so a day with a daylight-saving change still counts as one).
  */
 export function dueText(m: Pick<Milestone, 'dueAt' | 'overdue' | 'status'>, now: number): string {
   if (m.status !== 'open' || zeroTime(m.dueAt)) return '';
-  const days = Math.round((new Date(m.dueAt!).getTime() - now) / DAY);
+  const days = Math.round((startOfDay(new Date(m.dueAt!).getTime()) - startOfDay(now)) / DAY);
   if (m.overdue) {
-    const late = Math.max(1, -days);
-    return `overdue by ${late} ${late === 1 ? 'day' : 'days'}`;
+    if (days >= 0) return 'was due today';
+    return `overdue by ${-days} ${days === -1 ? 'day' : 'days'}`;
   }
   if (days <= 0) return 'due today';
   return `due in ${days} ${days === 1 ? 'day' : 'days'}`;

@@ -508,6 +508,14 @@ type PlanResult struct {
 	// Unlinked are "task key: requirement id" pairs whose trace link could not be made.
 	Unlinked []string `json:"unlinked,omitempty"`
 	By       string   `json:"by"`
+	// unlinked are the same pairs by task id, kept on the plan row so the accepted plan can say so.
+	unlinked []PlanUnlink
+}
+
+// PlanUnlink is a created task an accepted plan could not link to one of the requirements it was made from.
+type PlanUnlink struct {
+	TaskID        string `json:"taskId"`
+	RequirementID string `json:"requirementId"`
 }
 
 func (pd PlanDeps) planInput(in workflow.NodeInput) (PlanInput, error) {
@@ -536,6 +544,19 @@ func (pd PlanDeps) setPlan(ctx context.Context, id, status string, proposal *Pro
 		_, err := tx.ExecContext(ctx, `UPDATE plans SET status=?, proposal=CASE WHEN ?<>'' THEN ? ELSE proposal END, accepted_tasks=CASE WHEN ?<>'' THEN ? ELSE accepted_tasks END,
 			error=?, decided_at=CASE WHEN ?>0 THEN ? ELSE decided_at END, decided_by=CASE WHEN ?<>'' THEN ? ELSE decided_by END WHERE id=?`,
 			status, pj, pj, aj, aj, errText, decided, decided, by, by, id)
+		return err
+	})
+}
+
+// setPlanUnlinked records the trace links an accepted plan could not make (” when it made them all).
+func (pd PlanDeps) setPlanUnlinked(ctx context.Context, id string, un []PlanUnlink) {
+	v := ""
+	if len(un) > 0 {
+		b, _ := json.Marshal(un)
+		v = string(b)
+	}
+	_ = pd.Tasks.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE plans SET unlinked=? WHERE id=?`, v, id)
 		return err
 	})
 }
@@ -800,7 +821,8 @@ func (pd PlanDeps) planCreate() workflow.NodeHandler {
 			}
 		}
 		pd.setPlan(ctx, pi.PlanID, "ACCEPTED", nil, res.Created, "", h.By)
-		pd.emitPlan(ctx, pi, "plan.accepted", map[string]any{"planId": pi.PlanID, "created": res.Created, "by": h.By})
+		pd.setPlanUnlinked(ctx, pi.PlanID, res.unlinked)
+		pd.emitPlan(ctx, pi, "plan.accepted", map[string]any{"planId": pi.PlanID, "created": res.Created, "by": h.By, "unlinked": len(res.unlinked)})
 		b, _ := json.Marshal(res)
 		return workflow.NodeOutput{Value: b}, nil
 	}
@@ -814,6 +836,7 @@ func (pd PlanDeps) linkRequirements(ctx context.Context, pi PlanInput, by, key, 
 	for _, rid := range pi.RequirementIDs {
 		if err := pd.LinkRequirement(ctx, by, rid, taskID); err != nil {
 			res.Unlinked = append(res.Unlinked, key+": "+rid)
+			res.unlinked = append(res.unlinked, PlanUnlink{TaskID: taskID, RequirementID: rid})
 		}
 	}
 }
@@ -934,15 +957,20 @@ type Plan struct {
 	DecidedBy string            `json:"decidedBy,omitempty"`
 	// RequirementIDs are the requirement documents the plan was made from (its accepted tasks are linked to them).
 	RequirementIDs []string `json:"requirementIds,omitempty"`
+	// Unlinked are the created tasks the accept could not link to a requirement the plan was made from.
+	Unlinked []PlanUnlink `json:"unlinked,omitempty"`
 }
 
-const planCols = `id,project_id,run_id,goal,status,planner_agent,proposal,accepted_tasks,error,created_at,decided_at,decided_by,requirement_ids`
+const planCols = `id,project_id,run_id,goal,status,planner_agent,proposal,accepted_tasks,error,created_at,decided_at,decided_by,requirement_ids,unlinked`
 
 func scanPlan(sc interface{ Scan(...any) error }) (Plan, error) {
 	var p Plan
-	var prop, acc, reqs string
-	if err := sc.Scan(&p.ID, &p.ProjectID, &p.RunID, &p.Goal, &p.Status, &p.Planner, &prop, &acc, &p.Error, &p.CreatedAt, &p.DecidedAt, &p.DecidedBy, &reqs); err != nil {
+	var prop, acc, reqs, unl string
+	if err := sc.Scan(&p.ID, &p.ProjectID, &p.RunID, &p.Goal, &p.Status, &p.Planner, &prop, &acc, &p.Error, &p.CreatedAt, &p.DecidedAt, &p.DecidedBy, &reqs, &unl); err != nil {
 		return p, err
+	}
+	if unl != "" {
+		_ = json.Unmarshal([]byte(unl), &p.Unlinked)
 	}
 	if reqs != "" {
 		_ = json.Unmarshal([]byte(reqs), &p.RequirementIDs)

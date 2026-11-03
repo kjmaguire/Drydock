@@ -38,6 +38,7 @@ import {
   stageText,
   startedText,
   STEPS,
+  unlinkedText,
   stepStates,
   toggle,
   type StepState,
@@ -600,9 +601,15 @@ export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult; s
     const busy = act.busy !== '';
     const max = d?.maxParallel ?? 0;
     const waits = tick ? dependencyWaits(handle.props.plan, tick) : [];
+    const unlinked = unlinkedText(handle.props.plan);
     return (
       <div mix={afterCss} data-testid="plan-after">
         <ErrorNote error={act.error ?? dev.error} retry={retryFor(act, dev)} />
+        {unlinked ? (
+          <p mix={muted} role="status" data-testid="plan-unlinked">
+            {unlinked} <a href={routes.requirements.href()}>Link them on Requirements</a>
+          </p>
+        ) : null}
         <div mix={row}>
           <Button
             variant="primary"

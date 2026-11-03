@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Plan, ProposedTask } from '../../api/extTypes.ts';
-import { acceptLabel, andList, assignable, autoPlanner, closure, plansByRole, dependencyWaits, deselect, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, startedText, stepStates, toggle } from './plan.ts';
+import { acceptLabel, andList, assignable, autoPlanner, closure, plansByRole, dependencyWaits, deselect, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, startedText, stepStates, toggle, unlinkedText } from './plan.ts';
 
 const pt = (key: string, deps: string[] = []): ProposedTask => ({
   key,
@@ -133,5 +133,19 @@ describe('who plans (X45)', () => {
   });
   it('a planner, pm or architect plans by role; the lead and the rest do not', () => {
     expect([plansByRole('planner'), plansByRole('PM'), plansByRole('software-architect'), plansByRole('team lead'), plansByRole('backend')]).toEqual([true, true, true, false, false]);
+  });
+});
+
+describe('unlinkedText (X48)', () => {
+  it('says how many created tasks are not linked, and to what', () => {
+    expect(unlinkedText({ unlinked: null, requirementIds: ['r1'] })).toBe('');
+    expect(unlinkedText({ unlinked: [], requirementIds: ['r1'] })).toBe('');
+    expect(unlinkedText({ unlinked: [{ taskId: 't1', requirementId: 'r1' }], requirementIds: ['r1'] })).toBe('1 task could not be linked to its requirement in the trace.');
+    const two = [
+      { taskId: 't1', requirementId: 'r2' },
+      { taskId: 't2', requirementId: 'r2' },
+    ];
+    expect(unlinkedText({ unlinked: two, requirementIds: ['r1', 'r2'] })).toBe('2 tasks could not be linked to one of its requirements in the trace.');
+    expect(unlinkedText({ unlinked: [...two, { taskId: 't1', requirementId: 'r1' }], requirementIds: ['r1', 'r2'] })).toBe('2 tasks could not be linked to 2 of its requirements in the trace.');
   });
 });

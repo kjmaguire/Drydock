@@ -137,6 +137,19 @@ export function andList(xs: readonly string[]): string {
   return xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 }
 
+/**
+ * The trace links an accepted plan could not make, in a sentence ('' when it made them all): how many created tasks are not
+ * linked to a requirement the plan was made from.
+ */
+export function unlinkedText(plan: Pick<Plan, 'unlinked' | 'requirementIds'>): string {
+  const un = plan.unlinked ?? [];
+  if (un.length === 0) return '';
+  const tasks = new Set(un.map((u) => u.taskId)).size;
+  const reqs = new Set(un.map((u) => u.requirementId)).size;
+  const to = (plan.requirementIds ?? []).length > 1 ? (reqs === 1 ? 'one of its requirements' : `${reqs} of its requirements`) : 'its requirement';
+  return `${plural(tasks, 'task')} could not be linked to ${to} in the trace.`;
+}
+
 /** The scheduler's pass in a sentence: what started and what waits (the skipped ready tasks plus `alsoWaiting` others). */
 export function startedText(tick: TickResult, alsoWaiting = 0): string {
   const started = (tick.started ?? []).length;

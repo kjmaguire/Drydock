@@ -329,15 +329,21 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     key: id,
     when: (e) => e.type.startsWith('requirement.'),
   });
+  // the suggestions the person dismissed for this requirement (this browser only): sent to the core, which leaves them out
+  // before it ranks and caps, so dismissing the top ones brings up the next ones
+  let dismissed = dismissedSuggestions(id());
+  let dismissedFor = id();
+  const currentDismissed = () => {
+    if (dismissedFor !== id()) (dismissedFor = id()), (dismissed = dismissedSuggestions(id()));
+    return dismissed;
+  };
   // open tasks whose words match a passage (X43): text matches the person links or dismisses, never linked by themselves
   const suggestions = query(handle, {
-    load: () => s.client.requirementSuggestLinks(id(), 5),
+    load: () => s.client.requirementSuggestLinks(id(), 5, [...currentDismissed()]),
     key,
     when: (e) => e.type.startsWith('requirement.') || e.type === 'task.created',
     debounceMs: 500,
   });
-  let dismissed = dismissedSuggestions(id());
-  let dismissedFor = id();
   let newText = '';
   let newFile = '';
   let newErr = '';
@@ -380,7 +386,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     const { r, tasks } = handle.props;
     const busy = act.busy !== '';
     const linkList = links.data ?? [];
-    if (dismissedFor !== r.id) (dismissedFor = r.id), (dismissed = dismissedSuggestions(r.id));
+    currentDismissed();
     const linkedIds = new Set(linkList.map((l) => l.taskId));
     const suggested = (suggestions.data ?? []).filter((sg) => !dismissed.has(sg.taskId) && !linkedIds.has(sg.taskId));
     const chosen = tasks.find((x) => x.id === taskId);
@@ -501,7 +507,10 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                         size="sm"
                         variant="ghost"
                         aria-label={`Dismiss #${sg.seq} ${sg.title}`}
-                        mix={on('click', () => set(() => (dismissed = dismissSuggestion(r.id, sg.taskId))))}
+                        mix={on('click', () => {
+                          set(() => (dismissed = dismissSuggestion(r.id, sg.taskId)));
+                          suggestions.reload();
+                        })}
                       >
                         Dismiss
                       </Button>

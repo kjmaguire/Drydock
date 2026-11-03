@@ -45,7 +45,7 @@ func TestSuggestLinksProposesOpenTasksThatMatchAPassage(t *testing.T) {
 	}
 	before := len(e.events(EventLinked))
 
-	got, err := e.s.SuggestLinks(ctx, r.ID, 5)
+	got, err := e.s.SuggestLinks(ctx, r.ID, 5, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,8 +66,40 @@ func TestSuggestLinksProposesOpenTasksThatMatchAPassage(t *testing.T) {
 	if _, err := e.db.Writer().Exec(`UPDATE tasks SET status='COMPLETED' WHERE id=?`, pay.ID); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = e.s.SuggestLinks(ctx, r.ID, 5)
+	got, _ = e.s.SuggestLinks(ctx, r.ID, 5, nil)
 	if len(got) != 1 || got[0].TaskID != refund.ID {
 		t.Fatalf("after completing: %+v", got)
+	}
+}
+
+// X43 review: the tasks the person dismissed are left out before the cap, so with more matches than k, dismissing the top
+// ones brings up the ones ranked lower instead of an empty panel.
+func TestSuggestLinksExcludesDismissedBeforeTheCap(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	r := e.add("p1", "Checkout", "# Checkout\n\n## Card payments\n\nThe customer pays by card and the order is confirmed.\n")
+	var all []string
+	for i := 0; i < 4; i++ {
+		tk, err := e.tasks.Create(ctx, tasks.CreateReq{ProjectID: "p1", Title: "Card payments"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		all = append(all, tk.ID)
+	}
+	top, err := e.s.SuggestLinks(ctx, r.ID, 2, nil)
+	if err != nil || len(top) != 2 {
+		t.Fatalf("top two: %+v %v", top, err)
+	}
+	next, err := e.s.SuggestLinks(ctx, r.ID, 2, []string{top[0].TaskID, top[1].TaskID})
+	if err != nil || len(next) != 2 {
+		t.Fatalf("after dismissing the top two: %+v %v", next, err)
+	}
+	for _, n := range next {
+		if n.TaskID == top[0].TaskID || n.TaskID == top[1].TaskID {
+			t.Fatalf("a dismissed task came back: %+v", next)
+		}
+	}
+	if got, _ := e.s.SuggestLinks(ctx, r.ID, 5, all); len(got) != 0 {
+		t.Fatalf("every task dismissed: %+v", got)
 	}
 }

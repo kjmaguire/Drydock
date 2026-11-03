@@ -63,9 +63,10 @@ const suggestTaskLimit = 500
 
 // SuggestLinks proposes up to k open tasks of the requirement's project that likely cover it: a task's title, or one of its
 // acceptance criteria, whose words all occur in one current passage of this document (the AND pass of search only, so a
-// task sharing one common word does not show). Tasks already linked to the requirement are left out. It reads the database
-// only; nothing is linked.
-func (s *Service) SuggestLinks(ctx context.Context, reqID string, k int) ([]Suggestion, error) {
+// task sharing one common word does not show). Tasks already linked to the requirement, and the tasks in exclude (the ones the
+// person dismissed), are left out before ranking and capping, so dismissing the top ones brings up the next. It reads the
+// database only; nothing is linked.
+func (s *Service) SuggestLinks(ctx context.Context, reqID string, k int, exclude []string) ([]Suggestion, error) {
 	req, err := s.Get(ctx, reqID)
 	if err != nil {
 		return nil, err
@@ -102,8 +103,15 @@ func (s *Service) SuggestLinks(ctx context.Context, reqID string, k int) ([]Sugg
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	skip := make(map[string]bool, len(exclude))
+	for _, id := range exclude {
+		skip[id] = true
+	}
 	out := []Suggestion{}
 	for _, c := range cands {
+		if skip[c.id] {
+			continue
+		}
 		best, ok, err := s.bestMatch(ctx, req.ProjectID, reqID, c.title)
 		if err != nil {
 			return nil, err

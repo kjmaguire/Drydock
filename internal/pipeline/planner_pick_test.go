@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -107,6 +108,44 @@ func TestPlanTeamAcceptLinksTheRequirementsItWasMadeFrom(t *testing.T) {
 			if !found {
 				t.Fatalf("missing %s in %v", want, links)
 			}
+		}
+	}
+}
+
+// X48 review: a trace link that fails at accept (the requirement was archived or removed after Propose) is kept on the plan row,
+// so the accepted plan can say which tasks are not linked; the links that worked are made, and a plan that linked all keeps none.
+func TestPlanTeamAcceptKeepsTheLinksItCouldNotMake(t *testing.T) {
+	pe := newPlanEnv(t, fakeagent.Script{Default: []fakeagent.Step{say(planJSON(nil))}}, func(pd *pipeline.PlanDeps) {
+		pd.LinkRequirement = func(_ context.Context, _, reqID, _ string) error {
+			if reqID == "req_gone" {
+				return errors.New("requirement req_gone not found")
+			}
+			return nil
+		}
+	})
+	pi, err := pipeline.NewPlanFrom(context.Background(), pe.db, "p1", "Add multiplication and division", "", aPM, []string{"req_a", "req_gone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := pe.eng.Start(context.Background(), pipeline.WorkflowPlan, pi, workflow.StartOptions{ProjectID: "p1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pe.await(id, workflow.StatusWaitingHuman)
+	if err := pe.respond(id, "approved", "human:kyle", `{"accept":["mul","div"]}`); err != nil {
+		t.Fatal(err)
+	}
+	pe.await(id, workflow.StatusCompleted)
+	stored, err := pipeline.GetPlan(context.Background(), pe.db, pi.PlanID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "ACCEPTED" || len(stored.Unlinked) != 2 {
+		t.Fatalf("both tasks are unlinked from req_gone: %+v", stored.Unlinked)
+	}
+	for _, u := range stored.Unlinked {
+		if u.RequirementID != "req_gone" || (u.TaskID != stored.Created["mul"] && u.TaskID != stored.Created["div"]) {
+			t.Fatalf("unlinked %+v created %v", u, stored.Created)
 		}
 	}
 }

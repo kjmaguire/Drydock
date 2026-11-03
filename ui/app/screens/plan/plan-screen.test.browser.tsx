@@ -236,6 +236,17 @@ describe('Accept and start (X47)', () => {
     expect(saved[0]!.maxParallel).toBe(2);
   });
 
+  it('says on the accepted card when tasks could not be linked to the requirement, and nothing when all were (X48)', () => {
+    const missed = plan({ status: 'ACCEPTED', createdTasks: { a: 'task_a', b: 'task_b' }, requirementIds: ['req_1'], unlinked: [{ taskId: 'task_a', requirementId: 'req_1' }] });
+    const r = mount(<AfterAccept plan={missed} />, testServices({ projectdevGet: async () => dev }));
+    const note = must(r.$('[data-testid="plan-unlinked"]'));
+    expect(note.textContent).toContain('1 task could not be linked to its requirement in the trace.');
+    expect(must(note.querySelector('a')).getAttribute('href')).toBe('/requirements');
+    cleanup();
+    const ok = mount(<AfterAccept plan={{ ...missed, unlinked: null }} />, testServices({ projectdevGet: async () => dev }));
+    expect(ok.$('[data-testid="plan-unlinked"]')).toBe(null);
+  });
+
   it('shows the pass of an Accept and start without another click', () => {
     const r = mount(<AfterAccept plan={accepted} started={{ promoted: [], started: ['task_a', 'task_b'], skipped: [], active: 2, capacity: 2, max: 2 }} />, testServices({ projectdevGet: async () => dev }));
     r.root.flush();

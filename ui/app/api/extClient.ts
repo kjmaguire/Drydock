@@ -211,7 +211,7 @@ export interface ExtClient {
   requirementLink(requirementId: string, taskId: string, criteria: string[]): Promise<RequirementLink[]>;
   requirementUnlink(requirementId: string, taskId: string): Promise<void>;
   /** Open tasks whose own words match a passage of the requirement (X43): suggestions the person links or dismisses. */
-  requirementSuggestLinks(requirementId: string, k?: number): Promise<LinkSuggestion[]>;
+  requirementSuggestLinks(requirementId: string, k?: number, exclude?: string[]): Promise<LinkSuggestion[]>;
   requirementLinks(filter: { requirementId?: string; taskId?: string }): Promise<RequirementLink[]>;
   requirementTrace(id: string): Promise<RequirementTrace>;
   requirementCoverage(projectId: string): Promise<RequirementTrace[]>;
@@ -444,7 +444,7 @@ export function createExtClient(t: Transport): ExtClient {
     requirementVersions: async (id) => arr(await call<RequirementVersion[] | null>('requirement.versions', { id })),
     requirementText: async (id, version = 0) => String((await call<string | null>('requirement.text', { id, version })) ?? ''),
     requirementSearch: async (projectId, query, docId = '', k = 0) => arr(await call<RequirementHit[] | null>('requirement.search', { projectId, query, docId, k })),
-    requirementSuggestLinks: async (requirementId, k = 5) => arr(await call<LinkSuggestion[] | null>('requirement.suggestLinks', { requirementId, k })),
+    requirementSuggestLinks: async (requirementId, k = 5, exclude = []) => arr(await call<LinkSuggestion[] | null>('requirement.suggestLinks', { requirementId, k, exclude })),
     requirementLink: async (requirementId, taskId, criteria) => arr(await call<RequirementLink[] | null>('requirement.link', { requirementId, taskId, criteria })),
     requirementUnlink: (requirementId, taskId) => voidCall('requirement.unlink', { requirementId, taskId }),
     requirementLinks: async ({ requirementId = '', taskId = '' }) => arr(await call<RequirementLink[] | null>('requirement.links', { requirementId, taskId })),

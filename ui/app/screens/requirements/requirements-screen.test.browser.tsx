@@ -210,7 +210,7 @@ describe('RequirementsScreen', () => {
     await r.act(() => byText(row, 'button', 'Open').click());
     await waitFor(() => need(r.$('[data-testid="req-link"]')), r);
     await waitFor(() => expect(r.$$('[data-testid="req-suggestion"]').length).toBe(3), r);
-    expect(asked[0]).toEqual(['req_1', 5]);
+    expect(asked[0]).toEqual(['req_1', 5, []]);
     const first = need(r.$('[data-testid="req-suggestion"][data-task="t2"]'));
     expect(first.textContent).toContain('Likely covered by #12 Card payments');
     expect(first.textContent).toContain('its title matches "Card payments"');
@@ -231,6 +231,45 @@ describe('RequirementsScreen', () => {
     await again.act(() => byText(row2, 'button', 'Open').click());
     await waitFor(() => need(again.$('[data-testid="req-link"]')), again);
     expect(again.$('[data-testid="req-suggestions"]')).toBe(null);
+    try {
+      localStorage.removeItem('drydock.reqDismissed.req_1');
+    } catch {
+      // storage blocked
+    }
+  });
+
+  it('asks the core to leave dismissed tasks out, so with more matches than shown the next ones come up (X43)', async () => {
+    try {
+      localStorage.removeItem('drydock.reqDismissed.req_1');
+    } catch {
+      // storage blocked
+    }
+    // eight matching open tasks; the stand-in core leaves out the excluded ones, then ranks and caps at k, as the core does
+    const many = Array.from({ length: 8 }, (_, i) => ({ ...task, id: `m${i}`, seq: 20 + i, title: `Match ${i}` }) as Task);
+    const asked: unknown[][] = [];
+    const core = async (...a: unknown[]) => {
+      asked.push(a);
+      const [, k, exclude] = a as [string, number, string[] | undefined];
+      return many
+        .filter((t) => !(exclude ?? []).includes(t.id))
+        .slice(0, k)
+        .map((t, i) => ({ taskId: t.id, seq: t.seq, title: t.title, heading: 'Checkout', matched: 'title' as const, score: 10 - i }));
+    };
+    const r = mount(<RequirementsScreen />, servicesWith({ taskList: async () => [task, ...many], requirementSuggestLinks: core }));
+    const row = await waitFor(() => need(r.$('[data-testid="requirement"]')), r);
+    await r.act(() => byText(row, 'button', 'Open').click());
+    await waitFor(() => expect(r.$$('[data-testid="req-suggestion"]').length).toBe(5), r);
+    for (let i = 0; i < 5; i++) await r.act(() => byLabel<HTMLButtonElement>(r.container, `Dismiss #${20 + i} Match ${i}`).click());
+    await waitFor(() => expect([...r.$$('[data-testid="req-suggestion"]')].map((x) => x.getAttribute('data-task'))).toEqual(['m5', 'm6', 'm7']), r);
+    expect(asked.at(-1)?.[2]).toEqual(['m0', 'm1', 'm2', 'm3', 'm4']);
+    // opened again later: the dismissed ones are sent from the start
+    cleanup();
+    asked.length = 0;
+    const again = mount(<RequirementsScreen />, servicesWith({ taskList: async () => [task, ...many], requirementSuggestLinks: core }));
+    const row2 = await waitFor(() => need(again.$('[data-testid="requirement"]')), again);
+    await again.act(() => byText(row2, 'button', 'Open').click());
+    await waitFor(() => expect(again.$$('[data-testid="req-suggestion"]').length).toBe(3), again);
+    expect(asked[0]?.[2]).toEqual(['m0', 'm1', 'm2', 'm3', 'm4']);
     try {
       localStorage.removeItem('drydock.reqDismissed.req_1');
     } catch {

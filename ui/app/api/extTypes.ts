@@ -966,6 +966,8 @@ export interface Plan {
   startError?: string;
   /** The project's requirement documents the plan was made from: accepting it links each created task to them. */
   requirementIds?: string[] | null;
+  /** The created tasks the accept could not link to a requirement the plan was made from (archived or removed after Propose). */
+  unlinked?: { taskId: string; requirementId: string }[] | null;
 }
 export interface SchedulerStatus {
   settings: DevSettings;
