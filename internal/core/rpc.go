@@ -154,11 +154,9 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.GitHubIssues(ctx, p.ProjectID, p.Labels)
 		}),
-		"github.importIssue": bind(func(ctx context.Context, p struct {
-			ProjectID string `json:"projectId"`
-			Number    int    `json:"number"`
-		}) (any, error) {
-			return c.ImportIssue(ctx, p.ProjectID, p.Number)
+		// with assignee (and reviewer) the imported task is assigned, with start it starts too (Import and start, C11)
+		"github.importIssue": bind(func(ctx context.Context, p ImportIssueReq) (any, error) {
+			return c.ImportIssueWith(ctx, p)
 		}),
 		"github.pullRequest": bind(func(ctx context.Context, p struct {
 			TaskID string `json:"taskId"`

@@ -391,6 +391,9 @@ type TaskDetail struct {
 	// Sandboxed says the task's project runs its commands in a sandbox (sandbox.set): the preview on demand does not run on this
 	// machine there (errSandboxedHere), so the task page does not offer it.
 	Sandboxed bool `json:"sandboxed,omitempty"`
+	// PRReview is a collaborator's change request on GitHub that arrived while the task's review and merge waited (H12): the
+	// decision card offers to send the task back with it; absent otherwise.
+	PRReview *PRReviewNote `json:"prReview,omitempty"`
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -429,6 +432,12 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	}
 	if r, err := c.Room.RoomByTask(ctx, id); err == nil {
 		d.RoomID = r.ID
+	}
+	// the review and merge that waits for the person (its approvals row), and a change request recorded since it was asked for
+	var created int64
+	if c.DB.Reader().QueryRowContext(ctx, `SELECT created_at FROM approvals WHERE task_id = ? AND status = 'REQUESTED' AND kind = 'review' AND phase = 'merge'
+ORDER BY created_at DESC LIMIT 1`, id).Scan(&created) == nil {
+		d.PRReview = c.prReviewNote(ctx, id, created)
 	}
 	return d, nil
 }

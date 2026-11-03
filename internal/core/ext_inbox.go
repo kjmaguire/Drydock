@@ -337,6 +337,8 @@ type ApprovalDetail struct {
 	// Payload is a workflow request's own payload, as the task page reads it (a spec, a merge summary); absent for a
 	// security-service approval, whose fields are above.
 	Payload json.RawMessage `json:"payload,omitempty"`
+	// PRReview is a collaborator's change request on GitHub that arrived while this review and merge waited (H12); nil when none.
+	PRReview *PRReviewNote `json:"prReview,omitempty"`
 }
 
 // ApprovalAgent is the agent a request is about.
@@ -433,6 +435,9 @@ FROM approvals WHERE id=?`, id).Scan(&d.ID, &d.RunID, &d.Kind, &d.ActionKind, &d
 	} else {
 		d.Payload = json.RawMessage(payload)
 		d.Gate = payloadGate(payload) // the inbox answers a gate with the task page's panel for it (C3)
+		if d.Kind == "review" && d.Phase == "merge" && d.Status == "REQUESTED" {
+			d.PRReview = c.prReviewNote(ctx, taskID, d.CreatedAt)
+		}
 		if t != nil {
 			agentID = t.Assignee
 		}

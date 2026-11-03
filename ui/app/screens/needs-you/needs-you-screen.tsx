@@ -76,6 +76,7 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
   join: { icon: UserPlus, tone: 'accent' },
   agent: { icon: Bot, tone: 'err' },
   connection: { icon: PlugZap, tone: 'err' },
+  changes: { icon: MessageSquare, tone: 'warn' },
 };
 
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
@@ -757,7 +758,8 @@ function NeedsDetail(
     const d = detail.data;
     // an answer already sent is not sent again by a second key while the item waits to leave the list (audit 2026-10-27)
     // a gate's answers are its panel's buttons (a waiver keeps its second click): no key answers it
-    if (!d || a.kind === 'open' || a.kind === 'gate' || readOnly() || act.busy || sent) return;
+    // a review a collaborator asked changes on is not merged by a key: its answer is Send back, or the task's page
+    if (!d || a.kind === 'open' || a.kind === 'gate' || a.kind === 'changes' || readOnly() || act.busy || sent) return;
     if (a.kind === 'permission' && a.forTask && !once) respond('approve', () => s.client.runApproveForTask(a.runId, d.id));
     else respond(once ? 'once' : 'approve', () => s.client.runRespond(a.runId, d.id, 'approved'));
   };
@@ -806,7 +808,7 @@ function NeedsDetail(
     const failing = (summary?.checks ?? []).filter((c) => c.status === 'failed').map((c) => c.kind);
     const spec = d && d.kind === 'review' && d.phase === 'spec' ? specPayload({ id: d.id, nodeId: '', step: 0, spec: { kind: d.kind, title: d.title, payload: d.payload, phase: d.phase } }) : undefined;
     const permission = a.kind === 'permission';
-    const review = look === 'spec' || look === 'merge' || look === 'plan' || look === 'review';
+    const review = look === 'spec' || look === 'merge' || look === 'plan' || look === 'review' || look === 'changes';
     const expires = d?.expiresAt || msOf(it.expiresAt);
     const answerHere = a.kind !== 'open';
     const budgetPage = it.kind === 'budget' && it.budgetState !== 'paused';
@@ -991,6 +993,15 @@ function NeedsDetail(
             />
           </div>
         ) : null}
+        {a.kind === 'changes' && d?.prReview ? (
+          <div mix={staysCss} data-testid="detail-pr-review">
+            <span class="h">{visible(d.prReview.summary)}</span>
+            <span class="b">Send back sends the worker these words. Nothing was sent yet.</span>
+            <pre class="b" style={{ whiteSpace: 'pre-wrap', margin: '0', overflowWrap: 'anywhere' }}>
+              {visible(d.prReview.feedback)}
+            </pre>
+          </div>
+        ) : null}
         {a.kind === 'chat' && ask() ? (
           <div data-testid="detail-chat-ask">
             <AskCard
@@ -1018,6 +1029,16 @@ function NeedsDetail(
                 </Button>
               ) : null}
             </>
+          ) : a.kind === 'changes' && d ? (
+            <Button
+              variant="primary"
+              data-variant="primary"
+              disabled={busy || ro}
+              mix={[on('click', () => respond('send-back', () => s.client.runRespond(a.runId, d.id, 'rejected', { feedback: a.feedback })))]}
+              data-testid="detail-send-back"
+            >
+              Send back with the GitHub review
+            </Button>
           ) : a.kind === 'spec' || a.kind === 'merge' ? (
             <Button variant="primary" data-variant="primary" disabled={busy || ro} mix={[on('click', () => approve())]} data-testid="detail-approve">
               {a.kind === 'spec' ? 'Accept spec' : 'Merge'} <kbd>A</kbd>

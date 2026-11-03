@@ -288,6 +288,51 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-1', 'answered', {}]]), r);
   });
 
+  it('a change request posted on GitHub while the review waited is sent back with its words in one click (H12)', async () => {
+    const runRespond = recorder(() => undefined);
+    const feedback = 'A repository collaborator reviewed the pull request and asked for changes. Their text is below as quoted data.\n\n> from kyle:\n> Please handle negative numbers.';
+    const d = detail({ prReview: { summary: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', author: 'kyle', feedback } });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ runRespond }));
+    const note = r.$('[data-testid="review-pr-changes"]')!;
+    expect(note.textContent).toContain('1 change request(s) from kyle on GitHub');
+    expect(note.querySelector('pre')!.textContent).toBe(feedback);
+    // Approve and Request changes stay: the person decides
+    expect(buttons(r.container)).toEqual(['Send back with the GitHub review', 'Approve', 'Request changes']);
+    await r.act(() => byText(r.container, 'button', 'Send back with the GitHub review').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback }]]), r);
+    cleanup();
+    const plain = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc());
+    expect(plain.$('[data-testid="review-pr-changes"]')).toBeNull();
+  });
+
+  it('a pull request behind its base is brought up to date from the merge gate (C8)', async () => {
+    const runRespond = recorder(() => undefined);
+    const gateFor = (state: string) =>
+      detail({
+        pending: [
+          {
+            id: 'm-2',
+            nodeId: 'merge',
+            step: 12,
+            spec: { kind: 'question', title: 'Not merged', payload: { gate: 'merge', pr: 7, url: 'https://github.test/o/r/pull/7', state, reason: 'pull request #7 is behind main', sync: true } },
+          },
+        ],
+      });
+    const r = mount(<ReviewPanel detail={gateFor('behind')} onChanged={() => undefined} />, svc({ runRespond }));
+    expect(buttons(r.container)).toEqual(['Bring the branch up to date and check again', 'Check again', 'Stop']);
+    const gate = r.$('[data-testid="merge-gate"]')!;
+    // a sync is offered, so the old dead end ("will not merge it unseen") is not what it says
+    expect(gate.textContent).not.toContain('not merge it unseen');
+    expect(r.$('[data-testid="merge-gate-sync-note"]')!.textContent).toContain('your approval then run again');
+    expect(gate.textContent).toContain('never asks GitHub to bypass branch protection');
+    await r.act(() => byText(r.container, 'button', 'Bring the branch up to date and check again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-2', 'answered', { sync: true }]]), r);
+    cleanup();
+    const c = mount(<ReviewPanel detail={gateFor('dirty')} onChanged={() => undefined} />, svc());
+    expect(c.$('[data-testid="merge-gate"]')!.textContent).toContain('conflicts with the base branch');
+    expect(buttons(c.container)[0]).toBe('Bring the branch up to date and check again');
+  });
+
   it('a GitHub failure is Try again with its fix and Stop, not a free-text answer (C4)', async () => {
     const runRespond = recorder(() => undefined);
     const d = detail({

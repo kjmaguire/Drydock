@@ -166,7 +166,7 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
   await projectNav(page, 'nav-pulls');
   await expect(page.getByText('No task has a pull request')).toBeVisible();
-  await page.getByRole('button', { name: 'Load open issues' }).click();
+  // the open issues are read as the page opens (C11)
   await expect(page.getByRole('alert')).toContainText('origin');
 });
 

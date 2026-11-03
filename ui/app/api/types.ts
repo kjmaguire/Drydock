@@ -674,6 +674,14 @@ export interface RunInfo {
   version: number;
 }
 
+/** core.PRReviewNote: a collaborator's change request that arrived while a review and merge waited, framed as feedback. */
+export interface PRReviewNote {
+  summary: string;
+  author?: string;
+  /** The words Send back with the GitHub review sends: the request quoted as data. */
+  feedback: string;
+}
+
 export interface TaskDetail {
   task: Task;
   evidence: Evidence[];
@@ -694,6 +702,8 @@ export interface TaskDetail {
   runAgainWhy?: string;
   /** The task's project runs its commands in a sandbox: the preview on demand does not run on this machine there. Absent otherwise. */
   sandboxed?: boolean;
+  /** A collaborator's change request on GitHub that arrived while the review and merge waited (H12, core.PRReviewNote). */
+  prReview?: PRReviewNote;
 }
 
 /**
@@ -908,7 +918,9 @@ export type NeedsKind =
   | 'mention'
   | 'join_request'
   | 'agent'
-  | 'connection';
+  | 'connection'
+  // H12: a review and merge a collaborator asked changes on, on GitHub, while it waited
+  | 'pr_review';
 
 export interface NeedsYouItem {
   key: string;

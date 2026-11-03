@@ -3,7 +3,9 @@
 //   or checks were still running at the deadline. Check again (answered), merge without CI this time (approved with
 //   {waive_ci: true}; only a person can, and it never covers a failed check), or stop (rejected).
 // - the merge gate (payload gate "merge"): GitHub would not merge the pull request now (branch protection, behind its base,
-//   conflicts, a draft, not worked out yet). Check again or stop. Drydock never bypasses branch protection.
+//   conflicts, a draft, not worked out yet). Check again or stop. Drydock never bypasses branch protection. A pull request
+//   behind its base or conflicting with it (payload sync) is brought up to date from here (C8: answered with {sync: true}):
+//   the base is merged into the branch, then the checks, the review, CI and the approval run again.
 // - a GitHub failure of a pull-request step (payload gate "github", C4): GitHub or the network failed (a transient failure was
 //   tried again three times first), gh is signed out, or the branch changed after the review. Try again (answered: the same step
 //   runs again, nothing paid is redone), or stop (rejected), with the fix the core worked out (sign in, wait for the network,
@@ -17,7 +19,7 @@
 // (rejected, after a second click).
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { ExternalLink, Octagon, RefreshCw, ShieldOff } from 'lucide';
+import { ExternalLink, GitMerge, Octagon, RefreshCw, ShieldOff } from 'lucide';
 import { isRecord } from '../../api/guards.ts';
 import type { PendingRequest } from '../../api/types.ts';
 import { visible } from '../../lib/visible.ts';
@@ -56,6 +58,8 @@ export interface MergeGatePayload {
   url?: string;
   state: string;
   reason: string;
+  /** Behind its base or conflicting with it: the branch can be brought up to date from here (C8); absent from older cores. */
+  sync?: boolean;
 }
 
 /** pipeline.githubTrouble's payload (gate "github"): the step that failed, GitHub's error, and what fixes it. */
@@ -269,17 +273,36 @@ export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boole
   };
 }
 
-/** The merge gate: GitHub would not merge now. Check again or stop. */
+/** What the merge gate says when the branch can be brought up to date (C8), by GitHub's state. */
+const SYNC_HINT: Record<string, string> = {
+  behind: 'The base branch moved on and its protection wants the branch up to date first.',
+  dirty: 'The branch conflicts with the base branch.',
+};
+
+/** The merge gate: GitHub would not merge now. Bring the branch up to date (behind or conflicting), check again, or stop. */
 export function MergeGatePanel(handle: Handle<{ payload: MergeGatePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
   return () => {
     const { payload: p, busy, readOnly, onRespond } = handle.props;
+    const sync = p.sync === true;
     return (
       <div mix={gateCss} data-testid="merge-gate" data-state={p.state}>
-        <p class="what">{MERGE_HINT[p.state] ?? visible(p.reason)}</p>
+        <p class="what">{(sync ? SYNC_HINT[p.state] : undefined) ?? MERGE_HINT[p.state] ?? visible(p.reason)}</p>
         <GitHubLink url={p.url} pr={p.pr} />
-        <p>Drydock never asks GitHub to bypass branch protection. Fix the cause on GitHub, then check again.</p>
+        {sync ? (
+          <p data-testid="merge-gate-sync-note">
+            Drydock merges the base branch into this branch. The checks, the review, CI and your approval then run again; a conflict goes to the worker first. Drydock never asks GitHub to bypass
+            branch protection.
+          </p>
+        ) : (
+          <p>Drydock never asks GitHub to bypass branch protection. Fix the cause on GitHub, then check again.</p>
+        )}
         <div mix={formActions}>
-          <Button variant="primary" icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
+          {sync ? (
+            <Button variant="primary" icon={GitMerge} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', { sync: true }))}>
+              Bring the branch up to date and check again
+            </Button>
+          ) : null}
+          <Button variant={sync ? 'secondary' : 'primary'} icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
             Check again
           </Button>
           <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>

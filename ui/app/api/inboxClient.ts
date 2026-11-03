@@ -3,13 +3,15 @@
 // Timestamps are unix milliseconds.
 
 import type { Transport } from './transport.ts';
-import type { Agent, ReviewPhase, TaskAllowRule, TaskStatus } from './types.ts';
+import type { Agent, PRReviewNote, ReviewPhase, TaskAllowRule, TaskStatus } from './types.ts';
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
 /** core.ApprovalDetail (approval.get): one request as the inbox's right pane shows it. */
 export interface ApprovalDetail {
   id: string;
+  /** A collaborator's change request on GitHub that arrived while this review and merge waited (H12). */
+  prReview?: PRReviewNote;
   /** approval | question | review */
   kind: string;
   /** The security kind of a security-service approval: shell_command, agent_tool, permission_mode_escalation, ... */

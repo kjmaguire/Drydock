@@ -181,6 +181,9 @@ describe('the Inbox helpers', () => {
     expect(answerOf(d({}))).toEqual({ kind: 'approval', runId: 'run1' });
     expect(answerOf(d({ kind: 'review', phase: 'spec', payload: { phase: 'spec' } }))).toEqual({ kind: 'spec', runId: 'run1' });
     expect(answerOf(d({ kind: 'review', phase: 'merge' }))).toEqual({ kind: 'merge', runId: 'run1' });
+    // H12: a review and merge a collaborator asked changes on while it waited is sent back with their words, not merged by a key
+    expect(answerOf(d({ kind: 'review', phase: 'merge', prReview: { summary: 's', feedback: 'quoted words' } }))).toEqual({ kind: 'changes', runId: 'run1', feedback: 'quoted words' });
+    expect(needsLook({ kind: 'pr_review', phase: 'merge' })).toBe('changes');
     // the task's page answers these: a budget pause, a CI gate, the limit question, a watchdog pause, a plan, a question
     for (const payload of [{ gate: 'budget' }, { gate: 'ci' }, { phase: 'limit' }, { signal: 'tool_spin', stage: 2 }]) expect(answerOf(d({ payload })).kind).toBe('open');
     // with the task page's panel for it, a gate is answered in place (C3); one without a panel stays on its page

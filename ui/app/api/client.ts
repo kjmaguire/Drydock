@@ -104,7 +104,8 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   /** Trusts the configuration with this fingerprint for this adapter (a human only), the one that was shown. Returns the findings read again. */
   projectTrustAgentConfig(id: string, adapter: string, fingerprint: string): Promise<AgentConfigFinding[]>;
   githubIssues(projectId: string, labels?: string): Promise<GitHubIssue[]>;
-  githubImportIssue(projectId: string, number: number): Promise<Task>;
+  /** Imports an issue as a backlog task; with a crew it is assigned too, and with start it starts (Import and start, C11). */
+  githubImportIssue(projectId: string, number: number, crew?: { assignee: string; reviewer?: string; start?: boolean }): Promise<TaskCreateResult>;
   githubPullRequest(taskId: string): Promise<PRState>;
   adapterList(): Promise<AdapterInfo[]>;
   agentCreate(spec: AgentSpec): Promise<Agent>;
@@ -225,7 +226,7 @@ export function createClient(t: Transport): Client {
     projectAgentConfig: async (id) => agentConfig(await t.call<AgentConfigFinding[] | null>('project.agentConfig', { id })),
     projectTrustAgentConfig: async (id, adapter, fingerprint) => agentConfig(await t.call<AgentConfigFinding[] | null>('project.trustAgentConfig', { id, adapter, fingerprint })),
     githubIssues: async (projectId, labels = '') => arr(await t.call<GitHubIssue[] | null>('github.issues', { projectId, labels })),
-    githubImportIssue: (projectId, number) => t.call('github.importIssue', { projectId, number }),
+    githubImportIssue: (projectId, number, crew) => t.call('github.importIssue', { projectId, number, ...crew }),
     githubPullRequest: (taskId) => t.call('github.pullRequest', { taskId }),
     adapterList: async () => arr(await t.call<AdapterInfo[] | null>('adapter.list')),
     agentCreate: (spec) => t.call('agent.create', spec),

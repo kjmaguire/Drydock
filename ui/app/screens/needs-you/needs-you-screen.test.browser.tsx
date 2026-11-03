@@ -192,6 +192,25 @@ describe('the Inbox', () => {
     expect(calls.forTask).toEqual([]);
   });
 
+  it('a review a collaborator asked changes on while it waited is sent back with their words, and A does not merge it (H12)', async () => {
+    const item: NeedsYouItem = { key: 'approval:apr9', kind: 'pr_review', severity: 1, title: 'Review and merge: Add Divide', detail: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', projectId: 'p1', approvalId: 'apr9', taskId: 't9', phase: 'merge', createdAt: new Date(NOW - 60_000).toISOString() } as NeedsYouItem;
+    const prDetail: ApprovalDetail = {
+      id: 'apr9', kind: 'review', phase: 'merge', title: 'Review and merge: Add Divide', description: 'Merge it.', shell: false, targets: [], shortened: false, editable: false,
+      projectId: 'p1', runId: 'run9', createdAt: NOW, status: 'REQUESTED', approveForTask: false, rules: [],
+      prReview: { summary: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', author: 'kyle', feedback: '> from kyle:\n> Please handle negative numbers.' },
+    };
+    const { r, calls } = await open({ approvalGet: async () => prDetail }, [item]);
+    await waitFor(() => expect(r.$('[data-testid="detail-send-back"]')).not.toBeNull(), r);
+    expect(r.$('[data-testid="needs-item"]')!.getAttribute('data-look')).toBe('changes');
+    expect(r.$('[data-testid="detail-kind"]')!.textContent).toBe('Changes asked on GitHub · gocalc');
+    expect(r.$('[data-testid="detail-pr-review"]')!.textContent).toContain('Please handle negative numbers.');
+    expect(r.$('[data-testid="detail-approve"]')).toBeNull();
+    await r.act(() => press('a'));
+    expect(calls.respond).toEqual([]);
+    await r.act(() => (r.$('[data-testid="detail-send-back"]') as HTMLElement).click());
+    await waitFor(() => expect(calls.respond).toEqual([['run9', 'apr9', 'rejected', { feedback: '> from kyle:\n> Please handle negative numbers.' }]]), r);
+  });
+
   it('J and K move the selection; the spec gate shows its criteria and A accepts the spec as written', async () => {
     const { r, calls } = await open();
     await r.act(() => press('j'));

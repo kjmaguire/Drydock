@@ -108,7 +108,8 @@ export type NeedsLook =
   | 'mention'
   | 'join'
   | 'agent'
-  | 'connection';
+  | 'connection'
+  | 'changes';
 
 export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
   switch (it.kind) {
@@ -134,6 +135,8 @@ export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
       return 'agent';
     case 'connection':
       return 'connection';
+    case 'pr_review':
+      return 'changes';
     default:
       return 'approval';
   }
@@ -156,6 +159,7 @@ export const LOOK_WORDS: Record<NeedsLook, string> = {
   join: 'request to join',
   agent: 'agent',
   connection: 'agent CLI',
+  changes: 'changes asked on GitHub',
 };
 
 /** A task's key, "GOC-41": the project's key and the task's number; empty when either is unknown. */
@@ -211,6 +215,7 @@ export function needsRowTitle(it: NeedsYouItem, summary?: Pick<TaskSummary, 'tit
     const c = it.context;
     return c && c.checksTotal > 0 ? `${task}: ${c.checksPassed} of ${c.checksTotal} checks passed` : `${task}: ready to merge`;
   }
+  if (look === 'changes' && task) return `${task}: changes asked on GitHub`;
   if (look === 'approval' && it.title.startsWith(PERMISSION_PREFIX)) return `${it.agentName || 'An agent'} asks to use ${it.title.slice(PERMISSION_PREFIX.length)}`;
   return it.title;
 }
@@ -274,6 +279,8 @@ export type Answer =
   | { kind: 'spec'; runId: string }
   /** A review and merge: Merge (asking for changes, with the feedback, is on the task's page). */
   | { kind: 'merge'; runId: string }
+  /** A review and merge a collaborator asked changes on, on GitHub, while it waited (H12): send it back with their words. */
+  | { kind: 'changes'; runId: string; feedback: string }
   /** A gate the task page answers with a panel of its own (CI, merge, verdict, limit, watchdog, budget, repository configuration): the same panel here (C3). */
   | { kind: 'gate'; runId: string }
   /** A chat's CLI waiting to be allowed a tool call: Allow once, Allow in this chat, Deny (C3). */
@@ -308,6 +315,7 @@ export function answerOf(d: ApprovalDetail, panel: (p: PendingRequest) => boolea
   if (d.gate === 'permission_prompt') return { kind: 'permission', runId: d.runId, forTask: d.approveForTask, note: d.approveForTask ? undefined : d.approveForTaskNote };
   if (special(d.payload)) return panel(pendingOf(d)) ? { kind: 'gate', runId: d.runId } : { kind: 'open' };
   if (d.kind === 'review' && d.phase === 'spec') return { kind: 'spec', runId: d.runId };
+  if (d.kind === 'review' && d.phase === 'merge' && d.prReview?.feedback) return { kind: 'changes', runId: d.runId, feedback: d.prReview.feedback };
   if (d.kind === 'review' && d.phase === 'merge') return { kind: 'merge', runId: d.runId };
   if (d.kind === 'approval') return { kind: 'approval', runId: d.runId };
   return { kind: 'open' };

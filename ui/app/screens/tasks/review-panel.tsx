@@ -12,7 +12,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { FileDiff, GitBranch, Hand } from 'lucide';
 import type { SpecReviewPayload } from '../../api/extTypes.ts';
-import type { PendingRequest, TaskAllowRule, TaskDetail } from '../../api/types.ts';
+import type { PendingRequest, PRReviewNote, TaskAllowRule, TaskDetail } from '../../api/types.ts';
 import { visible } from '../../lib/visible.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { services, watch } from '../../state/services.tsx';
@@ -79,7 +79,7 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; criteria?: read
           Needs your decision
         </h2>
         {detail.pending.map((p) => (
-          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} criteria={criteria} onChanged={onChanged} />
+          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} criteria={criteria} prReview={p.spec.kind === 'review' ? detail.prReview : undefined} onChanged={onChanged} />
         ))}
       </section>
     );
@@ -137,10 +137,28 @@ export function GateAnswer(
 }
 
 const textareaCss = css({ width: '100%', resize: 'vertical' });
+const prReviewCss = css({
+  display: 'grid',
+  gap: t.s2,
+  padding: t.s3,
+  borderRadius: t.rMd,
+  border: `1px solid ${t.border}`,
+  '& p': { margin: '0' },
+  '& .what': { fontWeight: '500' },
+  '& pre': { margin: '0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm, maxHeight: '240px', overflow: 'auto' },
+});
 const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, fontSize: t.textSm });
 
 function PendingCard(
-  handle: Handle<{ p: PendingRequest; runId: string | undefined; diff: PayloadDiff | undefined; criteria: readonly CriterionRow[]; onChanged: () => void }>,
+  handle: Handle<{
+    p: PendingRequest;
+    runId: string | undefined;
+    diff: PayloadDiff | undefined;
+    criteria: readonly CriterionRow[];
+    /** A collaborator's change request on GitHub that arrived while this review waited (H12). */
+    prReview?: PRReviewNote;
+    onChanged: () => void;
+  }>,
 ) {
   const s = services(handle);
   watch(handle, s.workspace);
@@ -185,7 +203,7 @@ function PendingCard(
   };
 
   return () => {
-    const { p, runId, diff, criteria, onChanged } = handle.props;
+    const { p, runId, diff, criteria, prReview, onChanged } = handle.props;
     const info = payloadOf(p);
     const spec = specPayload(p);
     const permission = permissionPayload(p);
@@ -284,22 +302,36 @@ function PendingCard(
           </>
         ) : p.spec.kind === 'review' ? (
           mode === 'idle' ? (
-            <div mix={formActions}>
-              <Button variant="primary" disabled={busy} mix={on('click', () => void respond('approved'))}>
-                Approve
-              </Button>
-              <Button
-                disabled={sending}
-                mix={on('click', () => {
-                  mode = 'changes';
-                  // start from the criteria still to meet, so the person edits instead of retyping them
-                  if (!text.trim()) text = changesDraft(criteria);
-                  void handle.update();
-                })}
-              >
-                Request changes
-              </Button>
-            </div>
+            <>
+              {prReview ? (
+                <div mix={prReviewCss} data-testid="review-pr-changes">
+                  <p class="what">{visible(prReview.summary)}</p>
+                  <p mix={muted}>Send back sends the worker these words:</p>
+                  <pre>{visible(prReview.feedback)}</pre>
+                  <div mix={formActions}>
+                    <Button variant="primary" disabled={busy} mix={on('click', () => void respond('rejected', { feedback: prReview.feedback }))}>
+                      Send back with the GitHub review
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <div mix={formActions}>
+                <Button variant="primary" disabled={busy} mix={on('click', () => void respond('approved'))}>
+                  Approve
+                </Button>
+                <Button
+                  disabled={sending}
+                  mix={on('click', () => {
+                    mode = 'changes';
+                    // start from the criteria still to meet, so the person edits instead of retyping them
+                    if (!text.trim()) text = changesDraft(criteria);
+                    void handle.update();
+                  })}
+                >
+                  Request changes
+                </Button>
+              </div>
+            </>
           ) : (
             <>
               <Field label="Feedback for the worker">
