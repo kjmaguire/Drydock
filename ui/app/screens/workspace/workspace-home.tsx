@@ -2,7 +2,8 @@
 // (P143: a dialog, new-project.tsx, that makes a project and starts nothing; /home?new=project opens it, which is where the old
 // wizard's address and Ctrl+K's New project lead), one box with its chips (start-box.tsx), the "Or:" row, then "Pick up where you
 // left off": the most recently active projects as cards, each with what runs, whether it needs you and one line of what is
-// happening. Opening a card selects that project and opens it.
+// happening. Opening a card selects that project and opens it. After a start that found something the last stop left (a crash,
+// runs resumed or not), one dismissible line says so under the lead (start-report.tsx, X511).
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { ArrowRight, Plus } from 'lucide';
@@ -19,6 +20,7 @@ import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { NewProjectDialog } from './new-project.tsx';
 import { StartBox } from './start-box.tsx';
+import { StartReportLine } from './start-report.tsx';
 import { pickPill, pickUp, type PickUp } from './workspace.ts';
 
 const wrapCss = css({
@@ -149,6 +151,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
               </Button>
             </div>
             <p class="lead">Describe it; change the place or the crew below.</p>
+            <StartReportLine />
             <StartBox onNavigate={handle.props.onNavigate} />
             <ErrorNote error={ws.projects.error} retry={retryFor(ws.projects)} what="Projects" />
             {items.length ? (

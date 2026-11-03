@@ -589,6 +589,15 @@ func (c *Core) Replay(ctx context.Context, after uint64, f events.Filter, limit 
 	return c.Bus.Replay(ctx, after, f, limit)
 }
 
+// ReplayBefore returns the newest events with seq < before matching f, oldest first (the Activity page and the run page reading
+// further back, X53/X55). The limit is bounded as Replay's is.
+func (c *Core) ReplayBefore(ctx context.Context, before uint64, f events.Filter, limit int) ([]events.Event, error) {
+	if limit <= 0 || limit > 2000 {
+		limit = 500
+	}
+	return c.Bus.ReplayBefore(ctx, before, f, limit)
+}
+
 // DescribeAdapters reports every adapter's detection and verified capabilities.
 func (c *Core) DescribeAdapters(ctx context.Context) []map[string]any {
 	// detection starts each CLI: it runs outside c.mu so one slow or hung CLI does not stall the rest of the app

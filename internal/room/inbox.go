@@ -168,7 +168,9 @@ type NeedsYouItem struct {
 	TaskID     string    `json:"taskId,omitempty"`
 	AgentID    string    `json:"agentId,omitempty"`
 	ChatID     string    `json:"chatId,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	// RunID is the workflow run an agent item is about (its task's latest run): Report this picks it on the Support page (X56).
+	RunID     string    `json:"runId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 	// TaskSeq is the task's number in its project (with the project, the task's key); 0 for an item of no task.
 	TaskSeq int `json:"taskSeq,omitempty"`
 	// Phase says which gate a review item is, from the request that made it (workflow.RequestSpec.Phase): "spec" (accept the

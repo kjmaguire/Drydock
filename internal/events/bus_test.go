@@ -360,3 +360,70 @@ func TestForTransportCutsOnlyWhatIsOverTheLimit(t *testing.T) {
 		t.Fatal("a limit of 0 means none")
 	}
 }
+
+// The log reads backwards a page at a time (X53): the newest events older than a cursor, oldest first, narrowed in the core by
+// project (with or without the workspace's own events), run and agent, and the page statement is bounded by the cursor too.
+func TestReplayBeforeReadsBackwardsAndFiltersInTheCore(t *testing.T) {
+	b, db, _ := newBus(t)
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		e := Event{Type: "agent.output", ProjectID: "p1", RunID: "r1", AgentID: "a1"}
+		switch i % 3 {
+		case 1:
+			e = Event{Type: "task.created", ProjectID: "p2", RunID: "r2", AgentID: "a2"}
+		case 2:
+			e = Event{Type: "license.changed"}
+		}
+		if _, err := b.Publish(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seqs := func(evs []Event) []uint64 {
+		var out []uint64
+		for _, e := range evs {
+			out = append(out, e.Seq)
+		}
+		return out
+	}
+	got, err := b.ReplayBefore(ctx, 9, Filter{}, 3)
+	if err != nil || len(got) != 3 || got[0].Seq != 6 || got[2].Seq != 8 {
+		t.Fatalf("before 9: %v %v", seqs(got), err)
+	}
+	if got, _ := b.ReplayBefore(ctx, 0, Filter{}, 3); len(got) != 0 {
+		t.Fatalf("before 0 is nothing: %v", seqs(got))
+	}
+	if got, _ := b.ReplayBefore(ctx, 100, Filter{ProjectID: "p1"}, 0); len(got) != 4 || got[0].Seq != 1 || got[3].Seq != 10 {
+		t.Fatalf("project p1: %v", seqs(got))
+	}
+	if got, _ := b.ReplayBefore(ctx, 100, Filter{ProjectID: "p1", WithWorkspace: true}, 0); len(got) != 7 {
+		t.Fatalf("project p1 with the workspace's events: %v", seqs(got))
+	}
+	if got, _ := b.ReplayBefore(ctx, 100, Filter{RunID: "r2"}, 0); len(got) != 3 || got[0].Seq != 2 {
+		t.Fatalf("run r2: %v", seqs(got))
+	}
+	if got, _ := b.ReplayBefore(ctx, 8, Filter{AgentID: "a2"}, 0); len(got) != 2 || got[1].Seq != 5 {
+		t.Fatalf("agent a2 before 8: %v", seqs(got))
+	}
+	if got, _ := b.Replay(ctx, 0, Filter{ProjectID: "p2", WithWorkspace: true}, 0); len(got) != 6 {
+		t.Fatalf("replay p2 with the workspace's events: %v", seqs(got))
+	}
+	if !(Filter{ProjectID: "p1", WithWorkspace: true}).Match(Event{Type: "x"}) || (Filter{ProjectID: "p1"}).Match(Event{Type: "x"}) {
+		t.Fatal("Match: a workspace event passes only WithWorkspace")
+	}
+	q, args := replayRange(0, 5000, Filter{ProjectID: "p1", WithWorkspace: true}, 100)
+	rows, err := db.Reader().Query("EXPLAIN QUERY PLAN "+q, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(detail, "SCAN events") && !strings.Contains(detail, "USING") {
+			t.Errorf("a page before a cursor reads the whole log: %s", detail)
+		}
+	}
+}

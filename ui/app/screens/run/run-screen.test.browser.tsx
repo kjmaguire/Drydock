@@ -5,6 +5,7 @@ import type { ExecView, GraphView, RunExplanation } from '../../api/runClient.ts
 import { byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { CHAT_TEXT_MAX, tryInChat } from './turns.tsx';
 import { RunScreen } from './run-screen.tsx';
+import { EARLIER_PAGE } from './run-tables.tsx';
 
 // the chosen tab is remembered (X55): every test starts on Turns
 afterEach(() => {
@@ -112,6 +113,34 @@ describe('RunScreen', () => {
     await ready(r2);
     expect(tab(r2, /Events/).getAttribute('aria-selected')).toBe('true');
     await waitFor(() => expect(r2.$('[data-testid="run-event"]')).toBeTruthy(), r2);
+  });
+
+  it('loads earlier events of a cut list from the core, narrowed to the run, until there are none (X55 with X53)', async () => {
+    const asked: unknown[] = [];
+    const s = setup({
+      runExplain: async () => ({ ...explanation(), events: [...explanation().events].reverse().map((e) => ({ ...e, seq: e.seq + 600 })), eventsTruncated: true }),
+      eventsReplay: async (_after, opts) => {
+        asked.push(opts);
+        const before = opts?.before ?? 0;
+        if (before === 601) return Array.from({ length: EARLIER_PAGE }, (_, i) => ({ seq: 300 + i, time: '2026-01-01T10:00:00Z', type: 'agent.output', runId: 'run_1' }));
+        return [{ seq: 5, time: '2026-01-01T10:00:00Z', type: 'workflow.queued', runId: 'run_1' }];
+      },
+    });
+    const r = mount(<RunScreen taskId="t1" />, s);
+    await ready(r);
+    await r.act(() => tab(r, /Events/).click());
+    await waitFor(() => expect(r.$$('[data-testid="run-event"]').length).toBe(3), r);
+    await r.act(() => byText(r.container, 'button', 'Load earlier events').click());
+    await waitFor(() => expect(r.$$('[data-testid="run-event"]').length).toBe(3 + EARLIER_PAGE), r);
+    expect(asked[0]).toEqual({ runId: 'run_1', before: 601, limit: EARLIER_PAGE });
+    expect(r.$('[data-testid="run-events-truncated"]')!.textContent).toContain(`Only the latest ${3 + EARLIER_PAGE} events are listed.`);
+    // the oldest is last, as the list is newest first
+    const seqs = Array.from(r.$$('[data-testid="run-event"]')).map((x) => x.querySelector('td')!.textContent);
+    expect(seqs.at(-1)).toBe('300');
+    await r.act(() => byText(r.container, 'button', 'Load earlier events').click());
+    await waitFor(() => expect(r.$('[data-testid="run-events-all"]')!.textContent).toContain(`All ${4 + EARLIER_PAGE} events of this run are listed.`), r);
+    expect((asked[1] as { before: number }).before).toBe(300);
+    expect(r.$('[data-testid="run-events-truncated"]')).toBe(null);
   });
 
   it('explains each turn: manifest, the exact prompt, why this model, usage; and lists checkpoints, MCP calls and events', async () => {
@@ -526,6 +555,20 @@ describe('RunScreen actions and the nested view (P123)', () => {
     await r.act(() => byText(dlg, 'button', 'Start the new run').click());
     await waitFor(() => expect(went).toEqual(['/task/t1/run/run_2']), r);
     expect(calls).toEqual([['t1', 'run_1', 'cp1', false]]);
+  });
+
+  it('offers Report this run on a failed run, to the Support page with the run picked, and not on a run that waits (X56)', async () => {
+    const x = withActions({
+      run: { id: 'run_1', workflow: 'iuv', status: 'FAILED', created: 1, updated: 2 },
+      actions: { resume: true, timeTravel: true, replay: true, lease: { held: false, mine: false, driving: false } },
+    });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" />, setup({ runExplain: async () => x }));
+    await ready(r);
+    expect(byText(r.container, 'a', 'Report this run').getAttribute('href')).toBe('/support?run=run_1');
+    cleanup();
+    const r2 = mount(<RunScreen taskId="t1" runId="run_1" />, setup({ runExplain: async () => withActions({ actions: { resume: false, timeTravel: true, replay: true, lease: { held: false, mine: false, driving: false } } }) }));
+    await ready(r2);
+    expect(r2.$('[data-testid="run-report"]')).toBeNull();
   });
 
   it('resumes a failed run after its confirmation and reads it again; a refusal is shown in the dialog', async () => {

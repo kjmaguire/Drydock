@@ -2,8 +2,8 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { DrydockEvent, Project } from '../../api/types.ts';
-import { byLabel, cleanup, fromMenu, mount, testServices, type, waitFor } from '../../test/render.tsx';
-import { ActivityScreen } from './activity-screen.tsx';
+import { byLabel, byText, cleanup, fromMenu, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { ActivityScreen, OLDER_PAGE } from './activity-screen.tsx';
 
 // the filter is remembered per project in localStorage: every test starts from none
 const forget = () => {
@@ -238,36 +238,78 @@ describe('ActivityScreen', () => {
     expect(Array.from(r.$$('button')).filter((b) => b.textContent === 'Show all')).toHaveLength(1);
   });
 
-  it('reads a scoped run from the core when it is older than the recent events the page holds, and says so when it has none (X55 review)', async () => {
+  it('reads a scoped run from the core when it is older than the recent events the page holds, and says so when it has none (X55 review, X53)', async () => {
     forget();
     const asked: [number, unknown][] = [];
-    // the latest events of the workspace are another task's; the run's events are older, in the second page of its task
-    const page1 = Array.from({ length: 1000 }, (_, i) => ev(i + 1, 'agent.output', { projectId: 'p1', taskId: 't1', runId: 'r0' }));
-    const page2 = [ev(1001, 'agent.started', { projectId: 'p1', taskId: 't1', runId: 'r1' }), ev(1002, 'agent.completed', { projectId: 'p1', taskId: 't1', runId: 'r1' })];
+    // the latest events of the workspace are another task's; the run's are older, and the core narrows to the run itself
     const s = setup({
       eventsReplay: async (after, opts) => {
         asked.push([after, opts]);
-        if (opts?.taskId === 't1') return after === 0 ? page1 : after === 1000 ? page2 : [];
-        if (opts?.taskId) return [];
+        if (opts?.runId === 'r1') return [ev(1001, 'agent.started', { projectId: 'p1', taskId: 't1', runId: 'r1' }), ev(1002, 'agent.completed', { projectId: 'p1', taskId: 't1', runId: 'r1' })];
+        if (opts?.runId || opts?.taskId) return [];
         return [ev(9000, 'task.created', { projectId: 'p1', taskId: 't9' })];
       },
     });
     const r = mount(<ActivityScreen run="r1" task="t1" />, s);
     await waitFor(() => expect(types(r.container)).toEqual(['agent.completed', 'agent.started']), r);
-    expect(asked.filter(([, o]) => (o as { taskId?: string }).taskId)).toEqual([
-      [0, { taskId: 't1', limit: 1000 }],
-      [1000, { taskId: 't1', limit: 1000 }],
-    ]);
+    expect(asked.filter(([, o]) => (o as { runId?: string }).runId)).toEqual([[0, { projectId: 'p1', withWorkspace: true, runId: 'r1', before: Number.MAX_SAFE_INTEGER, limit: OLDER_PAGE }]]);
+    // a short page is all of them: no Load older events, and the page says so
+    expect(r.$('[data-testid="activity-older"]')).toBe(null);
+    expect(r.$('[data-testid="activity-older-end"]')!.textContent).toContain('for run r1');
     // the store's ring is not filled with them: they are the page's own
     expect(s.store.getSnapshot().events.some((e) => e.runId === 'r1')).toBe(false);
     cleanup();
 
     // a run the core has nothing of: the page says so, not that events will appear
     forget();
-    const s2 = setup({ eventsReplay: async (_a, opts) => (opts?.taskId ? [] : [ev(9000, 'task.created', { projectId: 'p1', taskId: 't9' })]) });
+    const s2 = setup({ eventsReplay: async (_a, opts) => (opts?.runId ? [] : [ev(9000, 'task.created', { projectId: 'p1', taskId: 't9' })]) });
     const r2 = mount(<ActivityScreen run="r7" task="t7" />, s2);
     await waitFor(() => expect(r2.$('[data-testid="activity-scope-empty"]')?.textContent ?? '').toContain('None of the events the core has for run r7'), r2);
     expect(r2.container.textContent).not.toContain('Events appear here as the core records them');
+  });
+
+  it('pages back past the recent events with Load older events, narrowed to the project in the core, and remembers the depth (X53)', async () => {
+    forget();
+    const asked: { before?: number; projectId?: string; withWorkspace?: boolean; agentId?: string; limit?: number }[] = [];
+    const page = (top: number, n: number) => Array.from({ length: n }, (_, i) => ev(top - n + i, 'agent.output', { projectId: 'p1', agentId: 'a1' }));
+    const replay: Client['eventsReplay'] = async (_after, opts) => {
+      if (!opts?.before) return [ev(5000, 'task.created', { projectId: 'p1' }), ev(5001, 'task.created', { projectId: 'p2' })];
+      asked.push(opts);
+      if (opts.agentId) return [];
+      // a full page below 5000, then a short one
+      return opts.before === 5000 ? page(5000, OLDER_PAGE) : opts.before === 5000 - OLDER_PAGE ? page(5000 - OLDER_PAGE, 3) : [];
+    };
+    const rowsOf = (root: ParentNode) => Array.from(root.querySelectorAll('[data-testid="event-row"] td.seq')).map((x) => x.textContent);
+    const r = mount(<ActivityScreen />, setup({ eventsReplay: replay }));
+    await waitFor(() => expect(types(r.container)).toEqual(['task.created']), r);
+    // nothing older is read until the person asks
+    expect(asked).toEqual([]);
+    await r.act(() => byText(r.container, 'button', 'Load older events').click());
+    await waitFor(() => expect(rowsOf(r.container).length).toBe(1 + OLDER_PAGE), r);
+    expect(asked[0]).toEqual({ projectId: 'p1', withWorkspace: true, before: 5000, limit: OLDER_PAGE });
+    // the rows read from the core are listed past the 500-row cut, the oldest last
+    expect(rowsOf(r.container).at(-1)).toBe(String(5000 - OLDER_PAGE));
+    expect(r.$('[data-testid="activity-row-limit"]')).toBe(null);
+    await r.act(() => byText(r.container, 'button', 'Load older events').click());
+    await waitFor(() => expect(r.$('[data-testid="activity-older-end"]')?.textContent ?? '').toContain('for this project'), r);
+    expect(asked[1]!.before).toBe(5000 - OLDER_PAGE);
+    expect(rowsOf(r.container).length).toBe(1 + OLDER_PAGE + 3);
+    expect(localStorage.getItem('drydock.activity.depth.p1')).toBe('2');
+    cleanup();
+
+    // opened again: the two pages are read again without a click
+    asked.length = 0;
+    const r2 = mount(<ActivityScreen />, setup({ eventsReplay: replay }));
+    await waitFor(() => expect(r2.$('[data-testid="activity-older-end"]')).not.toBe(null), r2);
+    expect(asked.map((o) => o.before)).toEqual([5000, 5000 - OLDER_PAGE]);
+    cleanup();
+
+    // an agent scope is read from the core too, narrowed to the agent there
+    asked.length = 0;
+    localStorage.removeItem('drydock.activity.depth.p1');
+    const r3 = mount(<ActivityScreen agent="a1" />, setup({ eventsReplay: replay }));
+    await waitFor(() => expect(asked.length).toBe(1), r3);
+    expect(asked[0]).toEqual({ projectId: 'p1', withWorkspace: true, agentId: 'a1', before: Number.MAX_SAFE_INTEGER, limit: OLDER_PAGE });
   });
 
   it('applies the scope from the address to the project open then, not to a project chosen later (X51 review)', async () => {

@@ -1,13 +1,15 @@
 // Activity: the event log as the core persisted it, newest first, filtered by family chips, a type prefix, one task, run or
 // agent, and (by default) to this project. The filter is remembered per project (localStorage, a convenience only); the run
 // page links here with ?run=<id>&task=<id>, which sets the scope (once, for the project open when the page is) and is remembered
-// the same way. The stream starts at the head, so older events are loaded here on demand (the most recent ~1000 sequence
-// numbers); a task or run scope also reads that task's events from the core (events.replay by task, page by page), since a run
-// from yesterday is long gone from the recent ones. A cut payload is fetched whole from the core (events.replay of that one seq)
-// when the person asks.
+// the same way. The stream starts at the head, so the most recent ~1000 sequence numbers are loaded when the page opens, and Load
+// older events reads further back from the core a page at a time (events.replay before the oldest row, X53), narrowed there to
+// the project, task, run or agent; how many pages the person read is remembered per project and read again next time. A scope
+// reads its newest events from the core first, since a run from yesterday is long gone from the recent ones. A cut payload is
+// fetched whole from the core (events.replay of that one seq) when the person asks.
 
 import { css, on, type Handle } from 'remix/component';
 import { Activity, Copy, ListFilter, X } from 'lucide';
+import type { EventsReplayOptions } from '../../api/client.ts';
 import { rowOf, type ConnectionState, type EventRow } from '../../state/eventStore.ts';
 import { formatTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -20,17 +22,18 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, tableCard } from '../../ui/layout.tsx';
 import { MoreMenu, type MenuItem } from '../../ui/menu.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
-import { FAMILIES, filterRows, mergeRows, readFilter, typeTone, writeFilter, type ActivityFilter, type Family, type Scope } from './activity.ts';
+import { FAMILIES, filterRows, mergeRows, readDepth, readFilter, typeTone, writeDepth, writeFilter, type ActivityFilter, type Family, type Scope } from './activity.ts';
 
 /** An id's start, so a column of them stays readable; the full id is its tooltip. */
 const shortId = (id: string): string => (id.length > 14 ? `${id.slice(0, 11)}…` : id);
 
 /** At most this many rows are listed (the newest that match). */
 const ROW_LIMIT = 500;
-/** A scope's task is read from the core in pages of this many events, at most this many pages; the newest SCOPE_KEEP that match are kept. */
-const SCOPE_PAGE = 1000;
-const SCOPE_PAGES = 20;
-const SCOPE_KEEP = 5000;
+/** Older events are read from the core in pages of this many (X53); a remembered depth reads at most DEPTH_MAX pages again. */
+export const OLDER_PAGE = 500;
+const DEPTH_MAX = 10;
+/** "Before the newest": a scope's first page is the newest events the core has for it. */
+const NEWEST = Number.MAX_SAFE_INTEGER;
 
 const STATUS_TONE: Record<ConnectionState, Tone> = { open: 'ok', connecting: 'info', reconnecting: 'warn', idle: 'muted', stopped: 'err' };
 
@@ -112,13 +115,20 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
   let copied = -1;
   /** The scope from the address is applied once, to the project open when the page is: never to a project chosen later. */
   let urlUsed = false;
-  /** The scoped task's events (only its run's, when a run is scoped) as read from the core for the scope `scopeKey`. */
-  let scopeKey = '';
-  let scopeRows: EventRow[] = [];
-  let scopeLoading = false;
-  let scopeError: Error | undefined;
-  /** The task has more events than the page reads, or the run more than it keeps: what is listed is not all of them. */
-  let scopePartial = false;
+  /**
+   * The rows read from the core for the filter `histKey` (the project when "This project only" is on, and the scope): a scope's
+   * newest page, then the older pages the person asked for. They are the page's own; the store's ring is left as it is.
+   */
+  let histKey = '';
+  let hist: EventRow[] = [];
+  let histStarted = false;
+  /** At least one page was read for this filter, and whether the last was full (the core may have older ones). */
+  let histAsked = false;
+  let histMore = true;
+  let histLoading = false;
+  let histError: Error | undefined;
+  /** The page's first read of recent events has settled: an unscoped page reads older pages only after it. */
+  let backfilled = false;
 
   const fromUrl = (): Scope | undefined => {
     const { task, run, agent } = handle.props;
@@ -142,48 +152,74 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
       writeFilter(pid, f);
     }
   };
-  /** Read the scoped task's events from the core (oldest first, page by page) when the scope changed. */
-  const loadScope = () => {
-    const sc = f.scope;
-    const key = sc.taskId ? `${sc.taskId}/${sc.runId ?? ''}` : '';
-    if (key === scopeKey) return;
-    scopeKey = key;
-    scopeRows = [];
-    scopeError = undefined;
-    scopePartial = false;
-    scopeLoading = !!key;
-    if (!key) return;
-    const taskId = sc.taskId!;
-    const runId = sc.runId;
-    void (async () => {
-      const kept: EventRow[] = [];
-      let partial = false;
-      try {
-        let after = 0;
-        for (let page = 1; ; page++) {
-          const evs = await s.client.eventsReplay(after, { taskId, limit: SCOPE_PAGE });
-          if (handle.signal.aborted || scopeKey !== key) return;
-          for (const e of evs) if (typeof e.seq === 'number' && (!runId || e.runId === runId)) kept.push(rowOf(e));
-          if (kept.length > SCOPE_KEEP) {
-            kept.splice(0, kept.length - SCOPE_KEEP);
-            partial = true;
-          }
-          if (evs.length < SCOPE_PAGE) break;
-          after = evs[evs.length - 1]!.seq;
-          if (page >= SCOPE_PAGES) {
-            partial = true;
-            break;
-          }
-        }
-        scopeRows = kept;
-        scopePartial = partial;
-      } catch (e) {
-        if (handle.signal.aborted || scopeKey !== key) return;
-        scopeError = e instanceof Error ? e : new Error(String(e));
+  const hasScope = (sc: Scope) => !!(sc.taskId || sc.runId || sc.agentId);
+  /** What the core narrows the older pages to: the same rows filterRows keeps, before the families and the type box. */
+  const coreFilter = (): EventsReplayOptions => {
+    const o: EventsReplayOptions = {};
+    const pid = s.workspace.projectId;
+    if (f.thisProject && pid) {
+      o.projectId = pid;
+      o.withWorkspace = true;
+    }
+    // a run decides alone (its task only names it), as inScope says
+    if (f.scope.runId) o.runId = f.scope.runId;
+    else if (f.scope.taskId) o.taskId = f.scope.taskId;
+    if (f.scope.agentId) o.agentId = f.scope.agentId;
+    return o;
+  };
+  /** The seq the next older page ends below: the oldest row read for the filter, else (unscoped) the oldest the store holds. */
+  const oldest = (): number => {
+    if (hist.length > 0) return hist[0]!.seq;
+    if (hasScope(f.scope)) return NEWEST;
+    return s.store.getSnapshot().events[0]?.seq ?? NEWEST;
+  };
+  /** Read `pages` older pages for the filter `key`. Its flags are set before the first wait, so it may start from a render. */
+  const readOlder = async (key: string, pages: number) => {
+    histLoading = true;
+    histError = undefined;
+    try {
+      for (let i = 0; i < pages && histMore; i++) {
+        const evs = await s.client.eventsReplay(0, { ...coreFilter(), before: oldest(), limit: OLDER_PAGE });
+        if (handle.signal.aborted || histKey !== key) return;
+        histAsked = true;
+        hist = mergeRows(
+          hist,
+          evs.filter((e) => typeof e.seq === 'number').map(rowOf).sort((a, b) => a.seq - b.seq),
+        );
+        if (evs.length < OLDER_PAGE) histMore = false;
       }
-      scopeLoading = false;
-      void handle.update();
-    })();
+    } catch (e) {
+      if (handle.signal.aborted || histKey !== key) return;
+      histError = e instanceof Error ? e : new Error(String(e));
+    }
+    histLoading = false;
+    void handle.update();
+  };
+  /** Start over when the filter the core narrows to changed; read the scope's newest page and the remembered depth. */
+  const ensureHist = () => {
+    const pid = s.workspace.projectId;
+    const key = JSON.stringify([f.thisProject ? (pid ?? '') : '', f.scope]);
+    if (key !== histKey) {
+      histKey = key;
+      hist = [];
+      histStarted = false;
+      histAsked = false;
+      histMore = true;
+      histLoading = false;
+      histError = undefined;
+    }
+    if (histStarted || pid === undefined) return;
+    const scoped = hasScope(f.scope);
+    if (!scoped && !backfilled) return;
+    histStarted = true;
+    const pages = Math.min(DEPTH_MAX, readDepth(pid)) + (scoped ? 1 : 0);
+    if (pages > 0) void readOlder(key, pages);
+  };
+  const loadOlder = () => {
+    const pid = s.workspace.projectId;
+    writeDepth(pid, Math.min(DEPTH_MAX, readDepth(pid) + 1));
+    void readOlder(histKey, 1);
+    void handle.update();
   };
   const change = (next: Partial<ActivityFilter>) => {
     f = { ...f, ...next };
@@ -238,7 +274,10 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
     .catch((e: unknown) => {
       if (handle.signal.aborted) return;
       historyError = e instanceof Error ? e : new Error(String(e));
-      void handle.update();
+    })
+    .finally(() => {
+      backfilled = true;
+      if (!handle.signal.aborted) void handle.update();
     });
 
   /** The task's key (GOC-41) when the project's task list has it, else the id's start. */
@@ -288,13 +327,26 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
 
   return () => {
     sync();
-    loadScope();
+    ensureHist();
     const snap = s.store.getSnapshot();
-    const held = scopeRows.length > 0 ? mergeRows(snap.events, scopeRows) : snap.events;
-    const rows = filterRows(held, f, s.workspace.projectId, ROW_LIMIT);
+    const held = hist.length > 0 ? mergeRows(snap.events, hist) : snap.events;
+    const limit = ROW_LIMIT + hist.length;
+    const rows = filterRows(held, f, s.workspace.projectId, limit);
     const scoped = scopeText(f.scope);
-    /** The scope's task was read from the core (not only the recent events the page holds). */
-    const readForScope = !!f.scope.taskId;
+    const scopeLoading = !!scoped && histLoading && !histAsked;
+    /** The scope was read from the core (not only the recent events the page holds). */
+    const readForScope = !!scoped && histAsked;
+    const older = histMore ? (
+      <p mix={noteCss} data-testid="activity-older">
+        <Button size="sm" disabled={histLoading} mix={on('click', loadOlder)}>
+          {histLoading ? 'Loading...' : 'Load older events'}
+        </Button>
+      </p>
+    ) : histAsked ? (
+      <p mix={noteCss} data-testid="activity-older-end">
+        That is every event the core has{scoped ? ` for ${scoped}` : f.thisProject && s.workspace.projectId ? ' for this project' : ''}.
+      </p>
+    ) : null;
     return (
       <Page
         title="Activity"
@@ -308,7 +360,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
         }
       >
         <ErrorNote error={historyError} what="Could not load earlier events" />
-        <ErrorNote error={scopeError} what={`Could not load the events of ${scoped}`} />
+        <ErrorNote error={histError} what={scoped && !histAsked ? `Could not load the events of ${scoped}` : 'Could not load older events'} />
         <div mix={toolbarCss}>
           <div class="filter">
             <label for={`filter-${handle.id}`}>Filter by type prefix</label>
@@ -354,14 +406,9 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
             Loading the events of {scoped}...
           </p>
         ) : null}
-        {scoped && scopePartial && !scopeLoading ? (
-          <p mix={noteCss} data-testid="activity-scope-partial">
-            {f.scope.runId ? 'This run' : 'This task'} has more events than this page reads, so not all of them are listed.
-          </p>
-        ) : null}
-        {rows.length >= ROW_LIMIT ? (
+        {rows.length >= limit ? (
           <p mix={noteCss} data-testid="activity-row-limit">
-            Only the latest {ROW_LIMIT} matching events are listed.
+            Only the latest {limit} matching events are listed.
           </p>
         ) : null}
         {rows.length === 0 ? (
@@ -370,7 +417,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
               <p>Events appear here as the core records them. Clear the filter to see everything.</p>
             ) : scopeLoading ? (
               <p>Still reading the events of {scoped} from the core.</p>
-            ) : readForScope && !scopeError ? (
+            ) : readForScope && !histError ? (
               <p data-testid="activity-scope-empty">None of the events the core has for {scoped} match the filter.</p>
             ) : (
               <p data-testid="activity-scope-empty">This page holds only recent events, and none of them are in this scope. Clear the scope to see everything.</p>
@@ -452,6 +499,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
             </table>
           </div>
         )}
+        {scopeLoading ? null : older}
       </Page>
     );
   };

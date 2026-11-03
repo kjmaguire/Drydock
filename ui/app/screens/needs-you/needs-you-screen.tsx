@@ -21,6 +21,7 @@ import { starts } from '../../state/live.ts';
 import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import type { InboxTab } from '../../state/ui.ts';
 import { Button, buttonStyle } from '../../ui/button.tsx';
+import { supportFor } from '../support/support.ts';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { headerCss } from '../../ui/layout.tsx';
@@ -1063,6 +1064,12 @@ function NeedsDetail(
           {it.kind === 'agent' && it.taskId && summary && (summary.status === 'FAILED' || summary.status === 'CANCELLED') ? (
             // the agent failed its task: run the work again from here, with the run page's confirmation (paid work again)
             <RunAgainButton taskId={it.taskId} seq={summary.seq} status={summary.status} variant="secondary" disabled={ro} onNavigate={handle.props.onGo} />
+          ) : null}
+          {it.kind === 'agent' && it.runId ? (
+            // the Support page with the run picked and previewed (X56 with C6): nobody types a run id
+            <a href={supportFor(it.runId)} mix={buttonStyle('secondary', 'md')} data-testid="detail-report">
+              Report this
+            </a>
           ) : null}
           {canAck(it) ? (
             <Button disabled={acking} mix={[on('click', onDone)]} data-testid="detail-done">

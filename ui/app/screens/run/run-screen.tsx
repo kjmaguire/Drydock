@@ -42,6 +42,7 @@ import {
 import { Checkpoints, Events, McpCalls } from './run-tables.tsx';
 import { Turns } from './turns.tsx';
 import { WorkflowGraph } from './workflow-graph.tsx';
+import { supportFor } from '../support/support.ts';
 
 type Tab = 'turns' | 'checkpoints' | 'mcp' | 'events';
 
@@ -456,6 +457,11 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
                   >
                     Run again as a new task
                   </Button>
+                ) : null}
+                {r.status === 'FAILED' || r.status === 'PAUSED' ? (
+                  <a href={supportFor(r.id)} mix={buttonStyle('secondary', 'sm')} data-testid="run-report">
+                    Report this run
+                  </a>
                 ) : null}
                 {acts.timeTravel && x.graph ? <span mix={muted}>To time travel, choose a checkpoint under the graph.</span> : null}
                 {whys.length ? <p data-testid="run-actions-why">{whys.join(' ')}</p> : null}

@@ -56,3 +56,15 @@ describe('A failed or cancelled task on its page', () => {
     }
   });
 });
+
+describe('Report this on a failed task (C6, X56)', () => {
+  it('links to the Support page with the run picked, and is not offered on a cancelled task', () => {
+    const d = detail({ task: task({ status: 'FAILED' }), run: run('gave up'), runAgain: false, runAgainWhy: 'No agent can run it.' });
+    const r = mount(<EndedCard detail={d} />, svc());
+    expect(byText(r.container, 'a', 'Report this').getAttribute('href')).toBe('/support?run=run-7');
+    expect(r.$('[data-testid="task-ended-why"]')!.textContent).toBe('No agent can run it.');
+    cleanup();
+    const c = mount(<EndedCard detail={detail({ task: task({ status: 'CANCELLED' }), run: { ...run(), status: 'CANCELLED' }, runAgain: true })} />, svc());
+    expect(c.$('[data-testid="task-ended-report"]')).toBeNull();
+  });
+});

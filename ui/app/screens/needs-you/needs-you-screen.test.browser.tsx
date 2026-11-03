@@ -550,6 +550,17 @@ describe('an agent that failed its task (C6)', () => {
     await waitFor(() => expect(navigated).toEqual(['/task/t10']), r);
   });
 
+  it('reports the run from the item: the Support page with its run picked (X56)', async () => {
+    const { r } = await open(withEnded('FAILED'), [{ ...agentFailed, runId: 'run_42' }]);
+    const link = await waitFor(() => {
+      const el = r.$('[data-testid="detail-report"]');
+      if (!el) throw new Error('no Report this yet');
+      return el;
+    }, r);
+    expect(link.textContent).toBe('Report this');
+    expect(link.getAttribute('href')).toBe('/support?run=run_42');
+  });
+
   it('offers nothing to run again while the task has not ended', async () => {
     const { r } = await open(withEnded('IN_PROGRESS'), [agentFailed]);
     await waitFor(() => expect(r.$('[data-testid="detail-done"]')).toBeTruthy(), r);

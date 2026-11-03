@@ -24,6 +24,28 @@ export interface AppInfo {
   /** The build's version and build id, as the release set them (decision P129); "0.0.0-dev" for a build from the source tree. Absent from older cores. */
   version?: string;
   build?: string;
+  /** What this start found the last one left behind (X511); absent from older cores. */
+  startReport?: StartReport;
+}
+
+/** A workflow run a start resumed or could not resume. */
+export interface StartRun {
+  runId: string;
+  taskId?: string;
+  projectId?: string;
+  title?: string;
+}
+
+/** What the core found when it started (X511): said once on Home, until the person dismisses it. */
+export interface StartReport {
+  /** Names this start (ms since the epoch), so a dismissal is remembered for it and not the next. */
+  startedAt: number;
+  /** The last process ended without closing (a crash, a kill, a power cut). */
+  unexpected: boolean;
+  crashes?: number;
+  agentRunsClosed?: number;
+  resumed: StartRun[];
+  notResumed: StartRun[];
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';
@@ -952,6 +974,8 @@ export interface NeedsYouItem {
   agentId?: string;
   /** A chat whose CLI waits for the person to allow a tool call (kind chat_permission). */
   chatId?: string;
+  /** The workflow run an agent item is about (its task's latest run): Report this picks it on the Support page (X56). */
+  runId?: string;
   createdAt: string;
   /** What a task's item is about (UI review P1-1): the assignee, the newest diff's size, the checks and the reviewer's verdict. */
   context?: NeedsContext;

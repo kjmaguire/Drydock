@@ -80,6 +80,20 @@ const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
   estimated: Number(v?.estimated) || 0,
 });
 
+/** What events.replay narrows to (see Client.eventsReplay). */
+export interface EventsReplayOptions {
+  types?: string[];
+  taskId?: string;
+  limit?: number;
+  /** The newest events with a seq below this, instead of the ones after `after`. */
+  before?: number;
+  projectId?: string;
+  /** With projectId: the events that belong to no project count as the project's too. */
+  withWorkspace?: boolean;
+  runId?: string;
+  agentId?: string;
+}
+
 export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, KeysClient, NotifyClient, InboxClient, TaskDataClient, ControlClient, RoomClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
@@ -185,7 +199,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   roomUnread(projectId: string): Promise<Unread[]>;
   needsYouList(projectId: string): Promise<NeedsYouItem[]>;
   presenceList(): Promise<PresenceState[]>;
-  eventsReplay(after: number, opts?: { types?: string[]; taskId?: string; limit?: number }): Promise<DrydockEvent[]>;
+  /**
+   * A page of the event log: the events after `after`, oldest first, or, with `before`, the newest ones older than it (still
+   * oldest first; X53). The core narrows by task, project (`withWorkspace`: and the workspace's own events), run and agent.
+   */
+  eventsReplay(after: number, opts?: EventsReplayOptions): Promise<DrydockEvent[]>;
 }
 
 export function createClient(t: Transport): Client {
@@ -305,7 +323,14 @@ export function createClient(t: Transport): Client {
     roomUnread: async (projectId) => arr(await t.call<Unread[] | null>('room.unread', { projectId })),
     needsYouList: async (projectId) => arr(await t.call<NeedsYouItem[] | null>('needsyou.list', { projectId })),
     presenceList: async () => arr(await t.call<PresenceState[] | null>('presence.list')),
-    eventsReplay: async (after, opts = {}) =>
-      arr(await t.call<DrydockEvent[] | null>('events.replay', { after, types: opts.types ?? [], taskId: opts.taskId ?? '', limit: opts.limit ?? 0 })),
+    eventsReplay: async (after, opts = {}) => {
+      const p: Record<string, unknown> = { after, types: opts.types ?? [], taskId: opts.taskId ?? '', limit: opts.limit ?? 0 };
+      if (opts.before) p.before = opts.before;
+      if (opts.projectId) p.projectId = opts.projectId;
+      if (opts.withWorkspace) p.withWorkspace = true;
+      if (opts.runId) p.runId = opts.runId;
+      if (opts.agentId) p.agentId = opts.agentId;
+      return arr(await t.call<DrydockEvent[] | null>('events.replay', p));
+    },
   };
 }
