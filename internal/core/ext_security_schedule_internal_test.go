@@ -200,10 +200,10 @@ func TestTheWeeklyRuleDoesNotRunTwiceWhileItsScanRuns(t *testing.T) {
 	if _, err := c.DB.Writer().Exec(`UPDATE chats SET status='idle' WHERE id='chat_busy'`); err != nil {
 		t.Fatal(err)
 	}
-	list := waitScans(t, s, p.ID, 2)
+	waitScans(t, s, p.ID, 2)
 	s.tick(ctx, time.Now()) // the agent stopped: a tick would start a weekly scan that is still due
 	time.Sleep(200 * time.Millisecond)
-	if list = waitScans(t, s, p.ID, 2); len(list) != 2 || list[0].Trigger != "" {
+	if list := waitScans(t, s, p.ID, 2); len(list) != 2 || list[0].Trigger != "" {
 		t.Fatalf("the weekly scan ran after the person's: %+v", list)
 	}
 	s.mu.Lock()
