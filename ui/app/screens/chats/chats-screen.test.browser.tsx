@@ -2125,6 +2125,35 @@ describe('Next steps, the first seconds of a turn, coming back to Chats (B3)', (
     expect(navigated).toEqual(['/chats/c1', '/chats/c5', '/chats', '/chats/c5', '/chats', '/chats/c3']);
   });
 
+  it('a person who leaves /chats while it reads the list is not pulled back to the last chat (D7)', async () => {
+    // the app's own navigation (no onNavigate): the address has moved on (the sidebar's Agents) before the screen is let go
+    let answer: (l: ChatListItem[]) => void = () => {};
+    const s = testServices({
+      projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project],
+      licenseStatus: async () => lic(),
+      appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
+      adapterList: async () => [claude],
+      chatList: () => new Promise<ChatListItem[]>((ok) => (answer = ok)),
+      skillLibraryList: async () => [],
+      mcpLibList: async () => [],
+      mcpApprovalList: async () => [],
+      chatAsks: async () => [],
+    });
+    s.workspace.start();
+    const before = location.pathname + location.search;
+    history.replaceState(null, '', '/chats');
+    try {
+      const r = mount(<ChatsScreen />, s);
+      await new Promise((ok) => setTimeout(ok, 30));
+      history.pushState(null, '', '/library');
+      await r.act(() => answer([item({ id: 'c1', title: 'One' })]));
+      await new Promise((ok) => setTimeout(ok, 100));
+      expect(location.pathname).toBe('/library');
+    } finally {
+      history.replaceState(null, '', before);
+    }
+  });
+
   it('a new chat asked for while /chats reads the list opens the new chat, not the last one (D7)', async () => {
     let made: (c: Chat) => void = () => {};
     let listed = false;

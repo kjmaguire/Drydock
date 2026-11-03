@@ -101,7 +101,12 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
       reopened = true;
       reopenTo = target;
       const href = routes.chat.href({ id: target });
-      handle.queueTask(() => (onNavigate ? onNavigate(href) : void navigate(href, { history: 'replace' }).catch(() => {})));
+      // only while the viewer is still on /chats: a person who went elsewhere while the list was read is not pulled back
+      handle.queueTask(() => {
+        if (handle.signal.aborted) return;
+        if (onNavigate) onNavigate(href);
+        else if (window.location.pathname === routes.chats.href()) void navigate(href, { history: 'replace' }).catch(() => {});
+      });
     }
     // while /chats works out which chat to open, the centre stays blank rather than flash the empty state
     const deciding = !id && !s.ui.narrowRails && ((reading && !reopened) || !!reopenTo);
