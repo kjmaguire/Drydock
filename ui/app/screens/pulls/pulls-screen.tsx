@@ -54,7 +54,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
     load: () => s.client.githubPullRequest(currentId()!),
     key: () => currentId(),
     enabled: () => !!currentId(),
-    when: (e) => e.type.startsWith('github.') && e.taskId === currentId(),
+    when: (e) => (e.type.startsWith('github.') && e.taskId === currentId()) || e.type === 'github.sign_in_finished',
     debounceMs: 300,
   });
 

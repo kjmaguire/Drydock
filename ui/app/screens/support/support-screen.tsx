@@ -25,6 +25,8 @@ import { confirmRow, Done, Group, panelPad, plainList, settingsColumn, subhead, 
 import { CrashReports } from './crash-reports.tsx';
 import { bundleKey, bundleOpts, identityText, scrubbedFiles, type BundleOpts } from './support.ts';
 import { plural } from '../../lib/format.ts';
+import { ChooseSave, SavedFile } from '../shared/file-actions.tsx';
+import { folderRow } from '../shared/choose-folder.tsx';
 
 const formCss = css({ display: 'grid', gap: t.s4 });
 const neverCss = css({
@@ -329,7 +331,12 @@ export function SupportScreen(handle: Handle) {
                       />
                     ) : null}
                     <Field label="Save to (optional full path; empty uses the support folder in the Drydock data folder)">
-                      {(id) => <input id={id} value={dest} spellcheck={false} mix={[mono, on('input', (e) => ((dest = e.currentTarget.value), forget(), void handle.update()))]} />}
+                      {(id) => (
+                        <div mix={folderRow}>
+                          <input id={id} value={dest} spellcheck={false} mix={[mono, on('input', (e) => ((dest = e.currentTarget.value), forget(), void handle.update()))]} />
+                          <ChooseSave kind="support-bundle" dir={dest} testId="bundle-choose-save" onPick={(p) => ((dest = p), forget(), void handle.update())} />
+                        </div>
+                      )}
                     </Field>
                     <div mix={formActions}>
                       <Button variant="primary" icon={FileArchive} data-testid="bundle-create" disabled={busy || (!!includeRun && !ack)} mix={on('click', () => void runCreate(shown.opts))}>
@@ -371,6 +378,7 @@ export function SupportScreen(handle: Handle) {
                       ) : null}
                     </span>
                   </Done>
+                  <SavedFile path={created.path} testId="bundle-saved" />
                   <div mix={previewCss} data-testid="bundle-written">
                     <h3 mix={subhead}>What was written</h3>
                     <FileTable files={created.files} label="Files written to the bundle" rowTestId="bundle-written-file" />

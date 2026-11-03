@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -20,6 +21,9 @@ import (
 // The human's terminals for the bottom dock (internal/terminal). A terminal opens in a task's worktree or a project's
 // repository, never at a path the caller names. Output is read by offset with a long poll, so both transports (the Wails
 // bridge and the development HTTP server) carry it with the ordinary call path, and none of it reaches the event log.
+
+// ghSignInKey is the GitHub CLI's sign-in among the running sign-ins (no Connection key has a colon in front).
+const ghSignInKey = ":github"
 
 func init() {
 	RegisterExtension(Extension{Name: "terminal", Start: func(extCtx context.Context, c *Core) (map[string]Method, func(), error) {
@@ -149,6 +153,52 @@ func init() {
 				signIns[conn.Key] = id
 				close(ready)
 				c.publish(ctx, "connection.sign_in_started", "", map[string]any{"key": conn.Key, "by": c.Human()})
+				return info, nil
+			}),
+			// github.signIn runs the person's own `gh auth login` in a terminal they answer (F4), as connection.signIn does for an
+			// agent CLI: Drydock runs the unmodified gh, reads only its exit code and never what gh stores. One at a time: asking
+			// again while it runs returns the same terminal. When it ends, the kept github.status answer is dropped, gh is asked
+			// again, and github.sign_in_finished (with the new state) makes the GitHub page, the clone picker and the pull-request
+			// pages read it.
+			"github.signIn": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				signMu.Lock()
+				defer signMu.Unlock()
+				if in, ok := runningSignIn(m, signIns, ghSignInKey); ok {
+					return in, nil
+				}
+				gh, err := exec.LookPath("gh")
+				if err != nil {
+					return nil, errors.New("the GitHub CLI (gh) is not installed: install it from https://cli.github.com, then sign in")
+				}
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				var id string
+				ready := make(chan struct{})
+				info, err := m.OpenProgram(home, "Sign in: GitHub CLI", 100, 24, terminal.Program{Path: gh, Args: []string{"auth", "login"}, OnExit: func(code int) {
+					<-ready
+					signMu.Lock()
+					if signIns[ghSignInKey] == id {
+						delete(signIns, ghSignInKey)
+					}
+					signMu.Unlock()
+					c.ghStatus.drop()
+					if extCtx.Err() != nil {
+						return // not while the core shuts down
+					}
+					cctx, cancel := context.WithTimeout(extCtx, 60*time.Second)
+					st := c.CachedGitHubStatus(cctx, true)
+					cancel()
+					c.publish(extCtx, "github.sign_in_finished", "", map[string]any{"exitCode": code, "signedIn": st.LoggedIn})
+				}})
+				if err != nil {
+					return nil, err
+				}
+				id = info.ID
+				signIns[ghSignInKey] = id
+				close(ready)
+				c.publish(ctx, "github.sign_in_started", "", map[string]any{"by": c.Human()})
 				return info, nil
 			}),
 			// connection.installTerminal opens a shell that belongs to no project (in the person's home folder; inside the distro

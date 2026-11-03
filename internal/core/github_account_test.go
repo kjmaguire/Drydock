@@ -117,3 +117,39 @@ func TestGitHubCloneFailureCleansUp(t *testing.T) {
 		t.Fatalf("the failed clone's folder must be removed: %v", err)
 	}
 }
+
+// B7: a repository that is already a project's origin comes marked with that project, so the clone picker offers it instead of
+// a second clone; the others come as GitHub listed them.
+func TestGitHubReposMarkTheProjectThatHasIt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"kyle"}`)
+		case "/user/repos", "/orgs/acme/repos":
+			fmt.Fprint(w, `[{"full_name":"acme/gocalc","name":"gocalc","owner":{"login":"acme"}},{"full_name":"acme/other","name":"other","owner":{"login":"acme"}}]`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		GitHubAPI: host.HTTPAPI{BaseURL: srv.URL, Token: "fixture"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "calc", "repoPath": repoWithOrigin(t, "git@github.com:Acme/GoCalc.git")}, &p)
+	var repos []core.GitHubRepoRow
+	a.call("github.repos", map[string]any{"owner": "acme"}, &repos)
+	if len(repos) != 2 {
+		t.Fatalf("repos %+v", repos)
+	}
+	if repos[0].FullName != "acme/gocalc" || repos[0].ProjectID != p.ID || repos[0].Project != "calc" {
+		t.Fatalf("the project's repository is not marked: %+v", repos[0])
+	}
+	if repos[1].ProjectID != "" || repos[1].Project != "" {
+		t.Fatalf("another repository is marked: %+v", repos[1])
+	}
+}

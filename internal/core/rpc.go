@@ -125,14 +125,13 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.DeleteProject(ctx, p.ID, p.ConfirmName)
 		}),
-		"github.status": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubAccountStatus(ctx), nil }),
-		"github.owners": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubOwners(ctx) }),
-		"github.repos": bind(func(ctx context.Context, p struct {
-			Owner string `json:"owner"`
-			Query string `json:"query"`
+		// github.status: whether gh is installed and signed in; an answer is kept a few seconds (F4) unless refresh asks gh again
+		"github.status": bind(func(ctx context.Context, p struct {
+			Refresh bool `json:"refresh"`
 		}) (any, error) {
-			return c.GitHubRepos(ctx, p.Owner, p.Query)
+			return c.CachedGitHubStatus(ctx, p.Refresh), nil
 		}),
+		"github.owners": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubOwners(ctx) }),
 		"github.cloneDir": bind(func(ctx context.Context, p struct {
 			// Default asks for the usual code folder (a new project's folder: CodeDir), not the folder last cloned into
 			Default bool `json:"default"`
@@ -147,6 +146,12 @@ func (c *Core) Methods() map[string]Method {
 			Dir  string `json:"dir"`
 		}) (any, error) {
 			return c.GitHubClone(ctx, p.Repo, p.Dir)
+		}),
+		// github.cloneCancel ends the running clone of a repository (B12): the clone answers that it was cancelled and keeps nothing
+		"github.cloneCancel": bind(func(ctx context.Context, p struct {
+			Repo string `json:"repo"`
+		}) (any, error) {
+			return map[string]bool{"cancelled": c.CancelClone(p.Repo)}, nil
 		}),
 		"github.issues": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`

@@ -20,6 +20,7 @@ import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 import { Done, Group, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
 import { exportKey, exportProjectId, pendingRows } from './data.ts';
 import { RuleCounts } from './rule-counts.tsx';
+import { ChooseSave, SavedFile } from '../shared/file-actions.tsx';
 
 const formCss = css({ display: 'grid', gap: t.s4 });
 const previewCss = css({
@@ -251,7 +252,12 @@ function ExportSection(handle: Handle) {
                 />
               ) : null}
               <Field label="Save to (optional full path; empty uses the exports folder in the Drydock data folder)">
-                {(id) => <input id={id} mix={[mono, on('input', (e) => ((dest = e.currentTarget.value), void handle.update()))]} value={dest} spellcheck={false} />}
+                {(id) => (
+                  <div mix={folderRow}>
+                    <input id={id} mix={[mono, on('input', (e) => ((dest = e.currentTarget.value), void handle.update()))]} value={dest} spellcheck={false} />
+                    <ChooseSave kind="project-export" dir={dest} testId="export-choose-save" onPick={(p) => ((dest = p), void handle.update())} />
+                  </div>
+                )}
               </Field>
               <div mix={formActions}>
                 <Button variant="primary" icon={FileDown} disabled={busy || (includeRuns && !ack)} mix={on('click', () => void runExport())}>
@@ -268,6 +274,7 @@ function ExportSection(handle: Handle) {
             </span>
           </Done>
         ) : null}
+        {result?.path ? <SavedFile path={result.path} testId="export-saved" /> : null}
       </Group>
     );
   };

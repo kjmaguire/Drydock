@@ -338,7 +338,7 @@ export function ConnectForm(
   let oauth: IntegrationOAuthSession | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pollGen = 0; // a poll answers only for the sign-in it was started for
-  const gh = query(handle, { load: () => s.client.githubStatus(), enabled: () => handle.props.kind === 'github' });
+  const gh = query(handle, { load: () => s.client.githubStatus(), enabled: () => handle.props.kind === 'github', when: (e) => e.type === 'github.sign_in_finished' });
   const stopPoll = () => {
     pollGen++;
     clearTimeout(timer);

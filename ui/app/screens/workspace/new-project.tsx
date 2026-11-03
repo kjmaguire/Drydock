@@ -20,6 +20,7 @@ import { Field } from '../../ui/form.tsx';
 import { Segmented } from '../../ui/segmented.tsx';
 import { t } from '../../ui/tokens.ts';
 import { FolderField } from '../project/folder-field.tsx';
+import { CloneProgress } from '../project/clone-progress.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
 import { currentCheck, folderProblem, initChosen } from '../project/wizard.ts';
 import { browserStore, defaultProjectName, newProjectFolder, newProjectSetup, type Where } from './start.ts';
@@ -180,11 +181,22 @@ export function NewProjectDialog(handle: Handle<{ open: boolean; where?: NewProj
                 onSelect={(r) => set(() => (clone = { ...clone, repo: r }))}
                 onCloneDir={(d) => set(() => (clone = { ...clone, cloneDir: d }))}
                 unavailableHint="Choose New folder or Open a folder instead."
+                onUseFolder={(path) => set(() => ((kind = 'folder'), (folder = { path, check: undefined, init: false })))}
+                onOpenProject={(id) => {
+                  s.workspace.selectProject(id);
+                  reset();
+                  handle.props.onClose();
+                  go(projectWorkHref());
+                }}
               />
             )}
             <ErrorNote error={act.error} what="Could not create the project" />
             <div class="acts">
-              {progress ? (
+              {progress && kind === 'clone' && clone.repo ? (
+                <span class="progress" data-testid="new-project-progress">
+                  <CloneProgress repo={clone.repo.fullName} />
+                </span>
+              ) : progress ? (
                 <span class="progress" role="status" data-testid="new-project-progress">
                   {progress}
                 </span>

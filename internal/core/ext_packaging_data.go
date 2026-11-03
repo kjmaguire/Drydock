@@ -105,6 +105,7 @@ func (p *packaging) export(ctx context.Context, r exportReq) (any, error) {
 		return nil, err
 	}
 	p.audit(ctx, "project.export", r.ProjectID, map[string]any{"file": filepath.Base(res.Path), "includeRuns": r.IncludeRuns, "redactions": res.Manifest.Scan.DBRedactions + res.Manifest.Scan.RunsRedactions})
+	p.c.written.add(res.Path)
 	p.c.publish(ctx, "project.exported", r.ProjectID, map[string]any{"file": filepath.Base(res.Path), "bytes": res.Size, "includeRuns": r.IncludeRuns})
 	return res, nil
 }
@@ -443,6 +444,7 @@ func (p *packaging) dataMethods(m map[string]Method) {
 		if st != nil {
 			size = st.Size()
 		}
+		p.c.written.add(dest)
 		p.audit(ctx, "supportbundle.create", filepath.Base(dest), map[string]any{"runIncluded": r.IncludeRun, "secretsRedacted": b.Report.TotalSecrets, "refused": len(b.Report.Refused), "replaced": replaced})
 		return map[string]any{"path": dest, "size": size, "replaced": replaced, "files": b.Files, "report": b.Report, "notice": supportbundle.Notice}, nil
 	})

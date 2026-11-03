@@ -22,6 +22,7 @@ import { Popover } from '../../ui/popover.tsx';
 import { Segmented } from '../../ui/segmented.tsx';
 import { t } from '../../ui/tokens.ts';
 import { FolderField } from '../project/folder-field.tsx';
+import { CloneProgress } from '../project/clone-progress.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
 import { cloneTarget, folderProblem, currentCheck, initChosen } from '../project/wizard.ts';
 import { DescribeAgent } from '../team/new-agent.tsx';
@@ -590,7 +591,11 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
               </>
             ) : null}
             <span mix={endCss}>
-              {progress ? (
+              {progress === 'Creating project…' && where.kind === 'clone' ? (
+                <span mix={progressCss} data-testid="start-progress">
+                  <CloneProgress repo={where.repo} />
+                </span>
+              ) : progress ? (
                 <span role="status" mix={progressCss} data-testid="start-progress">
                   {progress}
                 </span>
@@ -680,7 +685,21 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
         <Dialog open={dialog === 'clone'} title="Clone from GitHub" wide onClose={() => set(() => (dialog = ''))} testId="start-clone-dialog">
           {dialog === 'clone' ? (
             <div mix={dialogBody}>
-              <RepoPicker selected={clone.repo} cloneDir={clone.cloneDir} onSelect={(r) => set(() => (clone = { ...clone, repo: r }))} onCloneDir={(d) => set(() => (clone = { ...clone, cloneDir: d }))} unavailableHint="Choose New folder or Open a folder instead." />
+              <RepoPicker
+                selected={clone.repo}
+                cloneDir={clone.cloneDir}
+                onSelect={(r) => set(() => (clone = { ...clone, repo: r }))}
+                onCloneDir={(d) => set(() => (clone = { ...clone, cloneDir: d }))}
+                unavailableHint="Choose New folder or Open a folder instead."
+                onUseFolder={(path) => {
+                  dialog = '';
+                  choose({ kind: 'folder', path, init: false });
+                }}
+                onOpenProject={(projectId) => {
+                  dialog = '';
+                  choose({ kind: 'project', projectId });
+                }}
+              />
               <div class="acts">
                 <Button variant="secondary" mix={on('click', () => set(() => (dialog = '')))}>
                   Cancel

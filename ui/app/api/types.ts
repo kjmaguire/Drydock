@@ -159,6 +159,9 @@ export interface GitHubRepo {
   defaultBranch: string;
   htmlUrl: string;
   pushedAt: string;
+  /** The project whose origin remote this repository already is (B7): the picker offers it instead of a second clone. */
+  projectId?: string;
+  project?: string;
 }
 
 export interface CloneResult {

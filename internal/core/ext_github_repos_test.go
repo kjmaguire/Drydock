@@ -30,7 +30,10 @@ const (
 )
 
 type ghFixture struct {
-	Login string                   `json:"login"`
+	// Login is the signed-in account; empty answers /user with 401, as gh does when it is not signed in.
+	Login string `json:"login"`
+	// AuthLogin is the account `gh auth login` signs in (written into Login), for the sign-in's tests (F4).
+	AuthLogin string                   `json:"authLogin,omitempty"`
 	Repos map[string]ghFixtureRepo `json:"repos"`
 }
 
@@ -60,6 +63,19 @@ func ghStandIn() int {
 		fmt.Println("gh version 2.83.1 (2025-11-13)\nhttps://github.com/cli/cli/releases/tag/v2.83.1")
 		return 0
 	}
+	if len(args) == 2 && args[0] == "auth" && args[1] == "login" {
+		if fx.AuthLogin == "" {
+			fmt.Fprintln(os.Stderr, "stand-in gh: the sign-in was not finished")
+			return 1
+		}
+		fx.Login = fx.AuthLogin
+		b, _ := json.Marshal(fx)
+		if err := os.WriteFile(os.Getenv(ghStandInFixture), b, 0o644); err != nil {
+			return 2
+		}
+		fmt.Println("Logged in as " + fx.Login)
+		return 0
+	}
 	if len(args) == 0 || args[0] != "api" {
 		fmt.Fprintf(os.Stderr, "stand-in gh: unexpected %q\n", args)
 		return 2
@@ -85,6 +101,10 @@ func ghStandIn() int {
 	}
 	switch path {
 	case "/user":
+		if fx.Login == "" {
+			fmt.Printf("HTTP/2.0 401 Unauthorized\r\nContent-Type: application/json\r\n\r\n{\"message\":\"Requires authentication\"}")
+			return 1
+		}
 		return reply(fmt.Sprintf(`{"login":%q}`, fx.Login))
 	case "/graphql":
 		r, ok := fx.Repos[repo]

@@ -272,22 +272,24 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
-	var cmd *exec.Cmd
+	var exe string
+	var args []string
 	if c.cfg.GitHubCloneURL != nil {
-		cmd = exec.CommandContext(ctx, "git", "clone", "--quiet", c.cfg.GitHubCloneURL(fullName), dest)
+		exe, args = "git", []string{"clone", "--progress", c.cfg.GitHubCloneURL(fullName), dest}
 	} else {
 		if _, err := exec.LookPath("gh"); err != nil {
 			return CloneResult{}, errors.New("the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`")
 		}
-		cmd = exec.CommandContext(ctx, "gh", "repo", "clone", fullName, dest, "--", "--quiet")
+		exe, args = "gh", []string{"repo", "clone", fullName, dest, "--", "--progress"}
 	}
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GIT_TERMINAL_PROMPT=0", "NO_COLOR=1")
-	proc.Harden(cmd)
-	stderr := &proc.CapWriter{Max: 1 << 20}
-	cmd.Stderr = stderr
-	if err := cmd.Run(); err != nil {
+	msg, err := c.runClone(ctx, fullName, exe, args)
+	if err != nil {
 		_ = os.RemoveAll(dest) // a half-made clone would block the next try
-		msg := strings.TrimSpace(c.Scanner.Redact(stderr.String()))
+		if errors.Is(err, errCloneCancelled) {
+			c.publish(context.WithoutCancel(ctx), "github.clone_cancelled", "", map[string]any{"repo": fullName})
+			return CloneResult{}, fmt.Errorf("the clone of %s was cancelled: nothing was kept", fullName)
+		}
+		msg = strings.TrimSpace(c.Scanner.Redact(msg))
 		if len(msg) > 600 {
 			msg = msg[:600] + "..."
 		}
@@ -302,4 +304,42 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 	}
 	c.publish(ctx, "github.cloned", "", map[string]any{"repo": fullName})
 	return CloneResult{Path: root, DefaultBranch: branch}, nil
+}
+
+// ghStatusTTL is how long a github.status answer is reused (F4): the clone picker, the GitHub page and the pull-request page
+// each ask on open, and gh answers in about a second. The sign-in's end (github.sign_in_finished) drops it, and Check again
+// asks with refresh.
+const ghStatusTTL = 10 * time.Second
+
+// ghStatusCache is the last github.status answer and when it was read.
+type ghStatusCache struct {
+	mu sync.Mutex
+	st GitHubStatus
+	at time.Time
+}
+
+func (k *ghStatusCache) drop() {
+	k.mu.Lock()
+	k.at = time.Time{}
+	k.mu.Unlock()
+}
+
+// CachedGitHubStatus is GitHubAccountStatus, reused for ghStatusTTL unless refresh asks gh again. An answer GitHub did not give
+// in time (unreachable) is not kept.
+func (c *Core) CachedGitHubStatus(ctx context.Context, refresh bool) GitHubStatus {
+	k := &c.ghStatus
+	k.mu.Lock()
+	if !refresh && !k.at.IsZero() && time.Since(k.at) < ghStatusTTL {
+		st := k.st
+		k.mu.Unlock()
+		return st
+	}
+	k.mu.Unlock()
+	st := c.GitHubAccountStatus(ctx)
+	if !st.Unreachable && ctx.Err() == nil {
+		k.mu.Lock()
+		k.st, k.at = st, time.Now()
+		k.mu.Unlock()
+	}
+	return st
 }

@@ -3,12 +3,17 @@
 // folder dialog (Choose folder…), prefilled with the folder the person last cloned into (github.cloneDir, decision P143), and the
 // full path the clone makes shown under it. A repository can also be typed (owner/name or its address, W9), so a list GitHub will
 // not give (an organization that refuses the listing) is no dead end, and a list that failed has Try again. When gh is missing
-// or not signed in, it says so in the core's words. Used by Home's
+// it links to how to install it; when gh is not signed in, Sign in runs gh auth login in a terminal here (F4) and the list
+// follows. A repository that is already a project's origin says "Already a project: acme" with Open (B7), and the folder the
+// clone would make is checked as it is typed (repo.check): a repository already there offers "Use this folder", a folder with
+// files in it says the clone would be refused, before anything is started. Used by Home's
 // New project dialog and the start box's Clone from GitHub, and by Project settings (attach a repository).
 
-import { css, on, type Handle, type RemixNode } from 'remix/component';
+import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
 import { Lock, Search } from 'lucide';
+import type { RepoFolder } from '../../api/folderClient.ts';
 import type { GitHubRepo } from '../../api/types.ts';
+import { projectWorkHref } from '../../lib/project-work.ts';
 import { query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
@@ -18,6 +23,7 @@ import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
+import { GitHubSignIn } from '../shared/github-sign-in.tsx';
 import { cloneTarget, pushedAgo, typedRepo } from './wizard.ts';
 
 const wrapCss = css({ display: 'grid', gap: t.s3, minWidth: '0' });
@@ -59,7 +65,17 @@ const itemCss = css({
 const targetCss = css({ fontFamily: t.mono, fontSize: t.textSm, color: t.text, overflowWrap: 'anywhere' });
 
 export function RepoPicker(
-  handle: Handle<{ selected: GitHubRepo | undefined; cloneDir: string; onSelect: (r: GitHubRepo | undefined) => void; onCloneDir: (dir: string) => void; unavailableHint?: RemixNode }>,
+  handle: Handle<{
+    selected: GitHubRepo | undefined;
+    cloneDir: string;
+    onSelect: (r: GitHubRepo | undefined) => void;
+    onCloneDir: (dir: string) => void;
+    unavailableHint?: RemixNode;
+    /** The repository is already cloned at the target: use that folder instead (B7). Without it the picker only says so. */
+    onUseFolder?: (path: string) => void;
+    /** Open the project that already has this repository; without it the picker selects it and goes to its Work. */
+    onOpenProject?: (projectId: string) => void;
+  }>,
 ) {
   const s = services(handle);
   let owner = '';
@@ -73,7 +89,36 @@ export function RepoPicker(
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const listId = `repos-${handle.id}`;
 
-  const status = query(handle, { load: () => s.client.githubStatus() });
+  const status = query(handle, { load: () => s.client.githubStatus(), when: (e) => e.type === 'github.sign_in_finished' });
+  // what is at the folder the clone would make, asked a moment after the folder or the repository stops changing
+  let target: RepoFolder | undefined;
+  let asked = '';
+  let checkTimer: ReturnType<typeof setTimeout> | undefined;
+  handle.signal.addEventListener('abort', () => clearTimeout(checkTimer));
+  const checkTarget = (path: string) => {
+    if (path === asked) return;
+    asked = path;
+    clearTimeout(checkTimer);
+    target = undefined;
+    if (!path) return;
+    checkTimer = setTimeout(() => {
+      void Promise.resolve()
+        .then(() => s.client.repoCheck(path))
+        .then(
+          (c) => {
+            if (handle.signal.aborted || asked !== path) return;
+            target = c;
+            void handle.update();
+          },
+          () => undefined,
+        );
+    }, 300);
+  };
+  const openProject = (id: string) => {
+    if (handle.props.onOpenProject) return handle.props.onOpenProject(id);
+    s.workspace.selectProject(id);
+    void navigate(projectWorkHref()).catch(() => {});
+  };
   const signedIn = () => status.data?.loggedIn === true;
   const owners = query(handle, { load: () => s.client.githubOwners(), enabled: signedIn, key: () => signedIn() });
   const repos = query(handle, {
@@ -102,6 +147,14 @@ export function RepoPicker(
         <Notice tone="warn" title={st?.unreachable ? 'GitHub did not answer.' : st?.installed ? 'GitHub is not signed in.' : 'GitHub is not available.'} testId="github-unavailable">
           {st?.error ? <span>{st.error}. </span> : null}
           Cloning uses your own GitHub CLI sign-in, and Drydock stores no token for it. {unavailableHint ?? null}
+          {st?.installed && !st.unreachable ? <GitHubSignIn onDone={() => void status.reload()} /> : null}
+          {st && !st.installed ? (
+            <p style={{ margin: '0' }}>
+              <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="gh-install-link">
+                How to install gh
+              </a>
+            </p>
+          ) : null}
         </Notice>
       );
     }
@@ -112,7 +165,10 @@ export function RepoPicker(
     const ownerList = owners.data ?? [];
     const current = owner || ownerList[0] || '';
     const list = repos.data ?? [];
-    const target = cloneTarget(cloneDir, selected);
+    const targetPath = cloneTarget(cloneDir, selected);
+    checkTarget(targetPath);
+    const there = target && target.path === targetPath ? target : undefined;
+    const known = selected?.projectId ? selected : list.find((r) => r.fullName === selected?.fullName && r.projectId);
     const typedName = typedRepo(typed);
     const onTyped = (v: string) => {
       typed = v;
@@ -188,13 +244,26 @@ export function RepoPicker(
                     {r.fork ? <Badge tone="muted">fork</Badge> : null}
                   </span>
                   {r.description ? <span class="desc" title={r.description}>{r.description}</span> : null}
+                  {r.projectId ? (
+                    <span class="desc" data-testid="gh-repo-project">
+                      Already a project: {r.project || r.name}
+                    </span>
+                  ) : null}
                   <span class="when">{pushedAgo(r.pushedAt)}</span>
                 </span>
               </label>
             ))}
           </div>
         ) : null}
-        <Field label="Clone into" hint={target ? <span>Clones to <span mix={targetCss} data-testid="clone-target">{target}</span></span> : 'The folder the repository is cloned into (a new subfolder named after it).'}>
+        {known?.projectId ? (
+          <Notice tone="info" testId="repo-is-project">
+            {known.fullName} is already a project: {known.project || known.name}.{' '}
+            <Button type="button" size="sm" variant="secondary" data-testid="repo-open-project" mix={on('click', () => openProject(known.projectId!))}>
+              Open
+            </Button>
+          </Notice>
+        ) : null}
+        <Field label="Clone into" hint={targetPath ? <span>Clones to <span mix={targetCss} data-testid="clone-target">{targetPath}</span></span> : 'The folder the repository is cloned into (a new subfolder named after it).'}>
           {(id) => (
             <div mix={folderRow}>
               <input id={id} value={cloneDir} spellcheck={false} autocomplete="off" placeholder="C:\Users\you\source\repos" mix={on('input', (e) => onCloneDir(e.currentTarget.value))} />
@@ -202,6 +271,26 @@ export function RepoPicker(
             </div>
           )}
         </Field>
+        {there?.state === 'repository' ? (
+          <Notice tone="info" testId="clone-target-repo">
+            Already cloned here{there.branch ? ` (branch ${there.branch})` : ''}.{' '}
+            {handle.props.onUseFolder ? (
+              <Button type="button" size="sm" variant="secondary" data-testid="clone-use-folder" mix={on('click', () => handle.props.onUseFolder!(there.root || there.path))}>
+                Use this folder
+              </Button>
+            ) : (
+              'Choose another folder to clone again.'
+            )}
+          </Notice>
+        ) : there?.state === 'folder' && there.entries > 0 ? (
+          <Notice tone="warn" testId="clone-target-busy">
+            This folder has files in it, so the clone would be refused. Choose another folder to clone into.
+          </Notice>
+        ) : there && (there.state === 'no_branch' || there.state === 'not_folder') ? (
+          <Notice tone="warn" testId="clone-target-busy">
+            {there.message}
+          </Notice>
+        ) : null}
       </div>
     );
   };

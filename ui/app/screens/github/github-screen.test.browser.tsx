@@ -240,6 +240,7 @@ describe('GitHub on the Integrations page', () => {
     // repeat the core's sentence, and its gh button waits until gh is there
     expect(hero.textContent).toContain('GitHub CLI not found');
     expect(hero.textContent).toContain('Install it from cli.github.com');
+    expect(hero.querySelector('[data-testid="gh-sign-in"]')).toBeNull();
     const form = await find(r, '[data-testid="sync-connect"] form');
     expect(form.querySelector('[data-testid="gh-status"]')).toBeNull();
     expect(r.$('[data-testid="github-page"]')!.textContent!.includes('is not installed')).toBe(false);
@@ -262,14 +263,38 @@ describe('GitHub on the Integrations page', () => {
     await waitFor(() => expect(calls).toBe(before + 1), r);
   });
 
+  it('signs in with gh auth login in a terminal here and reads gh again when it finishes (F4)', async () => {
+    let signedIn = false;
+    const asked: (boolean | undefined)[] = [];
+    const signIns: number[] = [];
+    const r = show({
+      githubStatus: async (refresh?: boolean) => (asked.push(refresh), signedIn ? { installed: true, loggedIn: true, login: 'kyle' } : { installed: true, loggedIn: false, login: '' }),
+      githubSignIn: async () => (signIns.push(1), { id: 'term-gh' }) as never,
+      terminalRead: () => new Promise(() => {}),
+      terminalClose: async () => {},
+    });
+    const hero = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
+    await r.act(() => (hero.querySelector('[data-testid="gh-sign-in"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$('[data-testid="gh-sign-in-terminal"]')).toBeTruthy(), r);
+    expect(signIns.length).toBe(1);
+    signedIn = true;
+    r.s.emit({ type: 'github.sign_in_finished', data: { exitCode: 0, signedIn: true } });
+    await waitFor(() => expect(text(r, '[data-testid="gh-signin-state"]')).toContain('kyle'), r);
+    // Check again asks gh itself, past the core's kept answer
+    const n = asked.length;
+    await r.act(() => byText(r.$('[data-testid="access-gh"]')!, 'button', 'Check again').click());
+    await waitFor(() => expect(asked.slice(n)).toEqual([true]), r);
+  });
+
   it('tells "not signed in" from "GitHub did not answer"', async () => {
     const r = show({ githubStatus: async () => ({ installed: true, loggedIn: false, login: '', error: 'gh is not signed in: run `gh auth login`' }) });
     const hero = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
     expect(hero.textContent).toContain('gh is not signed in.');
     // the core's words only repeat the heading here, so the fix is said once
-    expect(hero.textContent).toContain('Run gh auth login in a terminal');
     expect(hero.textContent).not.toContain('gh is not signed in: run');
-    expect(hero.textContent).toContain("gh's own credentials never pass through Drydock");
+    expect(hero.textContent).toContain("Sign in with gh's own sign-in: its credentials never pass through Drydock.");
+    // F4: the fix is a button here, not a terminal of the person's own
+    expect(hero.querySelector('[data-testid="gh-sign-in"]')!.textContent).toBe('Sign in');
     expect(line(r, '[data-testid="gh-state"]')).toContain('Not signed in');
     cleanup();
     const u = show({ githubStatus: async () => ({ installed: true, loggedIn: false, unreachable: true, login: '', error: 'GitHub did not answer within 20 s' }) });

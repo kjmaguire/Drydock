@@ -32,6 +32,7 @@ import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
 import { newProjectHref } from '../../shell/new.ts';
 import { Switch } from '../../ui/form.tsx';
 import { rereadOnFocus } from '../../lib/focus.ts';
+import { GitHubSignIn } from '../shared/github-sign-in.tsx';
 
 const innerCss = css({ display: 'grid', gap: t.s6, width: '100%', minWidth: '0' });
 const heroCss = css({
@@ -162,7 +163,7 @@ function Hero(
               <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document>
                 cli.github.com <Icon icon={ExternalLink} size={11} />
               </a>{' '}
-              and run <code>gh auth login</code>. Pull requests and GitHub repositories need it.
+              then check again and sign in here (<code>gh auth login</code>). Pull requests and GitHub repositories need it.
             </p>
           </div>
           {check}
@@ -179,12 +180,9 @@ function Hero(
             <p mix={subCss}>
               {/* the core's reason, unless it only says what the heading says */}
               {st.error && !/not signed in/i.test(st.error) ? `${st.error.replace(/\.$/, '')}. ` : ''}
-              {st.unreachable ? 'gh may well be signed in; check again in a moment.' : (
-                <>
-                  Run <code>gh auth login</code> in a terminal: gh&apos;s own credentials never pass through Drydock.
-                </>
-              )}
+              {st.unreachable ? 'gh may well be signed in; check again in a moment.' : "Sign in with gh's own sign-in: its credentials never pass through Drydock."}
             </p>
+            {st.unreachable ? null : <GitHubSignIn onDone={onCheck} />}
           </div>
           {check}
         </>
@@ -505,7 +503,7 @@ function Repositories(handle: Handle<{ onRunCI?: (repo: string) => void }>) {
   let refresh = false;
   const q = query(handle, {
     load: () => s.client.githubProjectRepos(refresh),
-    when: (e) => e.type.startsWith('project.') || e.type === 'github.cloned',
+    when: (e) => e.type.startsWith('project.') || e.type === 'github.cloned' || e.type === 'github.sign_in_finished',
     debounceMs: 300,
   });
   const again = async () => {
@@ -630,12 +628,26 @@ function syncStateText(c: IntegrationView | undefined): string {
  */
 export function GitHubDetail(handle: Handle) {
   const s = services(handle);
-  const gh = query(handle, { load: () => s.client.githubStatus() });
+  // Check again and the window's focus ask gh itself (refresh), past the few seconds the core keeps an answer; a sign-in's end
+  // (github.sign_in_finished, F4) reads the answer the core has just asked for
+  let refresh = false;
+  const gh = query(handle, {
+    load: () => s.client.githubStatus(refresh),
+    when: (e) => e.type === 'github.sign_in_finished',
+  });
   const conns = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
   const kinds = query(handle, { load: () => s.client.integrationKinds() });
   const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
   const runners = query(handle, { load: () => s.client.runnersGet(), when: (e) => e.type === 'runners.changed', debounceMs: 150 });
-  const check = () => void gh.reload();
+  const recheck = async () => {
+    refresh = true;
+    try {
+      await gh.reload();
+    } finally {
+      refresh = false;
+    }
+  };
+  const check = () => void recheck();
   // a Repositories row's "Run its CI on this PC": Add a runner opens with that repository chosen
   let runRequest: { repo: string; n: number } | undefined;
   const runCI = (repo: string) => {
@@ -644,7 +656,7 @@ export function GitHubDetail(handle: Handle) {
   };
   // a gh sign-in or install done in a terminal publishes no event: read the status again when the window gets focus back, at
   // most once a minute and not while a check is on its way
-  rereadOnFocus({ reload: () => gh.reload(), busy: () => gh.loading, signal: handle.signal });
+  rereadOnFocus({ reload: () => recheck(), busy: () => gh.loading, signal: handle.signal });
   return () => {
     const cards = vendors(KINDS, gallery.data ?? []).find((v) => v.key === 'github')?.cards ?? [];
     const conn = conns.data ? tileState(conns.data, 'github') : undefined;

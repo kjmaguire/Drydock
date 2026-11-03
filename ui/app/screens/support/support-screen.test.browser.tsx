@@ -99,6 +99,29 @@ describe('SupportScreen', () => {
     expect(creates).toEqual([{ eventLimit: undefined, includeRun: undefined, dest: undefined, acknowledgeRun: false }]);
     expect(tid(r.container, 'bundle-created').textContent).toContain('not been uploaded');
     expect(tid(r.container, 'bundle-created').textContent).toContain('2 files');
+    // A11: the path is not left to select by mouse: Copy path is always there
+    expect(tid(r.container, 'bundle-saved').querySelector('[data-testid="saved-copy"]')!.textContent).toBe('Copy path');
+  });
+
+  it('chooses where to save with the Save dialog and shows the bundle in its folder (A11)', async () => {
+    const creates: { dest?: string }[] = [];
+    const shown: string[] = [];
+    const r = show({
+      fsFolderHints: async () => ({ canPick: false, windows: true, devDrives: [], canPickSave: true, canReveal: true }),
+      fsPickSave: async () => 'E:\\bugs\\drydock-support.zip',
+      fsReveal: async (p: string) => void shown.push(p),
+      supportbundlePreview: async () => bundlePreview(),
+      supportbundleCreate: async (o) => (creates.push(o), { path: 'E:\\bugs\\drydock-support.zip', size: 4000, files: bundlePreview().files, report: bundlePreview().report, notice: 'x' }),
+    });
+    await previewed(r);
+    const choose = await waitFor(() => tid(r.container, 'bundle-choose-save') as HTMLButtonElement, r);
+    await r.act(() => choose.click());
+    await waitFor(() => expect((byLabel(r.container, 'Save to (optional full path; empty uses the support folder in the Drydock data folder)') as HTMLInputElement).value).toBe('E:\\bugs\\drydock-support.zip'), r);
+    await r.act(() => btn(r.container, 'Create the bundle').click());
+    const showBtn = await waitFor(() => tid(r.container, 'saved-show') as HTMLButtonElement, r);
+    expect(creates[0]!.dest).toBe('E:\\bugs\\drydock-support.zip');
+    await r.act(() => showBtn.click());
+    await waitFor(() => expect(shown).toEqual(['E:\\bugs\\drydock-support.zip']), r);
   });
 
   it('makes including a run opt-in: shows the scan result first and needs an acknowledgement', async () => {

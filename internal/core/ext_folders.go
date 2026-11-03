@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/runners"
@@ -45,6 +46,24 @@ func init() {
 				}
 				return map[string]string{"path": path}, nil
 			}),
+			// fs.pickSave opens the window's Save dialog for one of saveKinds (A11): "" when the person cancelled
+			"fs.pickSave": bind(func(ctx context.Context, p struct {
+				Kind string `json:"kind"`
+				// Dir is the path in the field: the dialog opens at its folder and suggests its name
+				Dir string `json:"dir"`
+			}) (any, error) {
+				path, err := c.PickSave(ctx, p.Kind, p.Dir, c.Human())
+				if err != nil {
+					return nil, err
+				}
+				return map[string]string{"path": path}, nil
+			}),
+			// fs.reveal shows a file this run wrote (a support bundle, a project export) in the file manager, selected (A11)
+			"fs.reveal": bind(func(ctx context.Context, p struct {
+				Path string `json:"path"`
+			}) (any, error) {
+				return nil, c.RevealFile(ctx, p.Path, c.Human())
+			}),
 			"fs.folderHints": bind(func(ctx context.Context, _ struct{}) (any, error) { return x.hints(ctx), nil }),
 			"repo.check": bind(func(ctx context.Context, p struct {
 				Path string `json:"path"`
@@ -69,7 +88,11 @@ type foldersExt struct {
 type FolderHints struct {
 	CanPick bool `json:"canPick"`
 	// CanPickFile says the window also has a file dialog (fs.pickFile).
-	CanPickFile    bool            `json:"canPickFile"`
+	CanPickFile bool `json:"canPickFile"`
+	// CanPickSave says the window has a Save dialog (fs.pickSave), CanReveal that it can show a file in the file manager
+	// (fs.reveal).
+	CanPickSave    bool            `json:"canPickSave"`
+	CanReveal      bool            `json:"canReveal"`
 	Windows        bool            `json:"windows"`
 	DevDrives      []runners.Drive `json:"devDrives"`
 	DevDriveReason string          `json:"devDriveReason,omitempty"`
@@ -77,7 +100,7 @@ type FolderHints struct {
 
 func (x *foldersExt) hints(ctx context.Context) FolderHints {
 	dev := x.c.devDrives(ctx)
-	h := FolderHints{CanPick: x.c.cfg.PickFolder != nil, CanPickFile: x.c.cfg.PickFile != nil, Windows: runtime.GOOS == "windows", DevDrives: dev.Drives, DevDriveReason: dev.Reason}
+	h := FolderHints{CanPick: x.c.cfg.PickFolder != nil, CanPickFile: x.c.cfg.PickFile != nil, CanPickSave: x.c.cfg.PickSave != nil, CanReveal: x.c.cfg.Reveal != nil, Windows: runtime.GOOS == "windows", DevDrives: dev.Drives, DevDriveReason: dev.Reason}
 	if h.DevDrives == nil {
 		h.DevDrives = []runners.Drive{}
 	}
@@ -134,6 +157,86 @@ func (c *Core) PickFolder(ctx context.Context, title, dir, by string) (string, e
 // refused, so the dialog only ever offers what a page of Drydock reads.
 var fileKinds = map[string]FilePick{
 	"project-archive": {Title: "Choose a project archive", FilterName: "Drydock project archives", FilterPattern: "*.drydock-project.zip"},
+	"license":         {Title: "Choose a license file", FilterName: "Drydock licenses", FilterPattern: "*.drydock-license"},
+}
+
+// saveKinds are the files a page may ask the window's Save dialog to name (A11): the dialog's title, suggested name and
+// filter. A kind not here is refused.
+var saveKinds = map[string]SavePick{
+	"support-bundle": {Title: "Save the support bundle", Name: "drydock-support.zip", FilterName: "Zip archives", FilterPattern: "*.zip"},
+	"project-export": {Title: "Save the project export", Name: "project.drydock-project.zip", FilterName: "Drydock project archives", FilterPattern: "*.drydock-project.zip"},
+}
+
+// PickSave opens the window's Save dialog for one of saveKinds and returns the file the person named ("" when they cancelled).
+// The dialog opens at the folder of dir (the path in the field) and suggests its name. Only a person may; nothing is written:
+// the page sends the path with its own request, which checks it as a typed one.
+func (c *Core) PickSave(ctx context.Context, kind, dir, by string) (string, error) {
+	pick, ok := saveKinds[kind]
+	if !ok {
+		return "", fmt.Errorf("there is no Save dialog for %q", kind)
+	}
+	if c.cfg.PickSave == nil {
+		return "", errors.New("this window cannot open a Save dialog: type the file's full path instead")
+	}
+	if !isHuman(by) {
+		return "", errors.New("only a person may choose where to save")
+	}
+	if d := cleanFolderArg(dir); d != "" && filepath.IsAbs(d) {
+		if base := filepath.Base(d); strings.Contains(base, ".") {
+			pick.Name = base
+			d = filepath.Dir(d)
+		}
+		pick.Dir = existingFolder(d)
+	}
+	path, err := c.cfg.PickSave(ctx, pick)
+	if err != nil {
+		return "", fmt.Errorf("the Save dialog: %w", err)
+	}
+	return strings.TrimSpace(path), nil
+}
+
+// writtenFiles is the files this run wrote for the person (a support bundle, a project export): the only paths fs.reveal
+// shows, so a page cannot open the file manager anywhere it names.
+type writtenFiles struct {
+	mu    sync.Mutex
+	paths map[string]bool
+}
+
+func (w *writtenFiles) add(path string) {
+	if path == "" {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.paths == nil {
+		w.paths = map[string]bool{}
+	}
+	w.paths[filepath.Clean(path)] = true
+}
+
+func (w *writtenFiles) has(path string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.paths[filepath.Clean(path)]
+}
+
+// RevealFile shows path in the file manager with the file selected. Only a person may, only for a file this run wrote and that
+// is still there.
+func (c *Core) RevealFile(ctx context.Context, path, by string) error {
+	if c.cfg.Reveal == nil {
+		return errors.New("this window cannot show a folder: copy the path instead")
+	}
+	if !isHuman(by) {
+		return errors.New("only a person may open a folder")
+	}
+	path = strings.TrimSpace(path)
+	if path == "" || strings.ContainsAny(path, "\x00\r\n") || !filepath.IsAbs(path) || !c.written.has(path) {
+		return errors.New("Drydock shows only a file it saved for you in this session")
+	}
+	if st, err := os.Stat(path); err != nil || st.IsDir() {
+		return fmt.Errorf("%s is no longer there", path)
+	}
+	return c.cfg.Reveal(ctx, filepath.Clean(path))
 }
 
 // PickFile opens the window's file dialog for one of fileKinds and returns the file the person chose ("" when they cancelled).

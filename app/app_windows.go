@@ -150,7 +150,23 @@ func Run(assets fs.FS) error {
 			d = d.AttachToWindow(window)
 		}
 		return dialogResult(d.PromptForSingleSelection())
-	}, PickFolder: func(_ context.Context, p core.FolderPick) (string, error) {
+	}, PickSave: func(_ context.Context, p core.SavePick) (string, error) {
+		// the window's own Save dialog (a support bundle's or a project export's "Save to", A11); "" when the person cancels
+		if wa == nil {
+			return "", fmt.Errorf("the window is not open yet")
+		}
+		d := wa.Dialog.SaveFile().SetMessage(p.Title).CanCreateDirectories(true).SetFilename(p.Name)
+		if p.FilterPattern != "" {
+			d = d.AddFilter(p.FilterName, p.FilterPattern)
+		}
+		if p.Dir != "" {
+			d = d.SetDirectory(p.Dir)
+		}
+		if window != nil {
+			d = d.AttachToWindow(window)
+		}
+		return dialogResult(d.PromptForSingleSelection())
+	}, Reveal: reveal, PickFolder: func(_ context.Context, p core.FolderPick) (string, error) {
 		// the window's own folder dialog (a new project's "Choose folder...", decision P58); "" when the person cancels
 		if wa == nil {
 			return "", fmt.Errorf("the window is not open yet")

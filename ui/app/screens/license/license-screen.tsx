@@ -16,6 +16,8 @@ import { Page } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { Callout, confirmRow, DangerZone, Done, Group, intro, panel, Row, settingsColumn } from '../settings/settings-kit.tsx';
 import { clockNote, daysLabel, daysText, messageCarriesClockNote, READONLY_OFF, READONLY_USABLE, stateText, stateTone } from './license.ts';
+import { ChooseFile } from '../shared/file-actions.tsx';
+import { folderRow } from '../shared/choose-folder.tsx';
 
 const headCss = css({
   display: 'flex',
@@ -286,13 +288,16 @@ export function LicenseScreen(handle: Handle) {
                 </Field>
                 <Field label="Or a license file path">
                   {(id) => (
-                    <input
-                      id={id}
-                      mix={[mono, on('input', (e) => ((path = e.currentTarget.value), void handle.update()))]}
-                      value={path}
-                      placeholder="C:\Users\you\Downloads\drydock.drydock-license"
-                      spellcheck={false}
-                    />
+                    <div mix={folderRow}>
+                      <input
+                        id={id}
+                        mix={[mono, on('input', (e) => ((path = e.currentTarget.value), void handle.update()))]}
+                        value={path}
+                        placeholder="C:\Users\you\Downloads\drydock.drydock-license"
+                        spellcheck={false}
+                      />
+                      <ChooseFile kind="license" testId="license-choose-file" onPick={(p) => ((path = p), void handle.update())} />
+                    </div>
                   )}
                 </Field>
                 <div mix={formActions}>

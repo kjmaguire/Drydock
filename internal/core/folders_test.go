@@ -313,3 +313,72 @@ func TestNewFolderStartsWhereCodeIsKept(t *testing.T) {
 		t.Fatalf("without a Dev Drive or a project: %q", dir)
 	}
 }
+
+// A11: Save to's "Choose..." opens the window's Save dialog for a kind Drydock writes (its filter and suggested name, at the
+// folder in the field), and "Show in folder" shows only a file this run wrote for the person (a support bundle here), never a
+// path a page names.
+func TestSaveDialogAndShowInFolder(t *testing.T) {
+	var asked core.SavePick
+	var shown []string
+	field := t.TempDir()
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		// TEST DOUBLES: the Save dialog and File Explorer
+		PickSave: func(_ context.Context, p core.SavePick) (string, error) {
+			asked = p
+			return filepath.Join(field, "picked.zip"), nil
+		},
+		Reveal: func(_ context.Context, path string) error {
+			shown = append(shown, path)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var h core.FolderHints
+	a.call("fs.folderHints", struct{}{}, &h)
+	if !h.CanPickSave || !h.CanReveal {
+		t.Fatalf("%+v", h)
+	}
+	var got map[string]string
+	a.call("fs.pickSave", map[string]string{"kind": "support-bundle", "dir": filepath.Join(field, "mine.zip")}, &got)
+	if got["path"] != filepath.Join(field, "picked.zip") || asked.FilterPattern != "*.zip" || asked.Name != "mine.zip" || asked.Dir != field {
+		t.Fatalf("%v %+v", got, asked)
+	}
+	if err := a.callErr("fs.pickSave", map[string]string{"kind": "anything"}); err == nil || !strings.Contains(err.Error(), "no Save dialog") {
+		t.Fatalf("an unknown kind: %v", err)
+	}
+	if _, err := c.PickSave(context.Background(), "support-bundle", "", "agent:agt_1"); err == nil {
+		t.Fatal("an agent opened the Save dialog")
+	}
+	// a file Drydock did not write is not shown
+	other := filepath.Join(field, "other.txt")
+	os.WriteFile(other, []byte("x"), 0o644)
+	if err := a.callErr("fs.reveal", map[string]string{"path": other}); err == nil || !strings.Contains(err.Error(), "only a file it saved") {
+		t.Fatalf("revealed a file Drydock did not write: %v", err)
+	}
+	var bundle struct {
+		Path string `json:"path"`
+	}
+	a.call("supportbundle.create", map[string]any{}, &bundle)
+	if bundle.Path == "" {
+		t.Fatal("no bundle")
+	}
+	a.call("fs.reveal", map[string]string{"path": bundle.Path}, nil)
+	if len(shown) != 1 || shown[0] != bundle.Path {
+		t.Fatalf("shown %v", shown)
+	}
+	if err := c.RevealFile(context.Background(), bundle.Path, "agent:agt_1"); err == nil {
+		t.Fatal("an agent opened a folder")
+	}
+	// the license file has a dialog kind of its own
+	b := open(t, "")
+	if err := b.callErr("fs.pickFile", map[string]string{"kind": "license"}); err == nil || !strings.Contains(err.Error(), "type the file's full path") {
+		t.Fatalf("license kind without a dialog: %v", err)
+	}
+	if err := b.callErr("fs.reveal", map[string]string{"path": bundle.Path}); err == nil || !strings.Contains(err.Error(), "copy the path") {
+		t.Fatalf("without Explorer: %v", err)
+	}
+}

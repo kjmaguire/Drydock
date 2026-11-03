@@ -88,6 +88,14 @@ type Config struct {
 	// app sets it (app/app_windows.go); without it a person types a full path instead. The e2e harness sets a labelled
 	// stand-in.
 	PickFile func(ctx context.Context, p FilePick) (string, error)
+	// PickSave opens the window's own Save dialog and returns the file the person named ("" when they cancelled): a support
+	// bundle's or a project export's "Save to" (A11). The desktop app sets it (app/app_windows.go); without it a person types a
+	// full path instead.
+	PickSave func(ctx context.Context, p SavePick) (string, error)
+	// Reveal shows a file in Windows' file manager with the file selected ("Show in folder", A11). The core only passes a path
+	// it wrote itself in this run (a support bundle, a project export). The desktop app sets it (app/app_windows.go); without
+	// it the page offers Copy path alone.
+	Reveal func(ctx context.Context, path string) error
 	// PickFolder opens the window's own folder dialog and returns the folder the person chose ("" when they cancelled): the
 	// new project's "Choose folder..." (decision P58). The desktop app sets it (app/app_windows.go); without it a person types
 	// the path. The e2e harness sets a labelled stand-in.
@@ -143,6 +151,15 @@ type FilePick struct {
 	FilterPattern string // semicolon-separated globs, for example "*.exe"
 }
 
+// SavePick is what a Save dialog asks for.
+type SavePick struct {
+	Title         string
+	Dir           string // the folder the dialog opens at ("" lets the system choose)
+	Name          string // the file name it suggests
+	FilterName    string
+	FilterPattern string
+}
+
 // FolderPick is what a folder dialog asks for.
 type FolderPick struct {
 	Title string
@@ -157,7 +174,10 @@ type Core struct {
 	// folderSync is held for writing while Sync now checks that no agent works in a project's folder and fast-forwards it
 	// (ext_reposync.go), and for reading while a chat claims its turn (chats.Deps.HoldFolders): a turn cannot start in between.
 	folderSync  sync.RWMutex
-	fwdCache    forwardCache // what sandbox.forward.list last asked the engine, for a few seconds
+	fwdCache    forwardCache  // what sandbox.forward.list last asked the engine, for a few seconds
+	clones      cloneRuns     // the clones running now, for github.cloneCancel (B12)
+	ghStatus    ghStatusCache // the last github.status answer, for a few seconds (F4)
+	written     writtenFiles  // the files this run wrote for the person, the only ones fs.reveal shows (A11)
 	DB          *storage.DB
 	Bus         *events.SQLBus
 	Tasks       *tasks.Service

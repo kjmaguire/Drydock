@@ -2,6 +2,7 @@
 // GitHub account through their own `gh` (status, owners, repos, clone), the built-in MCP catalog and the prebuilt agents.
 // Like the rest of the client: no behavior beyond turning Go's nil slices into empty arrays.
 
+import type { TerminalInfo } from './dockClient.ts';
 import type { Transport } from './transport.ts';
 import type {
   CloneResult,
@@ -30,7 +31,12 @@ export interface SetupClient {
   /** Once per project: a repository is never swapped. */
   projectAttachRepo(id: string, repoPath: string): Promise<Project>;
   projectSetBrief(id: string, brief: string): Promise<Project>;
-  githubStatus(): Promise<GitHubStatus>;
+  /** Whether gh is installed and signed in; the core keeps an answer a few seconds unless `refresh` asks gh again (F4). */
+  githubStatus(refresh?: boolean): Promise<GitHubStatus>;
+  /** Runs the person's own `gh auth login` in a terminal (F4); github.sign_in_finished follows when it ends. */
+  githubSignIn(): Promise<TerminalInfo>;
+  /** Ends the running clone of a repository (B12); false when none runs. */
+  githubCloneCancel(repo: string): Promise<boolean>;
   /** The signed-in account first, then its organizations. */
   githubOwners(): Promise<string[]>;
   githubRepos(owner?: string, query?: string): Promise<GitHubRepo[]>;
@@ -84,7 +90,9 @@ export function createSetupClient(t: Transport): SetupClient {
     },
     projectAttachRepo: (id, repoPath) => t.call('project.attachRepo', { id, repoPath }),
     projectSetBrief: (id, brief) => t.call('project.setBrief', { id, brief }),
-    githubStatus: () => t.call('github.status', {}),
+    githubStatus: (refresh) => t.call('github.status', refresh ? { refresh: true } : {}),
+    githubSignIn: () => t.call<TerminalInfo>('github.signIn', {}),
+    githubCloneCancel: async (repo) => (await t.call<{ cancelled?: boolean } | null>('github.cloneCancel', { repo }))?.cancelled === true,
     githubOwners: async () => arr(await t.call<string[] | null>('github.owners', {})),
     githubRepos: async (owner = '', query = '') => arr(await t.call<GitHubRepo[] | null>('github.repos', { owner, query })),
     githubCloneDir: async (usual) => (await t.call<string | null>('github.cloneDir', usual ? { default: true } : {})) ?? '',
