@@ -136,7 +136,8 @@ test('a support bundle on Windows: preview, then create, scrubbed', async () => 
   const u = new URL(page.url());
   u.pathname = '/support';
   await page.goto(u.toString());
-  await page.getByRole('button', { name: 'Preview the bundle', exact: true }).click();
+  // the page previews the bundle by itself when it opens (X57, P145): no button to press
+  await expect(page.getByTestId('bundle-preview')).toHaveAttribute('data-fresh', 'true', { timeout: 60_000 });
   await expect(page.getByText('summary.json').first()).toBeVisible({ timeout: 60_000 });
   await page.getByRole('button', { name: 'Create the bundle', exact: true }).click();
   await expect(page.getByTestId('bundle-path')).toContainText('drydock-support-', { timeout: 60_000 });
