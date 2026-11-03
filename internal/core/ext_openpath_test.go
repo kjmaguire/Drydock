@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
 // "Reveal in Explorer" and "Open in your editor" (effort review X26): the shell is handed only a project's folder or a file confined
@@ -124,5 +125,74 @@ func TestOpenPathHelpers(t *testing.T) {
 	})
 	if len(found) != 2 || found[0].ID != "zed" || found[1].ID != "sublime" {
 		t.Fatalf("found %+v", found)
+	}
+}
+
+// A task whose worktree folder was removed (after the merge, tasks.worktree still names it) is not opened as the project's main
+// repository: shell.openPath refuses it with a path or without, and task.get says the worktree is gone so the page hides the menu.
+func TestOpenPathRefusesATaskWhoseWorktreeWasRemoved(t *testing.T) {
+	var opened []core.PathOpen
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		// TEST DOUBLES: the shell that starts Explorer or an editor, and PATH holding only VS Code's command
+		OpenPath: func(_ context.Context, p core.PathOpen) error { opened = append(opened, p); return nil },
+		LookPath: func(name string) (string, error) {
+			if name == "code" {
+				return `C:\Program Files\Microsoft VS Code\bin\code.cmd`, nil
+			}
+			return "", errors.New("not found")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	p, _ := a.setup("gocalc")
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "make Subtract return a - b"}, &task)
+
+	// no worktree yet: nothing opens either
+	if err := a.callErr("shell.openPath", map[string]any{"taskId": task.ID, "with": "explorer"}); err == nil {
+		t.Fatal("a task without a worktree opened the repository")
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(wt, "calc.go"), []byte("package calc\n"), 0o644)
+	if _, err := c.DB.Writer().Exec(`UPDATE tasks SET worktree=? WHERE id=?`, wt, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	var d core.TaskDetail
+	a.call("task.get", map[string]string{"id": task.ID}, &d)
+	if d.WorktreeGone {
+		t.Fatal("the worktree is there but task.get says it is gone")
+	}
+	var got map[string]bool
+	a.call("shell.openPath", map[string]any{"taskId": task.ID, "with": "explorer"}, &got)
+	if len(opened) != 1 || opened[0] != (core.PathOpen{Path: wt, With: "explorer"}) {
+		t.Fatalf("opened %+v", opened)
+	}
+
+	// the merge removes the folder; tasks.worktree still names it
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+	a.call("task.get", map[string]string{"id": task.ID}, &d)
+	if !d.WorktreeGone || d.Task.Worktree != wt {
+		t.Fatalf("after the removal: gone %v, worktree %q", d.WorktreeGone, d.Task.Worktree)
+	}
+	for _, b := range []map[string]any{
+		{"taskId": task.ID, "with": "explorer"},
+		{"taskId": task.ID, "with": "editor", "editor": "vscode"},
+		{"taskId": task.ID, "path": "calc.go", "with": "explorer"},
+	} {
+		err := a.callErr("shell.openPath", b)
+		if err == nil || !strings.Contains(err.Error(), "no worktree any more") {
+			t.Errorf("%v: %v", b, err)
+		}
+	}
+	if len(opened) != 1 {
+		t.Fatalf("the shell was asked to open %+v", opened[1:])
 	}
 }

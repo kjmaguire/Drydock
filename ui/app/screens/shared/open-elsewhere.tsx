@@ -9,7 +9,7 @@ import type { EditorList, OpenPathReq } from '../../api/shellClient.ts';
 import { services } from '../../state/services.tsx';
 import { MoreMenu, type MenuItem } from '../../ui/menu.tsx';
 
-/** shell.editors is asked once per client: the editors on a computer do not change while Drydock runs. */
+/** shell.editors is asked once per client (until it answers): the editors on a computer do not change while Drydock runs. */
 const editorsOf = new WeakMap<object, Promise<EditorList>>();
 
 /** A path inside a folder as the folder writes paths ("C:\w\a\b.go" for "a/b.go" in "C:\w"). */
@@ -32,10 +32,16 @@ export function OpenElsewhere(handle: Handle<{ where: OpenWhere; /** The absolut
   let list: EditorList = { available: false, editors: [] };
   let p = editorsOf.get(s.client);
   if (!p) {
-    // a core that cannot say is one that cannot open anything: Copy path stays
-    p = Promise.resolve()
-      .then(() => s.client.shellEditors())
-      .catch((): EditorList => ({ available: false, editors: [] }));
+    // a core that cannot say is one that cannot open anything: Copy path stays. Only an answer is kept: a failed read (the core
+    // restarting) is asked again by the next menu
+    const client = s.client;
+    const asked: Promise<EditorList> = Promise.resolve()
+      .then(() => client.shellEditors())
+      .catch((): EditorList => {
+        if (editorsOf.get(client) === asked) editorsOf.delete(client);
+        return { available: false, editors: [] };
+      });
+    p = asked;
     editorsOf.set(s.client, p);
   }
   void p.then((v) => {

@@ -575,8 +575,8 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
             >
               Open the worktree <kbd>O</kbd>
             </Button>
-            {/* Explorer, an editor, Copy path (X26) */}
-            {task.worktree ? <OpenElsewhere where={{ taskId: task.id }} fullPath={task.worktree} label="More ways to open the worktree" testId="worktree-open" /> : null}
+            {/* Explorer, an editor, Copy path (X26): only while the worktree folder is there */}
+            {task.worktree && !d.worktreeGone ? <OpenElsewhere where={{ taskId: task.id }} fullPath={task.worktree} label="More ways to open the worktree" testId="worktree-open" /> : null}
           </div>
           {isTerminal(task.status) ? null : (
             <Menu

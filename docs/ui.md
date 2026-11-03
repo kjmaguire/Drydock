@@ -386,14 +386,17 @@ terminal in the task's worktree, else the project's repository, when none of the
 the dock reopening on the tab it was left on starts nothing, and a failed open shows its error once and is not retried. Each shell
 carries the project (and, in a worktree, the task) it opened for (`projectId`, `taskId`); the panel shows the current project's and
 folds the others under **Other projects (N)**, or under **Other terminals (N)** when a Connection's sign-in is among them (X213). Beside
-Open the worktree, beside Sync now on Work's repository line, and in the head of a changed file in the Diff viewer (while the worktree
-is there and the file is not deleted), **More ways to open** (`screens/shared/open-elsewhere.tsx`, X26) offers **Reveal in Explorer**
+Open the worktree (while its folder is there: task.get's `worktreeGone` hides it once the merge removed the folder), beside Sync now
+on Work's repository line, and in the head of a changed file in the Diff viewer (while the worktree is there and the file is not
+deleted), **More ways to open** (`screens/shared/open-elsewhere.tsx`, X26) offers **Reveal in Explorer**
 (Open in Explorer for a folder), **Open in** each code editor the core found on PATH (`shell.editors`: an allowlist of VS Code,
 Cursor, Windsurf, Zed, Sublime Text and Notepad++) and **Copy path** (the absolute path, "Path copied" once the clipboard took it).
-`shell.openPath {taskId | projectId, path?, with, editor?}` resolves the folder as a terminal does, keeps a file inside it (no `..`,
+`shell.openPath {taskId | projectId, path?, with, editor?}` resolves the folder as a terminal does (a task whose worktree is not
+there is refused, never opened as the project's repository), keeps a file inside it (no `..`,
 no absolute path, no symbolic link on the way), and hands Explorer or the found editor that one path (`Config.OpenPath`,
 `app/openpath_windows.go`); a path with characters cmd.exe reads is not handed to an editor whose command is a `.cmd`. Nothing of
-the path goes into an event. A window that cannot start a program (the browser harness) offers Copy path alone. **Unverified on
+the path goes into an event. A window that cannot start a program (the browser harness) offers Copy path alone; `shell.editors` is asked once per client, and a
+failed read is asked again by the next menu. **Unverified on
 Windows:** Explorer's `/select,` and the editors started from the desktop app (the e2e harness has a stand-in that starts nothing).
 **Unverified on Windows:** ConPTY behaviour, PowerShell as the default
 shell (pwsh when installed), the job assignment race for children started in the first instant.

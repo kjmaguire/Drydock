@@ -125,8 +125,10 @@ func (c *Core) OpenPath(ctx context.Context, r OpenPathReq, by string) error {
 	if err != nil {
 		return err
 	}
-	if r.TaskID != "" && owner.TaskID == "" && r.Path != "" {
-		return errors.New("the task has no worktree any more")
+	// a task whose worktree is not there (never made, or removed after the merge) falls back to the project's repository in
+	// terminalDir: here that would open the base checkout as if it were the task's, so it is refused, with a path or without
+	if r.TaskID != "" && owner.TaskID == "" {
+		return errors.New("the task has no worktree any more: its folder was removed or never made")
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return errors.New("the folder is not there any more")

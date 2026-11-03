@@ -81,6 +81,28 @@ describe('More ways to open (X26)', () => {
     expect(none.$('button')).toBeNull();
   });
 
+  it('asks the core again after a failed read, and keeps the answer once it comes', async () => {
+    let n = 0;
+    const s = testServices({
+      shellEditors: async () => {
+        n++;
+        if (n === 1) throw new Error('the core is restarting');
+        return { available: true, editors: [{ id: 'vscode', name: 'Visual Studio Code' }] };
+      },
+    });
+    const r = mount(<OpenElsewhere where={{ projectId: 'p1' }} fullPath={'C:\\code\\gocalc'} />, s);
+    await settle(r);
+    expect(labels(await openItems(r, 'More ways to open'))).toEqual(['Copy path']);
+    cleanup();
+    const back = mount(<OpenElsewhere where={{ projectId: 'p1' }} fullPath={'C:\\code\\gocalc'} />, s);
+    await settle(back);
+    expect(labels(await openItems(back, 'More ways to open'))).toEqual(['Open in Explorer', 'Open in Visual Studio Code', 'Copy path']);
+    cleanup();
+    const third = mount(<OpenElsewhere where={{ projectId: 'p1' }} fullPath={'C:\\code\\gocalc'} />, s);
+    await settle(third);
+    expect(n).toBe(2);
+  });
+
   it('joins a path as the folder writes paths', () => {
     expect(joinPath('C:\\w\\t1', 'internal/calc.go')).toBe('C:\\w\\t1\\internal\\calc.go');
     expect(joinPath('/home/w/t1', 'internal/calc.go')).toBe('/home/w/t1/internal/calc.go');

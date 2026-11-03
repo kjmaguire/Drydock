@@ -195,6 +195,12 @@ describe('Open the worktree (O)', () => {
     expect(s.ui.takeTerminalAsk()).toBe(undefined);
   });
 
+  it('offers no way to open a worktree whose folder was removed after the merge', async () => {
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => running({ worktreeGone: true }) }));
+    await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', /^Open the worktree/), r);
+    expect(r.$('[data-testid="worktree-open"]')).toBeNull();
+  });
+
   it('is off before the task has a worktree, and O does nothing', async () => {
     const s = svc({ taskGet: async () => detail() });
     const r = mount(<TaskDetailScreen id="t1" />, s);

@@ -394,6 +394,9 @@ type TaskDetail struct {
 	// PRReview is a collaborator's change request on GitHub that arrived while the task's review and merge waited (H12): the
 	// decision card offers to send the task back with it; absent otherwise.
 	PRReview *PRReviewNote `json:"prReview,omitempty"`
+	// WorktreeGone says the task names a worktree whose folder is not there any more (removed after the merge): the task page then
+	// offers no way to open it outside Drydock (X26). Absent while the folder is there or the task has none.
+	WorktreeGone bool `json:"worktreeGone,omitempty"`
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -403,6 +406,7 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 		return TaskDetail{}, err
 	}
 	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}, Sandboxed: c.sandboxSwitch(ctx, t.ProjectID).Enabled}
+	d.WorktreeGone = t.Worktree != "" && !worktreeExists(t)
 	if t.Status == tasks.Failed || t.Status == tasks.Cancelled {
 		d.RunAgainWhy = runAgainRefusal(t)
 		d.RunAgain = d.RunAgainWhy == ""

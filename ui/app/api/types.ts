@@ -704,6 +704,8 @@ export interface TaskDetail {
   sandboxed?: boolean;
   /** A collaborator's change request on GitHub that arrived while the review and merge waited (H12, core.PRReviewNote). */
   prReview?: PRReviewNote;
+  /** The task names a worktree whose folder is not there any more (removed after the merge): nothing offers to open it outside Drydock (X26). Absent otherwise. */
+  worktreeGone?: boolean;
 }
 
 /**
