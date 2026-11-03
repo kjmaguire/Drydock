@@ -109,7 +109,7 @@ test('every page that left the sidebar opens from Settings and by its old addres
   ];
   for (const [path, id, url] of old) {
     await page.goto(at(path));
-    await expect(page).toHaveURL(url ?? new RegExp(`${path.replace(/\//g, '\\/')}$`));
+    await expect(page).toHaveURL(url ?? new RegExp(`${path.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}$`));
     await expect(rail(page).getByTestId(id)).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('#main h1').first()).toBeVisible();
   }
