@@ -83,15 +83,31 @@ func TestCLICheckCoversWSLInstallsInUse(t *testing.T) {
 	if _, err := a.c.DB.Writer().Exec(`UPDATE agents SET run_mode='wsl', wsl_distro='Ubuntu' WHERE id=?`, ag.ID); err != nil {
 		t.Fatal(err)
 	}
+	want := connections.WSLKey("claude", "Ubuntu")
+	if inUse := core.ConnectionsInUse(a.c, t.Context()); len(inUse) != 1 || inUse[0] != want {
+		t.Fatalf("in use %v, want only the install inside Ubuntu", inUse)
+	}
+	// The check itself needs the distro: where this host's WSL lists distros and Ubuntu is not one of them (a Windows runner),
+	// there is nothing to check and the Windows claude is not checked in its place.
 	used := a.c.CheckCLIs(t.Context(), "test")
 	keys := map[string]bool{}
 	for _, c := range used {
 		keys[c.Key] = true
 	}
-	if !keys[connections.WSLKey("claude", "Ubuntu")] || keys["claude"] || len(used) != 1 {
+	if keys["claude"] || len(used) > 1 {
 		t.Fatalf("checked %v, want only the install inside Ubuntu", keys)
 	}
-	if _, ok := a.c.Connections.Last()[connections.WSLKey("claude", "Ubuntu")]; !ok {
+	if _, err := a.c.Connections.CheckKey(t.Context(), want); err != nil {
+		if len(used) != 0 {
+			t.Fatalf("checked %v although the distro cannot be checked here: %v", keys, err)
+		}
+		t.Logf("this host cannot check the install inside Ubuntu (%v); only the keys in use were proved", err)
+		return
+	}
+	if !keys[want] {
+		t.Fatalf("checked %v, want the install inside Ubuntu", keys)
+	}
+	if _, ok := a.c.Connections.Last()[want]; !ok {
 		t.Fatal("the WSL check was not kept for the Inbox")
 	}
 }

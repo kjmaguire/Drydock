@@ -198,3 +198,6 @@ func SetCLICheckFirst(d time.Duration) func() {
 func (c *Core) TestPublish(typ string, data []byte) {
 	_, _ = c.Bus.Publish(context.Background(), events.Event{Type: typ, Data: data})
 }
+
+// ConnectionsInUse is the Connection keys CheckCLIs checks once agents or chats exist (connectionsInUse).
+func ConnectionsInUse(c *Core, ctx context.Context) []string { return c.connectionsInUse(ctx) }
