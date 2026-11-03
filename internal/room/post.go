@@ -463,17 +463,21 @@ func (s *Service) noteDecisions(ctx context.Context, from Room, msgs []Message) 
 				return
 			}
 		}
-		title := firstNonEmpty(m.PayloadString("title"), firstLine(m.Body, 120))
-		where := "#" + from.Name
-		if from.Kind == KindDM {
-			where = "a direct message"
-		}
 		verb := "recorded"
 		if m.PayloadString("status") == "accepted" {
 			verb = "accepted"
 		}
+		// a direct message or group is private to the people in it, and agents that are members of #decisions read this
+		// channel: the line says only that a decision was taken there, never its title
+		body := fmt.Sprintf("A decision was %s in #%s: %s", verb, from.Name, firstNonEmpty(m.PayloadString("title"), firstLine(m.Body, 120)))
+		switch from.Kind {
+		case KindDM:
+			body = fmt.Sprintf("A decision was %s in a direct message.", verb)
+		case KindGroup:
+			body = fmt.Sprintf("A decision was %s in a group conversation.", verb)
+		}
 		if _, err := s.Post(ctx, PostParams{RoomID: target.ID, Type: TypeSystem, Author: System,
-			Body:    fmt.Sprintf("A decision was %s in %s: %s", verb, where, title),
+			Body:    body,
 			Payload: map[string]any{"event": "decision_elsewhere", "room": from.ID, "message_id": m.ID, "status": m.PayloadString("status")}}); err != nil {
 			s.report(fmt.Errorf("decisions channel: %w", err))
 		}

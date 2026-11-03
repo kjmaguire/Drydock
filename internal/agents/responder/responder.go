@@ -990,6 +990,9 @@ type Turn struct {
 	// turn from before replies were routed (P63).
 	Model      string `json:"model,omitempty"`
 	DecisionID string `json:"decisionId,omitempty"`
+	// Askable says the turn's trigger is a message the person wrote (not a steer), so Ask (room.reply with an agent) takes it:
+	// in a chain a later turn's trigger is another agent's reply, which an agent is never asked to answer (X12).
+	Askable bool `json:"askable"`
 }
 
 // Turns lists a room's agent turns, newest first.
@@ -1000,7 +1003,9 @@ func (r *Responder) Turns(ctx context.Context, roomID string, limit int) ([]Turn
 	rows, err := r.d.DB.Reader().QueryContext(ctx, `SELECT id,room_id,trigger_id,agent_id,round,reason,mode,status,message_id,agent_run_id,context_msgs,context_tokens,
 		input_tokens,output_tokens,cost_usd,error,started_at,ended_at,
 		COALESCE((SELECT d.model FROM routing_decisions d WHERE d.run_id=room_turns.id ORDER BY d.ts DESC, d.rowid DESC LIMIT 1),''),
-		COALESCE((SELECT d.id FROM routing_decisions d WHERE d.run_id=room_turns.id ORDER BY d.ts DESC, d.rowid DESC LIMIT 1),'')
+		COALESCE((SELECT d.id FROM routing_decisions d WHERE d.run_id=room_turns.id ORDER BY d.ts DESC, d.rowid DESC LIMIT 1),''),
+		COALESCE((SELECT m.author LIKE 'human:%' AND m.type='CHAT' AND COALESCE(json_extract(m.payload,'$.via'),'')<>'steer'
+			FROM messages m WHERE m.id=room_turns.trigger_id),0)
 		FROM room_turns WHERE room_id=? ORDER BY started_at DESC, rowid DESC LIMIT ?`, roomID, limit)
 	if err != nil {
 		return nil, err
@@ -1010,7 +1015,7 @@ func (r *Responder) Turns(ctx context.Context, roomID string, limit int) ([]Turn
 	for rows.Next() {
 		var t Turn
 		if err := rows.Scan(&t.TurnID, &t.RoomID, &t.TriggerID, &t.AgentID, &t.Round, &t.Reason, &t.Mode, &t.Status, &t.MessageID, &t.AgentRunID, &t.ContextMsgs, &t.ContextTokens,
-			&t.InputTokens, &t.OutputTokens, &t.CostUSD, &t.Error, &t.Started, &t.Ended, &t.Model, &t.DecisionID); err != nil {
+			&t.InputTokens, &t.OutputTokens, &t.CostUSD, &t.Error, &t.Started, &t.Ended, &t.Model, &t.DecisionID, &t.Askable); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

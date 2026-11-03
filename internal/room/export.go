@@ -577,23 +577,31 @@ type RoomADRCandidate struct {
 	TaskID   string `json:"taskId,omitempty"`
 	// MessageID is the newest message of the candidate (the DECISION as it stands).
 	MessageID string `json:"messageId"`
+	// Archived says the room is archived: a task room whose task closed, kept in the list so its ADR can still be written.
+	Archived bool `json:"archived,omitempty"`
 }
 
-// ProjectADRCandidates returns the ADR candidates of every room of a project that is not archived (X110), the rooms in the
-// order ListRooms gives and each room's candidates in seq order. Read-only.
+// ProjectADRCandidates returns the ADR candidates of the project's rooms (X110), the rooms in the order ListRooms gives and
+// each room's candidates in seq order. A task room stays in the list when its task closes and the room is archived, since
+// writing the ADR is most useful then; another archived room does not. This list is the person's view on the room tab (no
+// agent reads it), so a direct message's decisions are in it; the #decisions channel's SYSTEM line, which agents can read,
+// never carries their title (noteDecisions). Read-only.
 func (s *Service) ProjectADRCandidates(ctx context.Context, projectID string) ([]RoomADRCandidate, error) {
-	rooms, err := s.ListRooms(ctx, projectID, false)
+	rooms, err := s.ListRooms(ctx, projectID, true)
 	if err != nil {
 		return nil, err
 	}
 	out := []RoomADRCandidate{}
 	for _, r := range rooms {
+		if r.Archived && r.Kind != KindTask {
+			continue
+		}
 		cs, err := s.ADRCandidates(ctx, r.ID, 0, 0)
 		if err != nil {
 			return nil, err
 		}
 		for _, c := range cs {
-			rc := RoomADRCandidate{ADRCandidate: c, RoomID: r.ID, RoomName: r.Name, RoomKind: r.Kind, TaskID: r.TaskID}
+			rc := RoomADRCandidate{ADRCandidate: c, RoomID: r.ID, RoomName: r.Name, RoomKind: r.Kind, TaskID: r.TaskID, Archived: r.Archived}
 			if n := len(c.SourceMessageIDs); n > 0 {
 				rc.MessageID = c.SourceMessageIDs[n-1]
 			}

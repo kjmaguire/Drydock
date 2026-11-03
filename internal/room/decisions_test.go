@@ -66,6 +66,70 @@ func TestDecisionsShowUpInTheDecisionsChannel(t *testing.T) {
 	e.noErrs()
 }
 
+// A decision taken in a task room stays in the #decisions list after the task closes and its room is archived, marked
+// archived, so the ADR can still be made from it (X110 review).
+func TestATaskRoomsDecisionStaysListedAfterTheTaskCloses(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.svc.EnsureDefaultChannels(e.ctx, e.project, kyle); err != nil {
+		t.Fatal(err)
+	}
+	r, err := e.svc.CreateTaskChannel(e.ctx, TaskChannelSpec{ProjectID: e.project, TaskID: "task_12", Number: 12, Title: "Login", Owner: e.agent("Ada"), CreatedBy: kyle})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.post(PostParams{RoomID: r.ID, Type: TypeDecision, Author: kyle, Body: "Use sessions, not JWT", Payload: map[string]any{"title": "Sessions"}})
+	if err := e.svc.ArchiveTaskChannel(e.ctx, "task_12", "COMPLETED"); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := e.svc.ProjectADRCandidates(e.ctx, e.project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cs) != 1 || cs[0].Title != "Sessions" || cs[0].RoomID != r.ID || !cs[0].Archived {
+		t.Fatalf("candidates after the task closed: %+v", cs)
+	}
+	e.noErrs()
+}
+
+// A decision in a direct message puts a line in #decisions without its title: agents that are members of #decisions read the
+// channel, and never read a direct message (X110 review). The person's own list still shows it.
+func TestADirectMessagesDecisionIsNotCopiedIntoDecisions(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.svc.EnsureDefaultChannels(e.ctx, e.project, kyle); err != nil {
+		t.Fatal(err)
+	}
+	dm, err := e.svc.CreateDM(e.ctx, e.project, kyle, Agent(e.agent("Ada")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.post(PostParams{RoomID: dm.ID, Type: TypeDecision, Author: kyle, Body: "Rotate the staging DB password on Friday", Payload: map[string]any{"title": "Rotate the staging DB password on Friday"}})
+	rooms, err := e.svc.ListRooms(e.ctx, e.project, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rooms {
+		if r.Name != DecisionsChannel {
+			continue
+		}
+		var n int
+		for _, m := range e.messagesOf(r) {
+			if strings.Contains(m.Body, "staging") {
+				t.Fatalf("the title reached #decisions: %q", m.Body)
+			}
+			if m.PayloadString("event") == "decision_elsewhere" {
+				n++
+				if m.Body != "A decision was recorded in a direct message." {
+					t.Fatalf("line: %q", m.Body)
+				}
+			}
+		}
+		if n != 1 {
+			t.Fatalf("%d lines", n)
+		}
+	}
+	e.noErrs()
+}
+
 // When a task's room closes, its minutes are kept by rule (X19): one export of kind minutes, scope system:task-archive and the
 // task id as receipt, made once however often the room is archived, verifiable against the messages, listed with the room's
 // exports.

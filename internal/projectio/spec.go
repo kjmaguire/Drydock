@@ -93,7 +93,7 @@ var Tables = []Table{
 		Skipped: map[string]string{"event_seq": why_busSeq}},
 	{Name: "room_turns", Where: `project_id=@p`,
 		Columns: []string{"id", "room_id", "project_id", "trigger_id", "agent_id", "round", "reason", "mode", "status", "message_id", "agent_run_id",
-			"context_msgs", "context_tokens", "input_tokens", "output_tokens", "cost_usd", "error", "started_at", "ended_at"}, Import: importTurn},
+			"context_msgs", "context_tokens", "input_tokens", "output_tokens", "cost_usd", "error", "started_at", "ended_at", "ask"}, Import: importTurn},
 	{Name: "tasks", Where: `project_id=@p`, OrderBy: `seq`,
 		Columns: []string{"id", "project_id", "seq", "title", "description", "status", "priority", "assignee", "reviewer", "template", "files", "acceptance",
 			"branch", "base_branch", "iteration", "max_iterations", "review_feedback", "verdict", "model", "effort", "cost_usd", "issue_ref", "origin", "pr_ref",

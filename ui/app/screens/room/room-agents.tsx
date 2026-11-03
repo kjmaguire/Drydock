@@ -400,8 +400,8 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                       <td>
                         {tr.status}
                         {tr.error ? `: ${tr.error}` : ''}
-                        {/* a turn that gave no answer: the person can ask that agent again (X12), a new turn on the same message */}
-                        {NO_ANSWER_STATUSES.has(tr.status) && askableAgents(handle.props.members).includes(tr.agentId) && !list.some((x) => x.triggerId === tr.triggerId && x.agentId === tr.agentId && x.startedAt > tr.startedAt) ? (
+                        {/* a turn on the person's message that gave no answer: the person can ask that agent again (X12), a new turn on the same message */}
+                        {NO_ANSWER_STATUSES.has(tr.status) && tr.askable && askableAgents(handle.props.members).includes(tr.agentId) && !list.some((x) => x.triggerId === tr.triggerId && x.agentId === tr.agentId && x.startedAt > tr.startedAt) ? (
                           <Button
                             variant="link"
                             size="sm"

@@ -140,7 +140,8 @@ ORDER BY x.created_at, x.seq LIMIT `+fmt.Sprint(MentionItemCap), projectID, proj
 // replyItems are the agents' answers to a person not read yet (X18): per room the person is in, the newest agent CHAT after the
 // person's read cursor that replies to one of the person's own messages, one item per room. A muted room makes none (its
 // messages raise nothing but a mention by name, which is a mention item). The item goes when the room is read (MarkRead moves
-// the cursor past it) or the person marks it done; a later answer is a new item.
+// the cursor past it) or the person marks it done; a later answer is a new item. An answer that mentions the person by name is
+// the mention item, never a reply item too, also once that mention is marked done (or beyond the mention cap).
 func (s *Service) replyItems(ctx context.Context, projectID string) ([]NeedsYouItem, error) {
 	rows, err := s.db.Reader().QueryContext(ctx, `
 SELECT x.id, x.room_id, x.body, x.task_id, x.author, x.created_at, r.project_id, r.kind, r.name
@@ -149,9 +150,10 @@ JOIN messages x ON x.id = (SELECT y.id FROM messages y JOIN messages p ON p.id =
                            WHERE y.room_id = m.room_id AND y.seq > m.last_read_seq AND y.type = 'CHAT'
                              AND y.author NOT LIKE 'human:%' AND y.author NOT LIKE 'tool:%' AND y.author <> 'system'
                              AND p.author = m.member_id
+                             AND NOT EXISTS (SELECT 1 FROM json_each(y.mentions) j WHERE json_extract(j.value, '$.id') = m.member_id)
                            ORDER BY y.seq DESC LIMIT 1)
 WHERE m.kind = 'human' AND m.state <> 'muted' AND r.archived = 0 AND (? = '' OR r.project_id = ?)
-  AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key = 'reply:' || x.id)
+  AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key IN ('reply:' || x.id, 'mention:' || x.id))
 ORDER BY x.created_at, x.seq LIMIT `+fmt.Sprint(MentionItemCap), projectID, projectID)
 	if err != nil {
 		return nil, err

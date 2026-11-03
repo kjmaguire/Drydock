@@ -16,12 +16,24 @@ describe('asking an agent to answer (X12)', () => {
   });
 
   it('offers Ask again on the lines of a turn that gave no answer, for that agent and message', () => {
-    expect(askAgainOf(sys({ reply_to_id: 'm1', payload: { code: 'agent_turn_failed', agent_id: 'a1' } }))).toEqual({ messageId: 'm1', agentId: 'a1' });
-    expect(askAgainOf(sys({ type: 'SYSTEM', reply_to_id: 'm1', payload: { code: 'agent_turn_interrupted', agent_id: 'a1' } }))).toEqual({ messageId: 'm1', agentId: 'a1' });
-    expect(askAgainOf(sys({ reply_to_id: 'm1', payload: { code: 'empty_reply', agent_id: 'a1' } }))).toEqual({ messageId: 'm1', agentId: 'a1' });
-    expect(askAgainOf(sys({ reply_to_id: 'm1', payload: { code: 'replies_off' } }))).toBeUndefined();
-    expect(askAgainOf(sys({ payload: { code: 'agent_turn_failed', agent_id: 'a1' } }))).toBeUndefined();
-    expect(askAgainOf(sys({ author: { kind: 'tool', id: 'lint' }, reply_to_id: 'm1', payload: { code: 'agent_turn_failed', agent_id: 'a1' } }))).toBeUndefined();
+    const person = sys({ id: 'm1', type: 'CHAT', author: { kind: 'human', id: 'kyle' } });
+    const of = (id: string) => (id === 'm1' ? person : undefined);
+    expect(askAgainOf(sys({ reply_to_id: 'm1', payload: { code: 'agent_turn_failed', agent_id: 'a1' } }), of)).toEqual({ messageId: 'm1', agentId: 'a1' });
+    expect(askAgainOf(sys({ type: 'SYSTEM', reply_to_id: 'm1', payload: { code: 'agent_turn_interrupted', agent_id: 'a1' } }), of)).toEqual({ messageId: 'm1', agentId: 'a1' });
+    expect(askAgainOf(sys({ reply_to_id: 'm1', payload: { code: 'empty_reply', agent_id: 'a1' } }), of)).toEqual({ messageId: 'm1', agentId: 'a1' });
+    expect(askAgainOf(sys({ reply_to_id: 'm1', payload: { code: 'replies_off' } }), of)).toBeUndefined();
+    expect(askAgainOf(sys({ payload: { code: 'agent_turn_failed', agent_id: 'a1' } }), of)).toBeUndefined();
+    expect(askAgainOf(sys({ author: { kind: 'tool', id: 'lint' }, reply_to_id: 'm1', payload: { code: 'agent_turn_failed', agent_id: 'a1' } }), of)).toBeUndefined();
+  });
+
+  it("does not offer Ask again on a chained turn, whose trigger is another agent's reply", () => {
+    const ada = sys({ id: 'm2', type: 'CHAT', author: { kind: 'agent', id: 'a1' }, reply_to_id: 'm1' });
+    const steer = sys({ id: 'm3', type: 'CHAT', author: { kind: 'human', id: 'kyle' }, payload: { via: 'steer' } });
+    const of = (id: string) => (id === 'm2' ? ada : id === 'm3' ? steer : undefined);
+    expect(askAgainOf(sys({ reply_to_id: 'm2', payload: { code: 'agent_turn_failed', agent_id: 'a2' } }), of)).toBeUndefined();
+    expect(askAgainOf(sys({ reply_to_id: 'm3', payload: { code: 'agent_turn_failed', agent_id: 'a2' } }), of)).toBeUndefined();
+    // a message that is not loaded is not known to be the person's: no button rather than one that fails
+    expect(askAgainOf(sys({ reply_to_id: 'm9', payload: { code: 'agent_turn_failed', agent_id: 'a2' } }), of)).toBeUndefined();
   });
 
   it('asks agents that are not muted, about the newest message the person wrote', () => {

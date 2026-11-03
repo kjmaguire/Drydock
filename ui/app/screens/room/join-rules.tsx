@@ -1,6 +1,6 @@
 // The project's join rules on a room's tab (decision P130, room-protocol s10 (c); X17): one summary line per agent that joins task
-// rooms by rule, in words, with Change opening that agent's editor, where the rule is set (Joins task rooms: never, every task,
-// or tasks that touch a folder of the repository). The rules belong to the crew, not to a room, so the room only says them.
+// rooms by rule, in words naming every folder it joins by, with Change opening that agent's editor, where the rules are set
+// (Joins task rooms: never, every task, or tasks that touch one or more folders of the repository). The rules belong to the crew, not to a room, so the room only says them.
 
 import { css, type Handle } from 'remix/component';
 import type { Agent } from '../../api/types.ts';
@@ -8,7 +8,7 @@ import { query, services } from '../../state/services.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { tightList } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { joinChoiceOf, joinWords } from '../team/join-choice.ts';
+import { joinWords } from '../team/join-choice.ts';
 import { routes } from '../../routes.ts';
 
 const cardCss = css({
@@ -43,7 +43,7 @@ export function JoinRules(handle: Handle<{ projectId: string; agents: readonly A
           <ul mix={tightList}>
             {withRule.map((id) => (
               <li key={id} mix={rowCss} data-testid="join-rule">
-                <span class="what">{joinWords(name(id), joinChoiceOf(list, id))}</span>
+                <span class="what">{joinWords(name(id), list, id)}</span>
                 <a href={`${routes.team.href()}?edit=${encodeURIComponent(id)}`} aria-label={`Change the join rule of ${name(id)}`}>
                   Change
                 </a>

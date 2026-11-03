@@ -8,15 +8,28 @@ import type { Message, RoomMember } from '../../api/types.ts';
 /** The codes of the lines that say an agent's turn on a person's message gave no answer: each offers Ask again. */
 export const ASK_AGAIN_CODES: ReadonlySet<string> = new Set(['agent_turn_failed', 'agent_turn_interrupted', 'empty_reply', 'agent_turn_stopped']);
 
-/** The turn statuses that gave no answer: the turns table offers Ask again on them. */
+/** The turn statuses that gave no answer: the turns table offers Ask again on them when the turn's trigger is the person's. */
 export const NO_ANSWER_STATUSES: ReadonlySet<string> = new Set(['failed', 'empty', 'interrupted', 'stopped']);
 
-/** The person's message and the agent a SYSTEM or ERROR line is about, when the line offers Ask again; undefined otherwise. */
-export function askAgainOf(m: Pick<Message, 'type' | 'author' | 'reply_to_id' | 'payload'>): { messageId: string; agentId: string } | undefined {
+/** Whether a message is one the person wrote and an agent can be asked to answer (not a steer to a running task agent). */
+export function isAskableMessage(m: Pick<Message, 'type' | 'author' | 'payload'> | undefined): boolean {
+  return !!m && m.author.kind === 'human' && m.type === 'CHAT' && m.payload?.via !== 'steer';
+}
+
+/**
+ * The person's message and the agent a SYSTEM or ERROR line is about, when the line offers Ask again; undefined otherwise.
+ * In a chain a turn's trigger is often another agent's reply, and the core asks an agent about a person's message only, so
+ * the line offers Ask again only when the message it answers is loaded and is the person's (messageOf looks it up).
+ */
+export function askAgainOf(
+  m: Pick<Message, 'type' | 'author' | 'reply_to_id' | 'payload'>,
+  messageOf: (id: string) => Pick<Message, 'type' | 'author' | 'payload'> | undefined,
+): { messageId: string; agentId: string } | undefined {
   if (m.author.kind !== 'system' || (m.type !== 'SYSTEM' && m.type !== 'ERROR') || !m.reply_to_id) return undefined;
   const code = typeof m.payload?.code === 'string' ? m.payload.code : '';
   const agentId = typeof m.payload?.agent_id === 'string' ? m.payload.agent_id : '';
   if (!ASK_AGAIN_CODES.has(code) || !agentId) return undefined;
+  if (!isAskableMessage(messageOf(m.reply_to_id))) return undefined;
   return { messageId: m.reply_to_id, agentId };
 }
 
@@ -29,7 +42,7 @@ export function askableAgents(members: readonly RoomMember[]): string[] {
 export function newestHumanMessage(msgs: readonly Pick<Message, 'id' | 'author' | 'type' | 'payload'>[]): string | undefined {
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i]!;
-    if (m.author.kind === 'human' && m.type === 'CHAT' && m.payload?.via !== 'steer') return m.id;
+    if (isAskableMessage(m)) return m.id;
   }
   return undefined;
 }

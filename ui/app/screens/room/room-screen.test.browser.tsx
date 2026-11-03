@@ -66,6 +66,9 @@ describe('Conversation', () => {
       msg({ seq: 1, body: 'first question' }),
       msg({ seq: 2, type: 'ERROR', author: { kind: 'system', id: 'system' }, reply_to_id: 'm1', body: 'Backend #1 could not answer: the turn failed', payload: { code: 'agent_turn_failed', agent_id: 'agt1' } }),
       msg({ seq: 3, body: 'how should we store sessions?' }),
+      // a chained turn failed: its trigger is an agent's reply (m4), which an agent is never asked to answer, so no Ask again
+      msg({ seq: 4, author: { kind: 'agent', id: 'agt2' }, reply_to_id: 'm1', body: '@Backend #1 can you check?' }),
+      msg({ seq: 5, type: 'ERROR', author: { kind: 'system', id: 'system' }, reply_to_id: 'm4', body: 'Backend #1 could not answer: the turn failed', payload: { code: 'agent_turn_failed', agent_id: 'agt1' } }),
     ];
     const s = servicesWith({
       ...roomMessagesDouble(() => messages),
@@ -83,6 +86,8 @@ describe('Conversation', () => {
     // an ask that gave no answer says so in words
     await waitFor(() => expect(q(r, '[data-testid="room-ask-why"]')?.textContent ?? q(r, '[data-testid="room-ask-note"]')?.textContent).toBeTruthy(), r);
     // the failed turn's line offers Ask again, for that agent on that message
+    // only the line about a turn on the person's message offers it, not the chained turn's line
+    expect(qa(r, '[data-testid="msg-ask-again"]').length).toBe(1);
     const again = q(r, '[data-testid="msg-ask-again"]')!;
     expect(again.textContent).toBe('Ask Backend #1 again');
     await r.act(() => again.click());

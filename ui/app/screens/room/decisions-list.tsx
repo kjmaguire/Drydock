@@ -63,6 +63,7 @@ export function RoomDecisions(handle: Handle<{ room: Room }>) {
                   {everywhere ? (
                     <a class="where" href={routes.room.href({ id: d.roomId })}>
                       in {decisionWhere(d)}
+                      {d.archived ? ' (task closed)' : ''}
                     </a>
                   ) : null}
                   <span class="row">

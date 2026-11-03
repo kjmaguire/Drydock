@@ -29,7 +29,7 @@ describe('RoomDecisions (X110)', () => {
   it("lists every room's decisions in #decisions with where each was taken, and makes an ADR task in one click", async () => {
     const made: TaskCreateReq[] = [];
     const s = testServices({
-      roomDecisions: async () => [dec({}), dec({ title: 'Cache with Redis', status: 'accepted', roomId: 'r2', roomName: 'task-3', roomKind: 'task', messageId: 'm7' })],
+      roomDecisions: async () => [dec({}), dec({ title: 'Cache with Redis', status: 'accepted', roomId: 'r2', roomName: 'task-3', roomKind: 'task', messageId: 'm7', archived: true })],
       taskCreate: async (req: TaskCreateReq) => (made.push(req), { id: 't44', seq: 44 }) as never,
     });
     const r = mount(<RoomDecisions room={decisions} />, s);
@@ -41,6 +41,8 @@ describe('RoomDecisions (X110)', () => {
     expect(rows[0]!.textContent).toContain('Sessions in SQLite');
     expect(rows[0]!.querySelector('a.where')!.textContent).toBe('in #general');
     expect(rows[1]!.textContent).toContain('accepted');
+    // a closed task's room is archived; its decision stays listed, marked so
+    expect(rows[1]!.querySelector('a.where')!.textContent).toBe('in #task-3 (task closed)');
     await r.act(() => (rows[0]!.querySelector('[data-testid="room-decision-make-task"]') as HTMLElement).click());
     await waitFor(() => expect(made.map((m) => [m.projectId, m.title, m.labels])).toEqual([['p1', 'ADR: Sessions in SQLite', ['adr']]]), r);
     const link = await waitFor(() => r.$('[data-testid="room-decision-task"]')!, r);

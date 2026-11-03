@@ -73,6 +73,19 @@ func TestAnAgentsAnswerToThePersonIsAnInboxItemUntilRead(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("%d items for one message", n)
 	}
+	// marking the mention done does not bring the same message back as an answer
+	if err := e.svc.AckNeedsYou(e.ctx, "mention:"+m.ID, kyle); err != nil {
+		t.Fatal(err)
+	}
+	items, err = e.svc.NeedsYou(e.ctx, e.project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if it.MessageID == m.ID {
+			t.Fatalf("the mention marked done came back: %+v", it)
+		}
+	}
 	// a muted room makes no reply item
 	if err := e.svc.SetMemberState(e.ctx, r.ID, kyle, StateMuted, kyle); err != nil {
 		t.Fatal(err)

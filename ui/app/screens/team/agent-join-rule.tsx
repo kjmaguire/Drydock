@@ -1,6 +1,7 @@
-// "Joins task rooms" on the agent's editor panel (X17): the project's join rule for this agent as one choice, never, every task,
-// or tasks that touch a folder chosen from the repository's folders (repo.folders, directory names only). Choosing applies it
-// at once (it is the project's rule, not a field of the agent): the core removes the agent's old rules and adds the new one.
+// "Joins task rooms" on the agent's editor panel (X17): the project's join rules for this agent as one choice, never, every task,
+// or tasks that touch one or more folders chosen from the repository's folders (repo.folders, directory names only). Every
+// folder rule the agent has is listed, each with Remove, and Add adds one, so a change never drops a rule the person cannot see.
+// Choosing applies it at once (it is the project's rule, not a field of the agent): only the rules that differ are replaced.
 // The agent joins as an observer (it reads and answers only when mentioned) unless the person chooses active.
 
 import { css, on, type Handle } from 'remix/component';
@@ -17,6 +18,8 @@ const boxCss = css({
   gap: t.s2,
   '& .row': { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: t.s2, '& > *': { flex: '1 1 160px', minWidth: '0' }, '& > button': { flex: 'none' } },
   '& .muted': { margin: '0', color: t.textMuted, fontSize: t.textSm },
+  '& .folders': { display: 'flex', flexWrap: 'wrap', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' },
+  '& .folders li': { display: 'inline-flex', alignItems: 'center', gap: t.s1, fontSize: t.textSm },
 });
 
 export function AgentJoinRule(handle: Handle<{ projectId: string; agentId: string; agentName: string }>) {
@@ -30,14 +33,17 @@ export function AgentJoinRule(handle: Handle<{ projectId: string; agentId: strin
   const folders = query(handle, { load: () => s.client.repoFolders(handle.props.projectId), key: () => handle.props.projectId });
   /** What the person is choosing; undefined while it is what the rules say. */
   let draft: JoinChoice | undefined;
+  /** The folder being typed, before Add. */
+  let typed = '';
   const listId = `join-folders-${Math.random().toString(36).slice(2, 8)}`;
 
   const apply = (next: JoinChoice) =>
     void act.run('join', async () => {
       const ch = joinChange(rules.data ?? [], handle.props.agentId, next);
       for (const id of ch.remove) await s.client.roomJoinRuleRemove(id);
-      if (ch.add) await s.client.roomJoinRuleAdd({ projectId: handle.props.projectId, agentId: handle.props.agentId, ...ch.add });
+      for (const add of ch.add) await s.client.roomJoinRuleAdd({ projectId: handle.props.projectId, agentId: handle.props.agentId, ...add });
       draft = undefined;
+      typed = '';
       await rules.reload();
     });
 
@@ -47,8 +53,8 @@ export function AgentJoinRule(handle: Handle<{ projectId: string; agentId: strin
     const busy = act.busy !== '';
     const set = (p: Partial<JoinChoice>) => {
       const next = { ...c, ...p };
-      // never and every task apply at once; a folder applies with Set once one is named
-      if (next.mode === 'folder') {
+      // never and every task apply at once, and so does Joins as for the folders already set; a first folder applies with Add
+      if (next.mode === 'folder' && !next.folders.length) {
         draft = next;
         void handle.update();
       } else apply(next);
@@ -80,20 +86,32 @@ export function AgentJoinRule(handle: Handle<{ projectId: string; agentId: strin
             />
           ) : null}
         </div>
+        {c.mode === 'folder' && c.folders.length ? (
+          <ul class="folders" aria-label="Folders" data-testid="agent-join-folders">
+            {c.folders.map((f) => (
+              <li key={f} data-testid="agent-join-folder-item">
+                <code>{f}</code>
+                <Button variant="link" size="sm" disabled={busy} aria-label={`Remove ${f}`} mix={[on('click', () => apply({ ...c, folders: c.folders.filter((x) => x !== f) }))]}>
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {c.mode === 'folder' ? (
           <div class="row">
-            <Field label="Folder">
+            <Field label={c.folders.length ? 'Another folder' : 'Folder'}>
               {(id) => (
                 <input
                   id={id}
                   list={listId}
-                  value={c.folder}
+                  value={typed}
                   placeholder="auth/"
                   autocomplete="off"
                   data-testid="agent-join-folder"
                   mix={[
                     on('input', (e) => {
-                      draft = { ...c, folder: (e.currentTarget as HTMLInputElement).value };
+                      typed = (e.currentTarget as HTMLInputElement).value;
                       void handle.update();
                     }),
                   ]}
@@ -105,15 +123,22 @@ export function AgentJoinRule(handle: Handle<{ projectId: string; agentId: strin
                 <option key={f} value={f} />
               ))}
             </datalist>
-            <Button size="sm" disabled={busy || !normFolder(c.folder)} data-testid="agent-join-set" mix={[on('click', () => apply(c))]}>
-              {act.busy === 'join' ? 'Setting...' : 'Set'}
+            <Button
+              size="sm"
+              disabled={busy || !normFolder(typed) || c.folders.includes(normFolder(typed))}
+              data-testid="agent-join-add"
+              mix={[on('click', () => apply({ ...c, folders: [...c.folders, normFolder(typed)] }))]}
+            >
+              {act.busy === 'join' ? 'Adding...' : 'Add'}
             </Button>
           </div>
         ) : null}
         <p class="muted">
           {c.mode === 'never'
             ? `${handle.props.agentName} joins a task room only when the task names it or someone invites it.`
-            : c.state === 'active'
+            : c.mixed
+              ? 'Its folders join in different ways. Choosing Joins as sets it for every folder.'
+              : c.state === 'active'
               ? 'It takes turns in the rooms it joins. A rule reaches task rooms made after it.'
               : 'It reads the rooms it joins and answers only when mentioned. A rule reaches task rooms made after it.'}
         </p>

@@ -167,14 +167,15 @@ describe('RoomAgentsPanel', () => {
 
   it('offers Ask again on a turn that gave no answer, once, and asks that agent on that message (X12)', async () => {
     const asked: unknown[][] = [];
-    const base: RoomTurn = { turnId: 'tr1', roomId: 'room_1', triggerId: 'msg_1', agentId: 'a1', round: 1, reason: 'mention', mode: 'auto', status: 'failed', contextMessages: 0, contextTokens: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, startedAt: 1, endedAt: 2 };
+    const base: RoomTurn = { turnId: 'tr1', roomId: 'room_1', triggerId: 'msg_1', agentId: 'a1', round: 1, reason: 'mention', mode: 'auto', status: 'failed', contextMessages: 0, contextTokens: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, startedAt: 1, endedAt: 2, askable: true };
     const s = testServices({
       roomReply: async (...a: unknown[]) => (asked.push(a), { trigger: 'msg_1', turns: [{ turnId: 'tr3', agentId: 'a1', status: 'done', reason: 'asked' }], bounded: false }),
       roomSetMode: async () => room,
-      roomTurns: async () => [{ ...base, turnId: 'tr2', triggerId: 'msg_2', status: 'done', startedAt: 3 }, base],
+      // tr4 failed in a chain: its trigger is another agent's reply, which an agent is never asked to answer, so no Ask again
+      roomTurns: async () => [{ ...base, turnId: 'tr4', triggerId: 'msg_agent', status: 'failed', startedAt: 4, askable: false }, { ...base, turnId: 'tr2', triggerId: 'msg_2', status: 'done', startedAt: 3 }, base],
     });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
-    await waitFor(() => expect(r.$$('[data-testid="room-turn"]')).toHaveLength(2), r);
+    await waitFor(() => expect(r.$$('[data-testid="room-turn"]')).toHaveLength(3), r);
     const again = r.$$('[data-testid="room-turn-ask-again"]');
     expect(again).toHaveLength(1);
     await r.act(() => (again[0] as HTMLElement).click());
@@ -261,11 +262,13 @@ describe('JoinRules (P130, X17)', () => {
     const rules: JoinRule[] = [
       { id: 'jr1', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'auth/', state: 'observer', createdBy: 'human:kyle', createdAt: 1 },
       { id: 'jr2', projectId: 'prj_1', agentId: 'a1', pathPrefix: '', state: 'active', createdBy: 'human:kyle', createdAt: 2 },
+      // a second folder rule of Rex is named too, not hidden behind the first
+      { id: 'jr3', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'api/', state: 'observer', createdBy: 'human:kyle', createdAt: 3 },
     ];
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [], roomJoinRules: async () => rules }));
     await waitFor(() => expect(r.container.querySelectorAll('[data-testid="join-rule"]').length).toBe(2), r);
     const lines = Array.from(r.container.querySelectorAll('[data-testid="join-rule"]')).map((li) => li.querySelector('.what')!.textContent);
-    expect(lines).toEqual(['Rex joins the rooms of tasks that touch auth/ as an observer', 'Dana joins every task room as an active member']);
+    expect(lines).toEqual(['Rex joins the rooms of tasks that touch auth/ or api/ as an observer', 'Dana joins every task room as an active member']);
     expect(byLabel<HTMLAnchorElement>(r.container, 'Change the join rule of Rex').getAttribute('href')).toBe('/team?edit=a2');
     expect(r.container.querySelector('[data-testid="join-rules"] input')).toBe(null);
     expect(r.container.textContent).not.toContain('Add rule');

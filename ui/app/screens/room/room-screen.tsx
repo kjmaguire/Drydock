@@ -275,9 +275,10 @@ export function Conversation(handle: Handle<{ room: Room }>) {
   });
 
   // the rows are rebuilt only when the messages or the "new" line change, not on every scroll that moves the window
-  let built: { msgs: readonly Message[]; newAfter: number | undefined; rows: Row[]; replies: Map<string, number> } | undefined;
+  let built: { msgs: readonly Message[]; newAfter: number | undefined; rows: Row[]; replies: Map<string, number>; byId: Map<string, Message> } | undefined;
   const rowsOf = (msgs: readonly Message[]) => {
-    if (built?.msgs !== msgs || built.newAfter !== newAfter) built = { msgs, newAfter, rows: buildRows(msgs, { newAfterSeq: newAfter }), replies: replyCounts(msgs) };
+    if (built?.msgs !== msgs || built.newAfter !== newAfter)
+      built = { msgs, newAfter, rows: buildRows(msgs, { newAfterSeq: newAfter }), replies: replyCounts(msgs), byId: new Map(msgs.map((m) => [m.id, m])) };
     return built;
   };
 
@@ -291,7 +292,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     const { room } = handle.props;
     const agents = s.project.agentList;
     const msgs = feed.messages;
-    const { rows, replies } = rowsOf(msgs);
+    const { rows, replies, byId } = rowsOf(msgs);
     const label = roomLabel(room, agents);
     const mem = members.data ?? [];
     const muted = !!s.project.unread.data?.find((u) => u.roomId === room.id)?.muted;
@@ -350,7 +351,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
         ),
     );
     function askAgainProps(m: Message) {
-      const again = askAgainOf(m);
+      const again = askAgainOf(m, (id) => byId.get(id));
       if (!again || !askable.includes(again.agentId)) return {};
       return { onAskAgain: () => ask(again.messageId, again.agentId), askAgainName: nameOf(again.agentId) };
     }

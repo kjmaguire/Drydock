@@ -997,6 +997,8 @@ export interface RoomTurn {
   /** The model the reply ran on and its routing decision (after any fallback hop); absent for a turn from before replies were routed. */
   model?: string;
   decisionId?: string;
+  /** The turn's trigger is a message the person wrote, so the agent can be asked again about it (an agent's reply in a chain cannot). */
+  askable?: boolean;
 }
 export interface PreviewInfo {
   taskId: string;

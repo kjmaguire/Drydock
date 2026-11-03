@@ -253,6 +253,8 @@ export interface RoomDecision {
   roomKind: string;
   taskId?: string;
   messageId: string;
+  /** The room is archived: a task room whose task closed (its decisions stay listed). */
+  archived?: boolean;
 }
 
 export interface RunClient {
