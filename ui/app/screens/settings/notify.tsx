@@ -27,7 +27,7 @@ export function NotifySection(handle: Handle) {
       icon={Bell}
       label="Notifications"
       testId="notify"
-      description="When Drydock is not in front and something new needs you, its taskbar button lights up and Windows shows a notification. It names the kind of request, the project and the task, never what was asked. Nothing leaves this computer."
+      description="When Drydock is behind and something needs you, the taskbar button lights up and Windows shows a notice naming the request kind, project and task, never what was asked."
     >
       <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Notifications" />
       {!q.data && q.loading ? <Loading /> : null}
