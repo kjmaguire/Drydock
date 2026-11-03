@@ -312,6 +312,38 @@ describe('ActivityScreen', () => {
     expect(asked[0]).toEqual({ projectId: 'p1', withWorkspace: true, agentId: 'a1', before: Number.MAX_SAFE_INTEGER, limit: OLDER_PAGE });
   });
 
+  it('lists the held rows cut below the list before reading older pages, and says it has every event only when none is cut (X53 review)', async () => {
+    forget();
+    const asked: number[] = [];
+    // the ring holds 1,200 matching rows (seq 1001..2200); the core has 200 older ones
+    const recent = Array.from({ length: 1200 }, (_, i) => ev(1001 + i, 'agent.output', { projectId: 'p1' }));
+    const older = Array.from({ length: 200 }, (_, i) => ev(801 + i, 'agent.output', { projectId: 'p1' }));
+    const replay: Client['eventsReplay'] = async (_after, opts) => {
+      if (!opts?.before) return recent;
+      asked.push(opts.before);
+      return opts.before === 1001 ? older : [];
+    };
+    const rowsOf = (root: ParentNode) => Array.from(root.querySelectorAll('[data-testid="event-row"] td.seq')).map((x) => x.textContent);
+    const r = mount(<ActivityScreen />, setup({ eventsReplay: replay }));
+    await waitFor(() => expect(rowsOf(r.container).length).toBe(500), r);
+    expect(r.$('[data-testid="activity-row-limit"]')).not.toBe(null);
+    // the first two clicks list the held rows that were cut, and ask the core for nothing
+    await r.act(() => byText(r.container, 'button', 'Load older events').click());
+    await waitFor(() => expect(rowsOf(r.container).length).toBe(1000), r);
+    await r.act(() => byText(r.container, 'button', 'Load older events').click());
+    await waitFor(() => expect(rowsOf(r.container).length).toBe(1200), r);
+    expect(asked).toEqual([]);
+    expect(r.$('[data-testid="activity-row-limit"]')).toBe(null);
+    expect(r.$('[data-testid="activity-older-end"]')).toBe(null);
+    // every held row is listed: the next click reads the core's older page, and all of them are listed
+    await r.act(() => byText(r.container, 'button', 'Load older events').click());
+    await waitFor(() => expect(r.$('[data-testid="activity-older-end"]')).not.toBe(null), r);
+    expect(asked).toEqual([1001]);
+    expect(rowsOf(r.container).length).toBe(1400);
+    expect(rowsOf(r.container).at(-1)).toBe('801');
+    expect(r.$('[data-testid="activity-older"]')).toBe(null);
+  });
+
   it('applies the scope from the address to the project open then, not to a project chosen later (X51 review)', async () => {
     forget();
     const s = setup({

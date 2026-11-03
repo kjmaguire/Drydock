@@ -56,6 +56,24 @@ describe('StartReportLine (X511)', () => {
     expect(line2.textContent).not.toContain('unexpectedly');
   });
 
+  it('names the runs still being resumed, and re-reads the report when the core says it changed (X511 review)', async () => {
+    let rep = report({ unexpected: true, resuming: [{ runId: 'run_k', taskId: 't9', title: 'Killed mid-run' }] });
+    let reads = 0;
+    const s = testServices({ appInfo: async () => (reads++, { name: 'Drydock', user: 'k', human: 'human:k', dataDir: '/d', startReport: rep }) as never, projectList: async () => [], licenseStatus: async () => ({}) as never });
+    s.workspace.start();
+    const r = mount(<StartReportLine />, s);
+    const line = await waitFor(found(r, '[data-testid="start-report"]'), r);
+    expect(line.textContent).toContain('Drydock was closed unexpectedly; 1 run is being resumed.');
+    expect(r.$('[data-testid="start-report-resuming"] a')!.getAttribute('href')).toBe('/task/t9/run/run_k');
+    // the core took the run over once the dead process's hold ran out, and said so
+    rep = report({ unexpected: true, resumed: [{ runId: 'run_k', taskId: 't9', title: 'Killed mid-run' }], resuming: [] });
+    s.emit({ type: 'app.start_report' });
+    await waitFor(() => expect(r.$('[data-testid="start-report"]')!.textContent).toContain('Drydock was closed unexpectedly; 1 run was resumed.'), r, 3000);
+    expect(r.$('[data-testid="start-report-resuming"]')).toBe(null);
+    expect(r.$('[data-testid="start-report-resumed"] a')!.getAttribute('href')).toBe('/task/t9/run/run_k');
+    expect(reads).toBeGreaterThanOrEqual(2);
+  });
+
   it('says nothing after a clean close that left nothing, or for an older core', async () => {
     expect(worthSaying(report())).toBe(false);
     expect(worthSaying(undefined)).toBe(false);

@@ -161,18 +161,28 @@ export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agen
   let earlierMore = true;
   let earlierBusy = false;
   let earlierError: Error | undefined;
+  /**
+   * Once earlier events were read, every event the explanation listed for the run (by seq): on a running run its refresh keeps
+   * only the newest, and the ones that roll off stay listed here, so no hole opens between them and the earlier ones (X55 review).
+   */
+  const seen = new Map<number, EventView>();
+  const keep = (evs: readonly EventView[]) => {
+    for (const e of evs) seen.set(e.seq, e);
+  };
   const loadEarlier = async () => {
     const runId = handle.props.x.run?.id;
     if (!runId || earlierBusy) return;
-    const listed = [...handle.props.x.events, ...earlier];
+    keep(handle.props.x.events);
+    const listed = [...seen.values(), ...earlier];
     const before = listed.reduce((m, e) => Math.min(m, e.seq), Number.MAX_SAFE_INTEGER);
     earlierBusy = true;
     earlierError = undefined;
     void handle.update();
     try {
-      const evs = await s.client.eventsReplay(0, { runId, before, limit: EARLIER_PAGE });
+      // cut as the explanation cuts its payloads (M22): a long run's earlier events are its largest
+      const evs = await s.client.eventsReplay(0, { runId, before, limit: EARLIER_PAGE, cut: true });
       if (handle.signal.aborted || earlierFor !== runId) return;
-      const have = new Set(listed.map((e) => e.seq));
+      const have = new Set([...seen.keys(), ...earlier.map((e) => e.seq)]);
       earlier = [...earlier, ...evs.filter((e) => typeof e.seq === 'number' && !have.has(e.seq)).map(viewOf).sort((a, b) => b.seq - a.seq)];
       if (evs.length < EARLIER_PAGE) earlierMore = false;
     } catch (e) {
@@ -206,9 +216,15 @@ export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agen
       earlier = [];
       earlierMore = true;
       earlierError = undefined;
+      seen.clear();
     }
-    const oldestListed = x.events.reduce((m, e) => Math.min(m, e.seq), Number.MAX_SAFE_INTEGER);
-    const all = earlier.length > 0 ? [...x.events, ...earlier.filter((e) => e.seq < oldestListed)] : x.events;
+    let all: readonly EventView[] = x.events;
+    if (seen.size > 0) {
+      keep(x.events);
+      const listed = new Set(x.events.map((e) => e.seq));
+      // the explanation's events as they are now, then the ones that rolled off it, then the earlier ones read below them all
+      all = [...x.events, ...[...seen.values()].filter((e) => !listed.has(e.seq)).sort((a, b) => b.seq - a.seq), ...earlier.filter((e) => !seen.has(e.seq))];
+    }
     const shown = all.filter((e) => eventMatches(e, e.agentId ? agentName(e.agentId, agents) : '', filter));
     return (
       <div style={{ display: 'grid', gap: '8px' }}>

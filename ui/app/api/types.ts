@@ -46,6 +46,8 @@ export interface StartReport {
   agentRunsClosed?: number;
   resumed: StartRun[];
   notResumed: StartRun[];
+  /** Runs the last process still held when this one started (killed and started again quickly): resumed once its hold runs out. Absent from older cores. */
+  resuming?: StartRun[];
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';

@@ -69,7 +69,8 @@ export class Workspace extends Model {
     this.#chosen = opts.persist === false ? undefined : readProject();
     this.projects = new Live(store, { load: () => client.projectList(), when: (e) => starts(e, 'project.') });
     this.licenseLive = new Live(store, { load: () => client.licenseStatus(), when: (e) => starts(e, 'license.') });
-    this.info = new Live(store, { load: () => client.appInfo() });
+    // re-read when the start report changes: a run the last process still held is resumed some seconds after the start (X511)
+    this.info = new Live(store, { load: () => client.appInfo(), when: (e) => e.type === 'app.start_report' });
     this.needs = new Live(store, { load: () => client.needsYouList(''), when: (e) => needsChanged(e) || starts(e, 'run.') });
     this.summaries = new Live(store, { load: () => client.taskSummaries({ projectId: '' }), when: summariesChanged });
     this.scans = new Live(store, { load: () => client.securityScanRunning(), when: (e) => starts(e, 'security.scan.') });

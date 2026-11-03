@@ -17,7 +17,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** Whether the report has anything to say. */
 export function worthSaying(r: StartReport | undefined): r is StartReport {
-  return !!r && (r.unexpected || r.resumed.length > 0 || r.notResumed.length > 0 || (r.crashes ?? 0) > 0);
+  return !!r && (r.unexpected || r.resumed.length > 0 || r.notResumed.length > 0 || (r.resuming?.length ?? 0) > 0 || (r.crashes ?? 0) > 0);
 }
 
 /** The sentence: how Drydock stopped (only "unexpectedly" when the core knows), then what this start did about it. */
@@ -25,6 +25,7 @@ export function startSentence(r: StartReport): string {
   const parts: string[] = [];
   if (r.resumed.length) parts.push(`${plural(r.resumed.length, 'run was', 'runs were')} resumed`);
   if (r.notResumed.length) parts.push(`${plural(r.notResumed.length, 'run', 'runs')} could not be resumed`);
+  if (r.resuming?.length) parts.push(`${plural(r.resuming.length, 'run is', 'runs are')} being resumed`);
   if (r.agentRunsClosed) parts.push(`${plural(r.agentRunsClosed, 'agent turn was', 'agent turns were')} stopped`);
   const lead = r.unexpected ? 'Drydock was closed unexpectedly' : 'Drydock started again';
   return parts.length ? `${lead}; ${parts.join(', ')}.` : `${lead}.`;
@@ -70,6 +71,7 @@ export function StartReportLine(handle: Handle) {
         <span>{startSentence(r)}</span>
         {r.resumed.length ? <span data-testid="start-report-resumed"> Resumed: {links(r.resumed)}.</span> : null}
         {r.notResumed.length ? <span data-testid="start-report-not-resumed"> Could not be resumed: {links(r.notResumed)}.</span> : null}
+        {r.resuming?.length ? <span data-testid="start-report-resuming"> Being resumed: {links(r.resuming)}.</span> : null}
         {r.crashes ? (
           <span>
             {' '}
