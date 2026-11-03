@@ -1,6 +1,7 @@
 // Add a prebuilt agent to the current project (Team page): the gallery and what the core reports back (skills waiting for a
 // decision, connectors that need sign-in), each line with a button to the page that fixes it (E9). Whether to install the agent's
-// skills and connect its MCP connectors is chosen in its Details dialog (both on by default), not above the gallery.
+// skills and connect its MCP connectors is chosen in its Details dialog (both on by default), not above the gallery; the choice
+// counts only for the Add in that dialog, and both are on again when the dialog closes, so a card's own Add always installs both.
 // An entry whose permission mode lets the agent act without asking is not added by one click: it asks for the person's
 // confirmation first (screens/shared/skip-approvals.tsx), and the core is told (audit 2026-10-16, M1).
 
@@ -21,6 +22,12 @@ const wrapCss = css({ display: 'grid', gap: t.s4, '& ul': { margin: '4px 0 0', p
 const optsCss = css({ display: 'grid', gap: t.s1, marginTop: t.s4 });
 const lineCss = css({ '& > a': { marginLeft: t.s2 } });
 const confirmCss = css({ display: 'grid', gap: t.s3, padding: t.s3, border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, '& p': { margin: '0' }, '& .row': { display: 'flex', gap: t.s2, flexWrap: 'wrap' } });
+
+/** Whether an add installs the entry's skills and connects its MCP connectors. */
+interface InstallOpts {
+  installSkills: boolean;
+  connectMcp: boolean;
+}
 
 /** One line of what an apply did, with the page that fixes it when something is still missing. */
 export interface AppliedLine {
@@ -69,14 +76,19 @@ export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: Pre
   /** The mode the core gives the agent: the entry's own (no mode is sent from here). */
   const modeOf = (e: PrebuiltAgent) => e.preferred.permissionMode ?? '';
 
-  const apply = async (e: PrebuiltAgent) => {
+  // the install options of the pick waiting for confirmation (chosen in its Details dialog, or both on)
+  let pendingOpts: InstallOpts = { installSkills: true, connectMcp: true };
+  const resetOpts = () => {
+    installSkills = true;
+    connectMcp = true;
+  };
+
+  const apply = async (e: PrebuiltAgent, opts: InstallOpts) => {
     const mode = modeOf(e);
     if (needsConfirmation(mode, confirmedMode)) return;
     busy = e.id;
     last = undefined;
-    const r = await act.run('apply', () =>
-      s.client.agentCatalogApply({ id: e.id, projectId: handle.props.projectId, installSkills, connectMcp, ...confirmationFor(mode, confirmedMode) }),
-    );
+    const r = await act.run('apply', () => s.client.agentCatalogApply({ id: e.id, projectId: handle.props.projectId, ...opts, ...confirmationFor(mode, confirmedMode) }));
     busy = '';
     if (r) {
       last = r;
@@ -89,9 +101,13 @@ export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: Pre
   };
 
   /** One click adds an entry that keeps approvals; one that skips them first asks. */
-  const pick = (e: PrebuiltAgent) => {
+  const pick = (e: PrebuiltAgent, fromDetails: boolean) => {
+    // the options were shown only in that entry's Details dialog: a card's own Add installs both
+    const opts: InstallOpts = fromDetails ? { installSkills, connectMcp } : { installSkills: true, connectMcp: true };
+    resetOpts();
     if (skipsApprovals(modeOf(e))) {
       pending = e;
+      pendingOpts = opts;
       confirmedMode = '';
       last = undefined;
       act.clear();
@@ -99,7 +115,7 @@ export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: Pre
       return;
     }
     pending = undefined;
-    void apply(e);
+    void apply(e, opts);
   };
 
   return () => {
@@ -118,7 +134,7 @@ export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: Pre
             <SkipApprovals mode={mode} confirmed={confirmedMode} onConfirm={(m) => ((confirmedMode = m), void handle.update())} who={pending?.name ?? 'this agent'} error={refusal} />
             {pending ? (
               <div class="row">
-                <Button variant="primary" disabled={!!busy || needsConfirmation(mode, confirmedMode)} mix={on('click', () => void apply(pending!))}>
+                <Button variant="primary" disabled={!!busy || needsConfirmation(mode, confirmedMode)} mix={on('click', () => void apply(pending!, pendingOpts))}>
                   {busy === pending.id ? 'Adding...' : `Add ${pending.name}`}
                 </Button>
                 <Button
@@ -162,6 +178,7 @@ export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: Pre
           onPick={pick}
           busy={busy}
           disabled={!handle.props.projectId}
+          onDetailsClose={() => (resetOpts(), void handle.update())}
           detailsExtra={
             <div mix={optsCss} data-testid="prebuilt-options">
               <Checkbox

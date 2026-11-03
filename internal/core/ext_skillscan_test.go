@@ -76,3 +76,54 @@ func TestRepositorySkillsAreFoundWhenTheProjectIsMadeAndOfferedOnce(t *testing.T
 		t.Fatalf("refreshed %v, told %d times", scanned, count())
 	}
 }
+
+// E5 review: deciding on one of several waiting skills does not tell the others again; only a new skill (or a changed one) is
+// told, and the notice names only it.
+func TestRepositorySkillsDecidingOneDoesNotTellTheRestAgain(t *testing.T) {
+	a := open(t, "")
+	repo := newRepo(t)
+	write := func(name, body string) {
+		os.MkdirAll(filepath.Join(repo, ".aet", "skills", name), 0o755)
+		os.WriteFile(filepath.Join(repo, ".aet", "skills", name, "SKILL.md"), []byte("---\nname: "+name+"\ndescription: "+name+"\n---\n"+body+"\n"), 0o644)
+	}
+	write("alpha", "Do alpha.")
+	write("beta", "Do beta.")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	notices := func() []string {
+		var rooms []room.Room
+		a.call("room.list", map[string]any{"projectId": p.ID}, &rooms)
+		var out []string
+		for _, r := range rooms {
+			if r.Name == "alerts" {
+				var ms []room.Message
+				a.call("room.messages", map[string]any{"roomId": r.ID, "limit": 200}, &ms)
+				for _, m := range ms {
+					if m.Type == room.TypeSystem && strings.Contains(m.Body, "in the repository") {
+						out = append(out, m.Body)
+					}
+				}
+			}
+		}
+		return out
+	}
+	if n := notices(); len(n) != 1 || !strings.HasPrefix(n[0], "2 skills in the repository wait") {
+		t.Fatalf("first notice: %q", n)
+	}
+	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "alpha"}, nil)
+	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
+	if n := notices(); len(n) != 1 {
+		t.Fatalf("deciding on alpha told beta again: %q", n)
+	}
+	write("gamma", "Do gamma.")
+	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
+	n := notices()
+	if len(n) != 2 || !strings.Contains(n[1], "1 skill in the repository waits") || !strings.Contains(n[1], "gamma") || strings.Contains(n[1], "beta") {
+		t.Fatalf("a new skill is told alone: %q", n)
+	}
+	write("beta", "Do beta differently.")
+	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
+	if n := notices(); len(n) != 3 || !strings.Contains(n[2], "beta") || strings.Contains(n[2], "gamma") {
+		t.Fatalf("a changed skill is told again, alone: %q", n)
+	}
+}

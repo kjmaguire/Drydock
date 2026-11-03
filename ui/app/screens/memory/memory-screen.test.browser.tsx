@@ -181,6 +181,42 @@ describe('MemoryScreen', () => {
     expect(r.$('[data-testid="memory-said"]')!.textContent).toBe('2 entries are proposals again.');
   });
 
+  it('Accept all sends more than 200 proposals in groups the core takes, and Undo does the same (E10 review)', async () => {
+    let entries = Array.from({ length: 230 }, (_, i) => mem({ id: `m${i}`, title: `Entry ${i}` }));
+    const calls: [string, number][] = [];
+    const r = mount(
+      <MemoryScreen />,
+      servicesWith({
+        memoryList: async (_p, status) => entries.filter((e) => !status || e.status === status),
+        memoryAcceptMany: async (ids) => {
+          if (ids.length > 200) throw new Error(`at most 200 entries at once, not ${ids.length}`);
+          calls.push(['accept', ids.length]);
+          entries = entries.map((e) => (ids.includes(e.id) ? { ...e, status: 'accepted' } : e));
+          return ids;
+        },
+        memoryUnacceptMany: async (ids) => {
+          if (ids.length > 200) throw new Error(`at most 200 entries at once, not ${ids.length}`);
+          calls.push(['undo', ids.length]);
+          entries = entries.map((e) => (ids.includes(e.id) ? { ...e, status: 'proposed' } : e));
+          return ids;
+        },
+      }),
+    );
+    const bar = await waitFor(() => {
+      const b = r.$('[data-testid="memory-proposals"]');
+      if (!b) throw new Error('no bar');
+      return b;
+    }, r);
+    await r.act(() => byText(bar, 'button', 'Accept all 230').click());
+    await waitFor(() => expect(calls).toEqual([['accept', 200], ['accept', 30]]), r);
+    await waitFor(() => expect(r.$('[data-testid="memory-proposals"]')).toBeNull(), r);
+    const said = r.$('[data-testid="memory-said"]')!;
+    expect(said.textContent).toContain('230 entries accepted');
+    await r.act(() => byText(said, 'button', 'Undo').click());
+    await waitFor(() => expect(calls.slice(2)).toEqual([['undo', 200], ['undo', 30]]), r);
+    await waitFor(() => expect(r.$('[data-testid="memory-said"]')!.textContent).toBe('230 entries are proposals again.'), r);
+  });
+
   it('filters by status, searches within it and clears the search', async () => {
     const listed: string[] = [];
     const searched: unknown[][] = [];

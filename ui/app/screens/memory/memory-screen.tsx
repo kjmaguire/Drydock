@@ -20,7 +20,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer, listBox } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { visible } from '../../lib/visible.ts';
-import { bodyNote, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memorySource, memoryTone, proposalsText } from './memory.ts';
+import { bodyNote, inGroups, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memorySource, memoryTone, proposalsText } from './memory.ts';
 
 const entryCss = css({
   display: 'grid',
@@ -235,8 +235,15 @@ export function MemoryScreen(handle: Handle) {
   const acceptAll = async () => {
     const ids = (open.data ?? []).map((e) => e.id);
     if (!ids.length) return;
-    const done = await act.run('acceptAll', () => s.client.memoryAcceptMany(ids));
-    if (!done) return;
+    // the core takes at most MEMORY_MANY_LIMIT ids a call: a longer list goes in groups, and what was accepted before a group
+    // failed stays accepted and can be undone
+    const done: string[] = [];
+    for (const group of inGroups(ids)) {
+      const part = await act.run('acceptAll', () => s.client.memoryAcceptMany(group));
+      if (!part) break;
+      done.push(...part);
+    }
+    if (!done.length) return;
     lastAccepted = done;
     said = `${done.length} ${done.length === 1 ? 'entry' : 'entries'} accepted: agents see ${done.length === 1 ? 'it' : 'them'} from their next session.`;
     reloadAll();
@@ -244,9 +251,14 @@ export function MemoryScreen(handle: Handle) {
   };
   const undoAll = async () => {
     const ids = lastAccepted;
-    const back = await act.run('undo', () => s.client.memoryUnacceptMany(ids));
-    if (!back) return;
-    lastAccepted = [];
+    const back: string[] = [];
+    for (const group of inGroups(ids)) {
+      const part = await act.run('undo', () => s.client.memoryUnacceptMany(group));
+      if (!part) break;
+      back.push(...part);
+    }
+    if (!back.length) return;
+    lastAccepted = lastAccepted.filter((id) => !back.includes(id));
     said = `${back.length} ${back.length === 1 ? 'entry is a proposal' : 'entries are proposals'} again.`;
     reloadAll();
     void handle.update();

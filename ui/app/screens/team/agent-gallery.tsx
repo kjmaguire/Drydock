@@ -189,13 +189,24 @@ export function PrebuiltDetails(handle: Handle<{ entry: PrebuiltAgent }>) {
 
 /**
  * The prebuilt agents as cards. `detailsExtra` is shown in an entry's Details dialog above its pick button (the install options of
- * Add, E9). A card whose CLI is not ready links its dot to that CLI's page in Settings > Agent CLIs.
+ * Add, E9): a pick made in that dialog is `onPick(e, true)`, one from a card's own button `onPick(e, false)`, and `onDetailsClose`
+ * is called whenever the dialog closes. A card whose CLI is not ready links its dot to that CLI's page in Settings > Agent CLIs.
  */
 export function AgentGallery(
-  handle: Handle<{ entries: PrebuiltAgent[]; onPick?: (e: PrebuiltAgent) => void; pickLabel?: string; busy?: string; disabled?: boolean; label?: string; detailsExtra?: RemixNode }>,
+  handle: Handle<{
+    entries: PrebuiltAgent[];
+    onPick?: (e: PrebuiltAgent, fromDetails: boolean) => void;
+    pickLabel?: string;
+    busy?: string;
+    disabled?: boolean;
+    label?: string;
+    detailsExtra?: RemixNode;
+    onDetailsClose?: () => void;
+  }>,
 ) {
   let open = '';
   const show = (id: string) => {
+    if (open && !id) handle.props.onDetailsClose?.();
     open = id;
     void handle.update();
   };
@@ -270,7 +281,7 @@ export function AgentGallery(
                           Details
                         </Button>
                         {onPick ? (
-                          <Button size="sm" variant="secondary" icon={Plus} disabled={disabled || !!busy} aria-label={`${pickLabel} ${e.name}`} mix={on('click', () => onPick(e))}>
+                          <Button size="sm" variant="secondary" icon={Plus} disabled={disabled || !!busy} aria-label={`${pickLabel} ${e.name}`} mix={on('click', () => onPick(e, false))}>
                             {busy === e.id ? 'Adding...' : pickLabel}
                           </Button>
                         ) : null}
@@ -292,7 +303,7 @@ export function AgentGallery(
                 icon={Plus}
                 disabled={disabled || !!busy}
                 mix={on('click', () => {
-                  onPick(opened);
+                  onPick(opened, true);
                   show('');
                 })}
               >

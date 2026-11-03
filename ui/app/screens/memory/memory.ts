@@ -34,6 +34,16 @@ export function bodyNote(body: string): { count: number; over: boolean; text: st
   };
 }
 
+/** The most entries one memory.acceptMany or memory.unacceptMany takes, as the core checks it (core.MaxMemoryMany). */
+export const MEMORY_MANY_LIMIT = 200;
+
+/** ids in groups of at most n, in order: Accept all and its Undo send a long list as several calls. */
+export function inGroups<T>(ids: readonly T[], n = MEMORY_MANY_LIMIT): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < ids.length; i += n) out.push(ids.slice(i, i + n));
+  return out;
+}
+
 export const MEMORY_KINDS = ['decision', 'convention', 'api_contract', 'rejected', 'known_issue', 'preference'];
 
 /** The status filter: '' is everything. The words are what the legacy "Show" select offered. */

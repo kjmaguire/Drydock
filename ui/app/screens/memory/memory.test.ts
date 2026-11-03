@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { bodyNote, charCount, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memorySource, memoryTone, proposalsOf, proposalsText } from './memory.ts';
+import { bodyNote, charCount, inGroups, MEMORY_MANY_LIMIT, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memorySource, memoryTone, proposalsOf, proposalsText } from './memory.ts';
 
 describe('Memory helpers', () => {
   it('says a proposal is invisible to agents until accepted', () => {
@@ -53,6 +53,13 @@ describe('Memory helpers', () => {
 });
 
 describe('memory proposals in words (E10)', () => {
+  it('splits a long list into groups the core takes, in order', () => {
+    expect(MEMORY_MANY_LIMIT).toBe(200);
+    expect(inGroups([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+    expect(inGroups([])).toEqual([]);
+    expect(inGroups(Array.from({ length: 401 }, (_, i) => i)).map((g) => g.length)).toEqual([200, 200, 1]);
+  });
+
   it('counts them and finds one agent\'s own open ones', () => {
     expect(proposalsText(1)).toBe('1 memory proposal');
     expect(proposalsText(3)).toBe('3 memory proposals');

@@ -140,6 +140,35 @@ describe('adding a prebuilt agent on the Team page', () => {
     ]);
   });
 
+  it('options unticked in one Details dialog do not carry over to a card\'s Add or to the next dialog (E9 review)', async () => {
+    const sent: PrebuiltApplyReq[] = [];
+    const s = testServices({
+      agentCatalogList: async () => CATALOG,
+      agentCatalogApply: async (req) => (
+        sent.push(req),
+        { id: req.id, agent: { id: 'a9', name: 'UI Engineer' } as never, mcp: { granted: [], skipped: [] }, skills: { assigned: [], shared: [], pending: [], failed: [] }, notes: [] }
+      ),
+    });
+    const r = mount(<AddPrebuilt projectId="p1" onAdded={() => undefined} />, s);
+    await waitFor(() => byText(r.container, 'button', 'Add UI Engineer'), r);
+    const dialog = () => r.container.querySelector('dialog[open]');
+    const box = (label: string) => Array.from(dialog()!.querySelectorAll('label')).find((l) => l.textContent!.startsWith(label))!.querySelector('input') as HTMLInputElement;
+    await r.act(() => byText(r.container, 'button', 'What Cloudflare Engineer comes with').click());
+    await waitFor(() => expect(dialog()?.querySelector('[data-testid="prebuilt-options"]')).not.toBeNull(), r);
+    await r.act(() => box('Install the skills this agent comes with').click());
+    expect(box('Install the skills this agent comes with').checked).toBe(false);
+    await r.act(() => (dialog()!.querySelector('button[aria-label="Close"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(dialog()).toBeNull(), r);
+    // the card's own Add installs both: the person saw no option for it
+    await r.act(() => byText(r.container, 'button', 'Add UI Engineer').click());
+    await waitFor(() => expect(sent).toEqual([{ id: 'ui-engineer', projectId: 'p1', installSkills: true, connectMcp: true }]), r);
+    // and the next Details dialog starts with both ticked
+    await r.act(() => byText(r.container, 'button', 'What Cloudflare Engineer comes with').click());
+    await waitFor(() => expect(dialog()?.querySelector('[data-testid="prebuilt-options"]')).not.toBeNull(), r);
+    expect(box('Install the skills this agent comes with').checked).toBe(true);
+    expect(box('Connect its MCP connectors').checked).toBe(true);
+  });
+
   it('shows the core refusal', async () => {
     const s = testServices({
       agentCatalogList: async () => CATALOG,

@@ -17,7 +17,7 @@ import (
 // again with the project open (skill.refresh, at most every 30 seconds). A scan only reads the main checkout and offers: a
 // committed, unmodified skill that passes the scan is accepted as before (skills.ScanRepo), anything else waits for the person.
 // Each scan publishes skill.scanned (counts only). The skills that wait for the person are told once, in #alerts with a Needs-you
-// item (the notice skillwatch posts for registry updates): the same set of waiting skills is not told twice.
+// item (the notice skillwatch posts for registry updates): a skill is told once, and again only when its content changes.
 
 // EventSkillScanned is published after every repository scan, with its counts.
 const EventSkillScanned = "skill.scanned"
@@ -68,32 +68,60 @@ func (c *Core) refreshRepoSkills(ctx context.Context, projectID string) (bool, e
 	return err == nil, err
 }
 
-// tellSkillOffers posts, in the project's #alerts with a Needs-you item, the repository skills that wait for the person. The
-// notice's key is the set of those skills (names and contents), so the same set is told once and a new or changed one again.
+// tellSkillOffers posts, in the project's #alerts with a Needs-you item, the repository skills that wait for the person and
+// were not told before. The pairs of name and content already told are kept in settings (skillToldKey), so deciding on one of
+// several waiting skills does not tell the others again; a new skill, or a told one whose content changed, is told once.
 func (c *Core) tellSkillOffers(ctx context.Context, projectID string) {
 	k := c.Knowledge()
 	list, err := k.Skills.List(ctx, projectID, skills.StatusOffered, skills.StatusBlocked)
 	if err != nil {
 		return
 	}
-	var waiting []skills.Skill
+	told := c.toldSkills(ctx, projectID)
+	var fresh []skills.Skill
 	for _, s := range list {
-		if s.Origin == skills.OriginRepo {
-			waiting = append(waiting, s)
+		if s.Origin == skills.OriginRepo && !told[s.Name+":"+s.ContentHash] {
+			fresh = append(fresh, s)
 		}
 	}
-	if len(waiting) == 0 {
+	if len(fresh) == 0 {
 		return
 	}
-	sort.Slice(waiting, func(i, j int) bool { return waiting[i].Name < waiting[j].Name })
+	sort.Slice(fresh, func(i, j int) bool { return fresh[i].Name < fresh[j].Name })
 	h := sha256.New()
-	names := make([]string, 0, len(waiting))
-	for _, s := range waiting {
-		fmt.Fprintf(h, "%s:%s:%s\n", s.Name, s.ContentHash, s.Status)
+	names := make([]string, 0, len(fresh))
+	for _, s := range fresh {
+		fmt.Fprintf(h, "%s:%s\n", s.Name, s.ContentHash)
 		names = append(names, s.Name)
+		told[s.Name+":"+s.ContentHash] = true
 	}
 	key := "skillscan:" + projectID + ":" + hex.EncodeToString(h.Sum(nil))[:16]
 	c.alertsNotice(ctx, projectID, key, skillOfferNotice(names), true)
+	pairs := make([]string, 0, len(told))
+	for p := range told {
+		pairs = append(pairs, p)
+	}
+	sort.Strings(pairs)
+	if err := c.setSetting(ctx, skillToldKey+projectID, strings.Join(pairs, "\n")); err != nil {
+		c.logf("skills told: %v", err)
+	}
+}
+
+// skillToldKey + project id is the setting that holds the repository skills already told, one "name:content hash" a line.
+const skillToldKey = "skillscan.told:"
+
+func (c *Core) toldSkills(ctx context.Context, projectID string) map[string]bool {
+	told := map[string]bool{}
+	var v string
+	if c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, skillToldKey+projectID).Scan(&v) != nil {
+		return told
+	}
+	for _, line := range strings.Split(v, "\n") {
+		if line != "" {
+			told[line] = true
+		}
+	}
+	return told
 }
 
 // skillOfferNotice is the alerts message: its first sentence is the Needs-you item's title.
