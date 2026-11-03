@@ -105,6 +105,24 @@ describe('Work (decision P141)', () => {
     ]);
   });
 
+  it("puts the rooms' unread count on the Rooms link, so an answer is seen from Work (X18)", async () => {
+    const r = mount(
+      <WorkScreen />,
+      svc({
+        roomUnread: async () => [
+          { roomId: 'r1', roomName: 'general', kind: 'channel', unread: 2, mentions: 0, muted: false, lastReadSeq: 0 },
+          { roomId: 'r2', roomName: 'dm', kind: 'dm', unread: 1, mentions: 0, muted: false, lastReadSeq: 0 },
+        ],
+      }),
+    );
+    await waitFor(() => expect(r.$('[data-testid="nav-rooms-unread"]')?.textContent).toBe('3, 3 unread'), r);
+    expect(r.$('[data-testid="nav-rooms"]')!.textContent).toBe('Rooms3, 3 unread');
+    cleanup();
+    const none = mount(<WorkScreen />, svc());
+    await waitFor(() => expect(none.$$('[data-testid="work-item"]').length).toBeGreaterThan(0), none);
+    expect(none.$('[data-testid="nav-rooms-unread"]')).toBeNull();
+  });
+
   it('opens the item the URL names: a chat as its conversation, a task as its page', async () => {
     const r = mount(<WorkScreen item="chat:c1" />, svc());
     await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(4), r);

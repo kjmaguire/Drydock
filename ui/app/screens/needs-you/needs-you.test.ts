@@ -9,6 +9,7 @@ import {
   inboxAddress,
   tabOfItem,
   canAck,
+  KIND_LABEL,
   clock,
   doingWords,
   msOf,
@@ -62,7 +63,7 @@ describe('Needs you targets and hints', () => {
 
   it('reloads every Needs you list on the same events, a chat asking among them', () => {
     const ev = (type: string): DrydockEvent => ({ type, seq: 1, time: '' });
-    for (const t of ['chat.permission', 'chat.permission_answered', 'approval.requested', 'task.updated', 'watchdog.paused', 'room.message_posted', 'needsyou.acked', 'approval.rule.added']) expect(needsChanged(ev(t))).toBe(true);
+    for (const t of ['chat.permission', 'chat.permission_answered', 'approval.requested', 'task.updated', 'watchdog.paused', 'room.message_posted', 'room.read_cursor_updated', 'needsyou.acked', 'approval.rule.added']) expect(needsChanged(ev(t))).toBe(true);
     for (const t of ['chat.tool_result', 'agent.output', 'room.presence_changed']) expect(needsChanged(ev(t))).toBe(false);
   });
 
@@ -248,6 +249,14 @@ describe('the Inbox items of P130', () => {
     expect(needsHint(item({ kind: 'join_request' }))).toContain('it never joins by itself');
     expect(needsSubtitle(item({ kind: 'join_request', agentName: 'Sec', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · request to join · asked 2 min ago');
     expect(needsSubtitle(item({ kind: 'agent', agentName: 'Cx', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · agent · Cx · 2 min ago');
+  });
+
+  it("opens an agent's answer to the person in its room, and it can be marked done (X18)", () => {
+    const answer = item({ key: 'reply:m9', kind: 'reply', roomId: 'r3', taskId: 't1', agentName: 'Ada' });
+    expect(needsTarget(answer)).toBe('/room/r3');
+    expect(needsLook(answer)).toBe('reply');
+    expect(canAck(answer)).toBe(true);
+    expect(KIND_LABEL.reply).toBe('Answer');
   });
 });
 

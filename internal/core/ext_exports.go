@@ -62,6 +62,12 @@ func init() {
 				}
 				return l, err
 			}),
+			// every decision of the project's rooms, with the room it was taken in (X110: the Decisions list of #decisions)
+			"room.adrCandidatesForProject": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+			}) (any, error) {
+				return c.Room.ProjectADRCandidates(ctx, p.ProjectID)
+			}),
 		}, nil, nil
 	}})
 }

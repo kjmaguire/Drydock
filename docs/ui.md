@@ -109,7 +109,7 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
   (`chat.list` for the project) grouped **Needs you** (a task or chat with an Inbox item, by urgency, or a task waiting for a
   person), **Running** (newest first; a task not started yet has a hollow dot) and **Earlier** (merged, failed, cancelled, idle
   chats), each row a status dot, the title and one faint line ("Ready to merge · +42 −3", "Ada · 4 min", "Merged · yesterday",
-  "Chat · Tue"); under it Board, Pull requests and Rooms (`nav-tasks`, `nav-pulls`, `nav-rooms`). The centre is the item open,
+  "Chat · Tue"); under it Board, Pull requests and Rooms (`nav-tasks`, `nav-pulls`, `nav-rooms`; Rooms carries the rooms' unread count, `nav-rooms-unread`, so an agent's answer is seen from Work, X18). The centre is the item open,
   named in the URL (`/?item=task:<id>` or `chat:<id>`, `parseWorkItem`/`workItemHref` in `lib/route.ts`), so Reload and Back keep
   it: a task's own page (`TaskDetailScreen` with `embedded`: the properties go under the work) or the chat (`ChatConversation`,
   P139); with none named, the first that needs you, else the first running, else one line and Describe a task. The shell treats
@@ -198,7 +198,7 @@ Rendered in Settings > About as a list (feature, slice). Since this table was wr
 | Expert Packs, Requirements, Skills, Memory UI | 3 | Project nav hides Requirements; team setup has no Packs column. |
 | Autonomous multi-agent development, `moderator`/`auto` room modes, group chats | 4 (**proposal**) | Built since: room modes (the room's Mode select), PlanTeam and the scheduler (Plan screen). Group chats exist in the room core only (`room.Service.CreateGroup`); there is no RPC or UI to create one. |
 | Linear, Notion, Sentry, Aikido integrations | 5 | Integrations nav entry absent; Connections shows only `gh` (1E) and agent CLIs. |
-| Milestones; Markdown minutes and ADR-candidate export | unassigned | Built since: the Milestones screen, and a room's Minutes and ADR candidates exports (`ui/app/screens/room/room-exports.tsx`, `room.export`). |
+| Milestones; Markdown minutes and ADR-candidate export | unassigned | Built since: the Milestones screen, and a room's **Minutes** (`ui/app/screens/room/room-exports.tsx`, X19): the header's Minutes lists the snapshots `room.exports` keeps with a tick when `room.exportVerify` finds them matching the messages, Read and Download, and Make minutes now (`room.export`); a task's room keeps its minutes by rule when the task closes and the task page links them (Minutes). Decisions are a list on the Room tab instead of an ADR-candidates export (`decisions-list.tsx`, X110). |
 | Repo map view | D5, P62 | Built since: the Repo map page (Knowledge group, `/repo-map`, `repomap.get`): the ranked map of the project's repository with a focus-path field, a Focus toggle per ranked file, chips for open tasks' files and a 1k/2k/4k/8k token budget, kept per project (A6, X412); a build without CGO says plainly that it has no parser. |
 | Cloud sync, accounts, team sharing | never (brief 0: no cloud component) | Not mentioned in the UI. |
 
@@ -210,7 +210,7 @@ Common envelope on every card: `id`, `room_id`, `thread_id?`, `seq` (event seque
 |---|---|---|
 | `CHAT` | body, reply count | Plain bubble; thread opens in the right column. |
 | `TASK` | task_id, title, state, assignee, attempt | Compact card; state chip uses brief 12 states; click opens Task details. |
-| `DECISION` | statement, rationale, alternatives?, adr_candidate flag | Highlighted; ADR candidate chip. A room's "ADR candidates" export snapshots its DECISION messages as JSON (`room.export`, room-protocol section 8). |
+| `DECISION` | statement, rationale, alternatives?, adr_candidate flag | Highlighted; ADR candidate chip. Each DECISION recorded outside #decisions puts one quiet SYSTEM line there; the Room tab's **Decisions** lists the room's own (every room's in #decisions, `room.adrCandidatesForProject`) with **Make an ADR task** (`task.create`, labelled adr; X110). |
 | `STATUS` | agent_id, presence state, short text | Collapsible into a one-line system row; consecutive statuses merge. |
 | `RESULT` | task_id, summary, evidence[] (check ids, diff stat, test summary), verdict? (`SHIP`/`REVISE` for reviews) | "Evidence" list links to checks and diff; verdict chip. A task enters REVIEW only with evidence (brief 12). |
 | `QUESTION` | asked_by, addressed_to (human or agent), options?, request_id (typed request port id) | Answer box; answering calls `Resume(run, response)` for a request node or posts to the agent for a chat question. Mirrors to the inbox when addressed to a human. |

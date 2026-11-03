@@ -896,6 +896,8 @@ export type NeedsKind =
   // decision P130
   | 'task_waiting'
   | 'mention'
+  /** An agent's answer to the person not read yet, one per room (X18): opens the room, goes when the room is read. */
+  | 'reply'
   | 'join_request'
   | 'agent'
   | 'connection';

@@ -754,10 +754,28 @@ func (a *agentsDev) methods() map[string]Method {
 		}) (any, error) {
 			return a.resp.Turns(ctx, p.RoomID, p.Limit)
 		}),
+		// a person asks the agents to answer their message now; with agentId, that agent answers it (X12: "Ask Ada to answer",
+		// Ask again), on a grant of its own (reason "asked")
 		"room.reply": bind(func(ctx context.Context, p struct {
 			MessageID string `json:"messageId"`
+			AgentID   string `json:"agentId"`
 		}) (any, error) {
+			if p.AgentID != "" {
+				return a.resp.Ask(ctx, p.MessageID, p.AgentID)
+			}
 			return a.resp.Handle(ctx, p.MessageID)
+		}),
+		// what the newest chain of a room did, while the app runs (X12): the room says why nobody answered; null when none ran
+		"room.replyOutcome": bind(func(ctx context.Context, p struct {
+			RoomID string `json:"roomId"`
+		}) (any, error) {
+			if _, err := c.Room.GetRoom(ctx, p.RoomID); err != nil {
+				return nil, err
+			}
+			if o, ok := a.resp.LastOutcome(p.RoomID); ok {
+				return o, nil
+			}
+			return nil, nil
 		}),
 		// a person stops the agents answering in a room now (Esc Esc in the room's composer, decision P130)
 		"room.stop": bind(func(ctx context.Context, p struct {

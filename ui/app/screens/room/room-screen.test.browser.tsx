@@ -39,6 +39,7 @@ function servicesWith(client: Partial<Client>, rooms: Room[] = []) {
     roomMembers: async () => [],
     roomTurns: async () => [],
     roomMarkRead: async () => true,
+    roomReplyOutcome: async () => null,
     ...roomMessagesDouble(() => []),
     ...client,
   });
@@ -58,6 +59,43 @@ afterEach(() => {
 });
 
 describe('Conversation', () => {
+  it('says why nobody answered the newest message and asks an agent by name; Ask again on a failed turn; Ask from a message (X12)', async () => {
+    const channel: Room = { ...taskRoom, kind: 'channel', name: 'general', taskId: undefined };
+    const asked: unknown[][] = [];
+    const messages: Message[] = [
+      msg({ seq: 1, body: 'first question' }),
+      msg({ seq: 2, type: 'ERROR', author: { kind: 'system', id: 'system' }, reply_to_id: 'm1', body: 'Backend #1 could not answer: the turn failed', payload: { code: 'agent_turn_failed', agent_id: 'agt1' } }),
+      msg({ seq: 3, body: 'how should we store sessions?' }),
+    ];
+    const s = servicesWith({
+      ...roomMessagesDouble(() => messages),
+      roomMembers: async () => [{ roomId: 'r', member: { kind: 'agent', id: 'agt1' }, role: 'backend', state: 'observer', addedAt: '', lastReadSeq: 0 }],
+      projectdevGet: async () => ({ respond: true }) as never,
+      roomReplyOutcome: async () => ({ trigger: 'm3', turns: [], bounded: false, why: 'nobody addressed', room: 'r' }),
+      roomReply: async (...a: unknown[]) => (asked.push(a), { trigger: String(a[0]), turns: [], bounded: false, stopped: 'a newer human message took over the room' }),
+    });
+    const r = mount(<Conversation room={channel} />, s);
+    await waitFor(() => expect(q(r, '[data-testid="room-ask-why"]')?.textContent).toBe('No agent answered: nobody was mentioned.'), r);
+    const chips = qa(r, '[data-testid="room-ask-agent"]');
+    expect(chips.map((b) => b.textContent)).toEqual(['Ask Backend #1']);
+    await r.act(() => chips[0]!.click());
+    await waitFor(() => expect(asked).toEqual([['m3', 'agt1']]), r);
+    // an ask that gave no answer says so in words
+    await waitFor(() => expect(q(r, '[data-testid="room-ask-why"]')?.textContent ?? q(r, '[data-testid="room-ask-note"]')?.textContent).toBeTruthy(), r);
+    // the failed turn's line offers Ask again, for that agent on that message
+    const again = q(r, '[data-testid="msg-ask-again"]')!;
+    expect(again.textContent).toBe('Ask Backend #1 again');
+    await r.act(() => again.click());
+    await waitFor(() => expect(asked[1]).toEqual(['m1', 'agt1']), r);
+    // the person's own message has a hover action that opens the row for it
+    const ask = qa(r, '[data-testid="msg-ask"]');
+    expect(ask.length).toBe(2);
+    await r.act(() => ask[0]!.click());
+    await waitFor(() => expect(q(r, '[data-testid="room-ask-why"]')?.textContent).toBe('Ask an agent to answer this message:'), r);
+    await r.act(() => q(r, '[data-testid="room-ask-agent"]')!.click());
+    await waitFor(() => expect(asked[2]).toEqual(['m1', 'agt1']), r);
+  });
+
   it('renders author kinds, markers, check cards with failure summary, and inert agent text', async () => {
     const messages: Message[] = [
       msg({ seq: 1, body: 'plain **human**' }),

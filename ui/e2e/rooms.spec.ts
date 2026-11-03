@@ -2,7 +2,7 @@
 // direct message opens the Agent Inspector for its agent; a join rule is made and removed in the Room tab (that it adds its agent
 // to the next task room whose task names a file under its folder is tested in the core, internal/core/p130_test.go).
 import { expect, test, type Locator } from '@playwright/test';
-import { choose, createAgent, createProjectWithoutRepo, openAgentPage, openRoom, roomLink } from './helpers';
+import { choose, createAgent, createProjectWithoutRepo, openAgentPage, openRoom, projectNav, roomLink } from './helpers';
 
 /** Open a kit menu by its trigger (repeated while it is still closing after the last choice) and choose an item. */
 async function fromMenu(trigger: Locator, item: Locator): Promise<void> {
@@ -38,17 +38,28 @@ test("Ctrl+. in a direct message opens the agent's inspector", async ({ page }) 
   await expect(page.getByTestId('inspector')).toContainText('Ida');
 });
 
-test("a join rule is made and removed in a channel's Room tab", async ({ page }) => {
+test("a join rule is set on the agent's editor and said on a channel's Room tab (X17)", async ({ page }) => {
   await createProjectWithoutRepo(page, 'join-rules');
   await createAgent(page, 'Sec', 'security');
   await openRoom(page, 'general');
   await page.getByTestId('room-mode').click();
   const rules = page.getByTestId('join-rules');
-  await expect(rules).toBeVisible();
-  await choose(rules.getByRole('combobox', { name: 'Agent for the rule' }), { label: 'Sec' });
-  await rules.getByLabel('Folder (optional)').fill('auth/');
-  await rules.getByRole('button', { name: 'Add rule' }).click();
-  await expect(rules.getByTestId('join-rule')).toHaveText(/Sec joins as an observer: tasks naming a file under auth\//);
-  await rules.getByRole('button', { name: 'Remove the rule for Sec' }).click();
-  await expect(rules.getByTestId('join-rule')).toHaveCount(0);
+  await expect(rules.getByTestId('join-rules-none')).toBeVisible();
+  // the rule lives on the crew: the agent's editor, under More settings
+  await projectNav(page, 'nav-overview');
+  await page.getByRole('complementary', { name: 'Crew' }).locator('[data-testid="work-agent"][data-name="Sec"]').click();
+  const editor = page.getByTestId('agent-editor');
+  await editor.getByTestId('agent-more-settings').locator(':scope > summary').click();
+  await choose(editor.getByRole('combobox', { name: 'Joins task rooms' }), 'every');
+  await expect(editor.getByRole('combobox', { name: 'Joins task rooms' })).toHaveAttribute('data-value', 'every');
+  await expect(editor.getByRole('combobox', { name: 'Joins task rooms' })).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await openRoom(page, 'general');
+  await page.getByTestId('room-mode').click();
+  await expect(page.getByTestId('join-rules').getByTestId('join-rule')).toContainText('Sec joins every task room as an observer');
+  await page.getByTestId('join-rules').getByRole('link', { name: 'Change the join rule of Sec' }).click();
+  const again = page.getByTestId('agent-editor');
+  await again.getByTestId('agent-more-settings').locator(':scope > summary').click();
+  await choose(again.getByRole('combobox', { name: 'Joins task rooms' }), 'never');
+  await expect(again.getByRole('combobox', { name: 'Joins task rooms' })).toHaveAttribute('data-value', 'never');
 });

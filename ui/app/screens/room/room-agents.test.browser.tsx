@@ -56,7 +56,7 @@ describe('RoomAgentsPanel', () => {
 
   it('choosing a mode applies it; the default order and the round limit show in words; the moderator starts as the lead or you (X14)', async () => {
     const calls: unknown[] = [];
-    const s = testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [], roomInvite: async () => [], roomReply: async () => ({}) });
+    const s = testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [], roomInvite: async () => [], roomReply: async () => ({ trigger: '', turns: [], bounded: false }) });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} lastHumanMessageId="msg_1" />, s);
     const text = () => r.container.querySelector('[data-testid="mode-text"]')!.textContent;
     expect(text()).toContain('No model chooses the speaker');
@@ -143,7 +143,7 @@ describe('RoomAgentsPanel', () => {
     const s = testServices({
       roomInvite: async (...a: unknown[]) => (invites.push(a), []),
       roomRemoveMember: async (...a: unknown[]) => (removes.push(a), []),
-      roomReply: async (id: string) => (replies.push(id), {}),
+      roomReply: async (id: string) => (replies.push(id), { trigger: id, turns: [], bounded: false, why: 'nobody addressed' }),
       roomSetMode: async () => room,
       roomTurns: async () => [turn],
     });
@@ -157,10 +157,28 @@ describe('RoomAgentsPanel', () => {
     await waitFor(() => expect(removes).toEqual([['room_1', 'a1']]), r);
     await r.act(() => button(r, 'Ask agents to reply to my last message').click());
     await waitFor(() => expect(replies).toEqual(['msg_1']), r);
+    // the responder's outcome is said, not dropped (X12)
+    await waitFor(() => expect(r.$('[data-testid="room-reply-note"]')?.textContent).toBe('No agent answered: nobody was mentioned.'), r);
     const row = await waitFor(() => r.container.querySelector('[data-testid="room-turn"]')!, r);
     expect(row.textContent).toContain('not reported');
     expect(row.textContent).toContain('mention');
     expect(row.textContent).toContain('100/20 tokens');
+  });
+
+  it('offers Ask again on a turn that gave no answer, once, and asks that agent on that message (X12)', async () => {
+    const asked: unknown[][] = [];
+    const base: RoomTurn = { turnId: 'tr1', roomId: 'room_1', triggerId: 'msg_1', agentId: 'a1', round: 1, reason: 'mention', mode: 'auto', status: 'failed', contextMessages: 0, contextTokens: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, startedAt: 1, endedAt: 2 };
+    const s = testServices({
+      roomReply: async (...a: unknown[]) => (asked.push(a), { trigger: 'msg_1', turns: [{ turnId: 'tr3', agentId: 'a1', status: 'done', reason: 'asked' }], bounded: false }),
+      roomSetMode: async () => room,
+      roomTurns: async () => [{ ...base, turnId: 'tr2', triggerId: 'msg_2', status: 'done', startedAt: 3 }, base],
+    });
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
+    await waitFor(() => expect(r.$$('[data-testid="room-turn"]')).toHaveLength(2), r);
+    const again = r.$$('[data-testid="room-turn-ask-again"]');
+    expect(again).toHaveLength(1);
+    await r.act(() => (again[0] as HTMLElement).click());
+    await waitFor(() => expect(asked).toEqual([['msg_1', 'a1']]), r);
   });
 
   it('has no Invite at all when the whole crew is already in the room (X15)', () => {
@@ -238,37 +256,24 @@ describe('RoomAgentsPanel', () => {
   });
 });
 
-describe('JoinRules (P130)', () => {
-  it('lists the project\'s rules in words, adds one with its folder and state, and removes one', async () => {
-    const added: unknown[] = [];
-    const removed: string[] = [];
-    let rules: JoinRule[] = [{ id: 'jr1', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'auth/', state: 'observer', createdBy: 'human:kyle', createdAt: 1 }];
-    const s = testServices({
-      roomTurns: async () => [],
-      roomJoinRules: async () => rules,
-      roomJoinRuleAdd: async (rule) => {
-        added.push(rule);
-        const r = { id: 'jr2', projectId: rule.projectId, agentId: rule.agentId, pathPrefix: rule.pathPrefix, state: rule.state ?? 'observer', createdBy: 'human:kyle', createdAt: 2 };
-        rules = [...rules, r];
-        return r;
-      },
-      roomJoinRuleRemove: async (id) => {
-        removed.push(id);
-        rules = rules.filter((r) => r.id !== id);
-      },
-    });
-    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
-    await waitFor(() => expect(r.container.querySelectorAll('[data-testid="join-rule"]').length).toBe(1), r);
-    expect(r.container.querySelector('[data-testid="join-rule"]')!.textContent).toContain('Rex joins as an observer: tasks naming a file under auth/');
-    await r.act(() => type(byLabel(r.container, 'Agent for the rule'), 'a1'));
-    await r.act(() => type(byLabel(r.container, 'Folder (optional)'), ' web/ '));
-    await r.act(() => type(byLabel(r.container, 'Joins as'), 'active'));
-    await r.act(() => button(r, 'Add rule').click());
-    await waitFor(() => expect(added).toEqual([{ projectId: 'prj_1', agentId: 'a1', pathPrefix: 'web/', state: 'active' }]), r);
+describe('JoinRules (P130, X17)', () => {
+  it("says each agent's rule in words with Change to its editor; the rules are set there, not here", async () => {
+    const rules: JoinRule[] = [
+      { id: 'jr1', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'auth/', state: 'observer', createdBy: 'human:kyle', createdAt: 1 },
+      { id: 'jr2', projectId: 'prj_1', agentId: 'a1', pathPrefix: '', state: 'active', createdBy: 'human:kyle', createdAt: 2 },
+    ];
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [], roomJoinRules: async () => rules }));
     await waitFor(() => expect(r.container.querySelectorAll('[data-testid="join-rule"]').length).toBe(2), r);
-    expect(r.container.querySelectorAll('[data-testid="join-rule"]')[1]!.textContent).toContain('Dana joins as an active member: tasks naming a file under web/');
-    await r.act(() => byLabel<HTMLButtonElement>(r.container, 'Remove the rule for Rex').click());
-    await waitFor(() => expect(removed).toEqual(['jr1']), r);
+    const lines = Array.from(r.container.querySelectorAll('[data-testid="join-rule"]')).map((li) => li.querySelector('.what')!.textContent);
+    expect(lines).toEqual(['Rex joins the rooms of tasks that touch auth/ as an observer', 'Dana joins every task room as an active member']);
+    expect(byLabel<HTMLAnchorElement>(r.container, 'Change the join rule of Rex').getAttribute('href')).toBe('/team?edit=a2');
+    expect(r.container.querySelector('[data-testid="join-rules"] input')).toBe(null);
+    expect(r.container.textContent).not.toContain('Add rule');
+  });
+
+  it('says where to set one when none is set', async () => {
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [], roomJoinRules: async () => [] }));
+    await waitFor(() => expect(r.container.querySelector('[data-testid="join-rules-none"]')!.textContent).toBe("No agent joins task rooms by rule. Set it on an agent's editor, under More settings."), r);
   });
 
   it('is not shown in a direct message', () => {

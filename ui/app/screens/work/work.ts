@@ -4,7 +4,7 @@
 // search and the item opened by default are tested without a page.
 
 import type { Chat } from '../../api/chatClient.ts';
-import type { NeedsYouItem, Task } from '../../api/types.ts';
+import type { NeedsYouItem, Task, Unread } from '../../api/types.ts';
 import { workItemKey, type WorkItemRef } from '../../lib/route.ts';
 import { listWhen } from '../chats/chats.ts';
 import { KIND_LABEL } from '../needs-you/needs-you.ts';
@@ -129,4 +129,13 @@ export function openItem(rows: readonly WorkRow[], named: WorkItemRef | undefine
 export function modelEffort(model: string | undefined, effort: string | undefined, modelName: (id: string) => string): string {
   const m = model?.trim() ? modelName(model) : 'Default model';
   return effort?.trim() ? `${m} · ${effort.trim()}` : m;
+}
+
+/**
+ * What the project's rooms hold that the person has not read, for the Work page's Rooms link (X18): the sum of the core's
+ * per-room counts (a muted room counts only what names the person, as the core already says). The Rooms rail draws the same
+ * numbers room by room, but only on a room's page.
+ */
+export function roomsUnread(unread: readonly Pick<Unread, 'unread'>[]): number {
+  return unread.reduce((n, u) => n + Math.max(0, u.unread), 0);
 }

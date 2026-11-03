@@ -28,7 +28,7 @@ import { AgentPanelHost } from '../team/agent-panel.tsx';
 import { editAgent, editAgentHref, newAgentHref } from './edit-agent.ts';
 import { RecommendLine } from './recommend-line.tsx';
 import { RepoSyncLine } from './repo-sync-line.tsx';
-import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, workRows, type WorkGroup, type WorkRow } from './work.ts';
+import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, roomsUnread, workRows, type WorkGroup, type WorkRow } from './work.ts';
 import { AddReviewerNote } from '../shared/add-reviewer.tsx';
 
 const layoutCss = css({
@@ -97,6 +97,7 @@ const footCss = css({
   '& > a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', padding: `0 ${t.s2}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, textDecoration: 'none' },
   '& > a:hover': { background: t.bgHover, color: t.text },
 });
+const countCss = css({ marginLeft: '6px', color: t.accentText, fontFamily: t.mono, fontSize: t.textXs, fontWeight: '600' });
 const centreCss = css({ display: 'flex', flexDirection: 'column', minWidth: '0', minHeight: '0', overflow: 'hidden', '& > *': { flex: '1', minHeight: '0' } });
 const emptyCss = css({ display: 'grid', placeItems: 'center', alignContent: 'center', gap: t.s3, padding: t.s6, color: t.textMuted, fontSize: t.textMd, textAlign: 'center' });
 const crewCss = css({
@@ -199,6 +200,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
     const merged = mergedSince(p.taskList, Date.now() - WEEK_MS);
     const channels = p.roomList.filter((r) => r.kind === 'channel' && !r.archived);
     const general = channels.find((r) => r.name === 'general') ?? channels[0];
+    // what the rooms hold that the person has not read (X18): the Rooms rail draws it only on a room's page
+    const unread = roomsUnread(p.unread.data ?? []);
 
     return (
       <div mix={layoutCss} data-testid="work">
@@ -262,6 +265,12 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             {/* straight to the project channel when it is known: /rooms only redirects there */}
             <a href={general ? routes.room.href({ id: general.id }) : routes.rooms.href()} data-testid="nav-rooms">
               Rooms
+              {unread > 0 ? (
+                <span mix={countCss} data-testid="nav-rooms-unread" title={`${unread} unread`}>
+                  <span aria-hidden="true">{unread >= 1000 ? '999+' : unread}</span>
+                  <span class="sr-only">, {unread} unread</span>
+                </span>
+              ) : null}
             </a>
           </nav>
         </section>

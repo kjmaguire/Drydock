@@ -188,6 +188,12 @@ type Outcome struct {
 	Turns   []TurnInfo `json:"turns"`
 	Bounded bool       `json:"bounded"`           // the room's debate bound ended the conversation
 	Stopped string     `json:"stopped,omitempty"` // why the chain ended early (preempted, hard cap, disabled, ...)
+	// Why is the scheduler's reason when it chose nobody to answer the person's message ("nobody addressed", "only invited
+	// speakers speak"): the room says it in words and offers to ask an agent by name (X12).
+	Why string `json:"why,omitempty"`
+	// Room is the room of the message (set once the room was read); Asked the agent a person asked to answer (Ask).
+	Room  string `json:"room,omitempty"`
+	Asked string `json:"asked,omitempty"`
 }
 
 // Responder runs agent replies. Create one with New, start it with Start, or call Handle directly.
@@ -208,6 +214,9 @@ type Responder struct {
 type roomState struct {
 	run sync.Mutex   // one chain at a time per room, in arrival order
 	gen atomic.Int64 // bumped by every new human message: a running chain stops before its next turn
+	// last is what the newest chain of the room did (X12): the room shows why nobody answered and offers Ask. It lives in
+	// memory only: after a restart the room has no such line until the next message.
+	last atomic.Pointer[Outcome]
 }
 
 // New returns a Responder.
@@ -321,7 +330,7 @@ func (r *Responder) enqueue(ctx context.Context, roomID, messageID string) {
 			if ctx.Err() != nil {
 				continue
 			}
-			if _, err := r.handle(ctx, id); err != nil && !errors.Is(err, context.Canceled) {
+			if _, err := r.handle(ctx, id, ""); err != nil && !errors.Is(err, context.Canceled) {
 				r.logf("room responder: %v", err)
 			}
 		}
@@ -361,7 +370,7 @@ func (r *Responder) markInterrupted(ctx context.Context) error {
 			who = a.Name
 		}
 		if _, err := r.d.Room.Post(ctx, room.PostParams{RoomID: c.room, Type: room.TypeSystem, Author: room.System, ReplyToID: c.trigger,
-			Body:    fmt.Sprintf("%s was answering when Drydock stopped, so there is no reply. Mention them again to ask again.", who),
+			Body:    fmt.Sprintf("%s was answering when Drydock stopped, so there is no reply. Use Ask again to ask once more.", who),
 			Payload: map[string]any{"code": "agent_turn_interrupted", "agent_id": c.agent}}); err != nil {
 			r.logf("post interrupted turn: %v", err)
 		}
@@ -377,15 +386,47 @@ func (r *Responder) Handle(ctx context.Context, messageID string) (Outcome, erro
 		return Outcome{}, err
 	}
 	r.state(m.RoomID).gen.Add(1)
-	return r.handle(ctx, messageID)
+	return r.handle(ctx, messageID, "")
 }
 
-func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, error) {
+// Ask runs one turn a person asked for (X12, room.reply with an agent): agentID answers the person's message messageID
+// whatever the turn-taking rules chose, on a grant the scheduler issues for it (room.GrantAskedTurn, reason "asked"), and the
+// chain goes on from its reply as after any turn. Asking again after a failed, empty or interrupted turn is a new turn; a turn
+// of that agent still running for the message is refused. It is the person's click: nothing calls it on its own.
+func (r *Responder) Ask(ctx context.Context, messageID, agentID string) (Outcome, error) {
+	if strings.TrimSpace(agentID) == "" {
+		return Outcome{}, errors.New("name the agent to ask")
+	}
+	m, err := r.d.Room.GetMessage(ctx, messageID)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if m.Author.Kind != room.AuthorHuman || m.IsSteer() {
+		return Outcome{}, fmt.Errorf("%w: an agent is asked to answer a person's message only", room.ErrForbidden)
+	}
+	r.state(m.RoomID).gen.Add(1)
+	return r.handle(ctx, messageID, agentID)
+}
+
+// LastOutcome is what the newest chain of a room did (Handle, Ask or the event loop), while the app runs; false when none ran
+// since the app started.
+func (r *Responder) LastOutcome(roomID string) (Outcome, bool) {
+	o := r.state(roomID).last.Load()
+	if o == nil {
+		return Outcome{}, false
+	}
+	return *o, true
+}
+
+// ReplyOutcomeEvent says a chain of a room ended (X12): the room re-reads LastOutcome to say why nobody answered.
+const ReplyOutcomeEvent = "room.reply_outcome"
+
+func (r *Responder) handle(ctx context.Context, messageID, asked string) (out Outcome, err error) {
 	trig, err := r.d.Room.GetMessage(ctx, messageID)
 	if err != nil {
 		return Outcome{}, err
 	}
-	out := Outcome{Trigger: trig.ID}
+	out = Outcome{Trigger: trig.ID, Asked: asked}
 	if trig.Author.Kind != room.AuthorHuman {
 		out.Stopped = "only a human message starts a conversation"
 		return out, nil
@@ -402,6 +443,16 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 	if err != nil {
 		return out, err
 	}
+	out.Room = rm.ID
+	defer func() {
+		if err != nil {
+			return
+		}
+		o := out
+		rs.last.Store(&o)
+		r.publish(context.WithoutCancel(ctx), ReplyOutcomeEvent, rm, asked, map[string]any{"room": rm.ID, "trigger": trig.ID, "turns": len(out.Turns),
+			"stopped": out.Stopped, "why": out.Why})
+	}()
 	if rm.Archived {
 		out.Stopped = "the room is archived"
 		return out, nil
@@ -426,10 +477,24 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 			out.Stopped = "cancelled"
 			break
 		}
-		// the room's scheduler plans the turns and grants each one; the runtime starts a room turn only on its grant (P118)
-		dec, grants, err := r.d.Room.GrantTurns(ctx, m.ID, r.contextBounds())
-		if err != nil {
-			return out, err
+		// the room's scheduler plans the turns and grants each one; the runtime starts a room turn only on its grant (P118); a
+		// turn a person asked for is granted to the agent they named (X12)
+		var dec room.TurnDecision
+		var grants map[string]room.TurnGrant
+		if asked != "" && m.ID == trig.ID {
+			d, g, err := r.d.Room.GrantAskedTurn(ctx, m.ID, asked, r.contextBounds())
+			if err != nil {
+				return out, err
+			}
+			dec, grants = d, map[string]room.TurnGrant{asked: g}
+		} else {
+			dec, grants, err = r.d.Room.GrantTurns(ctx, m.ID, r.contextBounds())
+			if err != nil {
+				return out, err
+			}
+		}
+		if m.ID == trig.ID && len(dec.Speakers) == 0 && !dec.Bounded {
+			out.Why = dec.Why
 		}
 		if dec.Bounded {
 			if _, _, err := r.d.Room.ApplyDebateBound(ctx, rm.ID, m.ThreadRootID); err != nil {
@@ -489,13 +554,29 @@ func (r *Responder) noteRepliesOff(ctx context.Context, rm room.Room, trig room.
 	}
 }
 
-// beginTurn inserts the turn row. false means this (trigger, agent) already had a turn.
+// ErrAlreadyAnswering refuses a turn a person asked for while the same agent's turn on the same message still runs.
+var ErrAlreadyAnswering = errors.New("that agent is answering this message now")
+
+// beginTurn inserts the turn row. false means this (trigger, agent) already had a turn. A turn a person asked for (reason
+// asked, X12) is a new row each time (room_turns.ask counts them, migration 00177), refused while one of the agent's turns on
+// the message runs.
 func (r *Responder) beginTurn(ctx context.Context, id string, rm room.Room, trig room.Message, agentID, reason string, round int) (bool, error) {
 	var ok bool
 	err := r.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `INSERT INTO room_turns(id,room_id,project_id,trigger_id,agent_id,round,reason,mode,status,started_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(trigger_id, agent_id) DO NOTHING`,
-			id, rm.ID, rm.ProjectID, trig.ID, agentID, round, reason, string(rm.Mode), StatusRunning, storage.Now())
+		ask := 0
+		if reason == string(room.ReasonAsked) {
+			var running int
+			if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(ask),0)+1, COALESCE(SUM(status=?),0) FROM room_turns WHERE trigger_id=? AND agent_id=?`,
+				StatusRunning, trig.ID, agentID).Scan(&ask, &running); err != nil {
+				return err
+			}
+			if running > 0 {
+				return ErrAlreadyAnswering
+			}
+		}
+		res, err := tx.ExecContext(ctx, `INSERT INTO room_turns(id,room_id,project_id,trigger_id,agent_id,round,reason,mode,status,started_at,ask)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(trigger_id, agent_id, ask) DO NOTHING`,
+			id, rm.ID, rm.ProjectID, trig.ID, agentID, round, reason, string(rm.Mode), StatusRunning, storage.Now(), ask)
 		if err != nil {
 			return err
 		}

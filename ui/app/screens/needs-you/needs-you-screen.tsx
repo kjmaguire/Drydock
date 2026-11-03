@@ -8,7 +8,7 @@
 // opens with or without a project, and the sidebar's Inbox and Running counts are the same lists.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { AtSign, Bot, CircleCheck, CircleHelp, CirclePause, FileText, GitMerge, Hourglass, ListTree, MessageSquare, OctagonX, PlugZap, Shield, Eye, UserPlus, Wallet, type IconNode } from 'lucide';
+import { AtSign, Bot, CircleCheck, MessageSquareReply, CircleHelp, CirclePause, FileText, GitMerge, Hourglass, ListTree, MessageSquare, OctagonX, PlugZap, Shield, Eye, UserPlus, Wallet, type IconNode } from 'lucide';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
@@ -69,6 +69,7 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
   budget: { icon: Wallet, tone: 'warn' },
   task: { icon: Hourglass, tone: 'warn' },
   mention: { icon: AtSign, tone: 'accent' },
+  reply: { icon: MessageSquareReply, tone: 'accent' },
   join: { icon: UserPlus, tone: 'accent' },
   agent: { icon: Bot, tone: 'err' },
   connection: { icon: PlugZap, tone: 'err' },
@@ -773,7 +774,7 @@ function NeedsDetail(
       ? 'Open the chat'
       : budgetPage
         ? 'Open Budgets'
-        : it.kind === 'mention'
+        : it.kind === 'mention' || it.kind === 'reply'
           ? 'Open the room'
           : it.kind === 'agent'
             ? 'Open the agent'

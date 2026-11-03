@@ -131,8 +131,12 @@ const (
 	NeedsTaskWaiting NeedsKind = "task_waiting"
 	NeedsMention     NeedsKind = "mention"
 	NeedsJoinRequest NeedsKind = "join_request"
-	NeedsAgent       NeedsKind = "agent"
-	NeedsConnection  NeedsKind = "connection"
+	// NeedsReply is an agent's answer to the person (a message that replies to theirs) not read yet: one item per room, the
+	// newest answer, gone when the room is read (X18). A reply in a thread mentions nobody, so without it the answer would be
+	// a number on the Rooms rail only.
+	NeedsReply      NeedsKind = "reply"
+	NeedsAgent      NeedsKind = "agent"
+	NeedsConnection NeedsKind = "connection"
 )
 
 // Budget states of a NeedsBudget item.

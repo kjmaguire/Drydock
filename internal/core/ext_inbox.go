@@ -272,7 +272,7 @@ func ackable(key string) error {
 		return errors.New("a request to join leaves the inbox when you answer it: let the agent join or decline")
 	case "task", "connection":
 		return errors.New("this leaves the inbox when what it says changes: open it to act on it")
-	case "question", "check", "watchdog", "budget", "mention", "agent":
+	case "question", "check", "watchdog", "budget", "mention", "reply", "agent":
 		return nil
 	default:
 		return fmt.Errorf("there is no inbox item %q", key)

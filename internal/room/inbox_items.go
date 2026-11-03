@@ -49,6 +49,18 @@ func (s *Service) moreItems(ctx context.Context, projectID string, out []NeedsYo
 			out = append(out, it)
 		}
 	}
+	for _, it := range mentions {
+		msgs[it.MessageID] = true
+	}
+	replies, err := s.replyItems(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range replies {
+		if !msgs[it.MessageID] {
+			out = append(out, it)
+		}
+	}
 	joins, err := s.joinItems(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -117,6 +129,49 @@ ORDER BY x.created_at, x.seq LIMIT `+fmt.Sprint(MentionItemCap), projectID, proj
 			where = "your direct message"
 		}
 		it.Detail = "Mentioned you in " + where + "."
+		if a := ParseAuthor(author); a.Kind == AuthorAgent {
+			it.AgentID = a.ID
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+// replyItems are the agents' answers to a person not read yet (X18): per room the person is in, the newest agent CHAT after the
+// person's read cursor that replies to one of the person's own messages, one item per room. A muted room makes none (its
+// messages raise nothing but a mention by name, which is a mention item). The item goes when the room is read (MarkRead moves
+// the cursor past it) or the person marks it done; a later answer is a new item.
+func (s *Service) replyItems(ctx context.Context, projectID string) ([]NeedsYouItem, error) {
+	rows, err := s.db.Reader().QueryContext(ctx, `
+SELECT x.id, x.room_id, x.body, x.task_id, x.author, x.created_at, r.project_id, r.kind, r.name
+FROM room_members m JOIN rooms r ON r.id = m.room_id
+JOIN messages x ON x.id = (SELECT y.id FROM messages y JOIN messages p ON p.id = y.reply_to_id
+                           WHERE y.room_id = m.room_id AND y.seq > m.last_read_seq AND y.type = 'CHAT'
+                             AND y.author NOT LIKE 'human:%' AND y.author NOT LIKE 'tool:%' AND y.author <> 'system'
+                             AND p.author = m.member_id
+                           ORDER BY y.seq DESC LIMIT 1)
+WHERE m.kind = 'human' AND m.state <> 'muted' AND r.archived = 0 AND (? = '' OR r.project_id = ?)
+  AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key = 'reply:' || x.id)
+ORDER BY x.created_at, x.seq LIMIT `+fmt.Sprint(MentionItemCap), projectID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []NeedsYouItem
+	for rows.Next() {
+		var it NeedsYouItem
+		var body, author, kind, name string
+		var at int64
+		if err := rows.Scan(&it.MessageID, &it.RoomID, &body, &it.TaskID, &author, &at, &it.ProjectID, &kind, &name); err != nil {
+			return nil, err
+		}
+		it.Key, it.Kind, it.Severity, it.CreatedAt = "reply:"+it.MessageID, NeedsReply, 3, fromMs(at)
+		it.Title = firstLine(body, 160)
+		where := "#" + name
+		if Kind(kind) == KindDM {
+			where = "your direct message"
+		}
+		it.Detail = "Answered you in " + where + "."
 		if a := ParseAuthor(author); a.Kind == AuthorAgent {
 			it.AgentID = a.ID
 		}

@@ -963,6 +963,19 @@ export interface TickResult {
   capacity: number;
   max: number;
 }
+/** What the responder did for one person's message (responder.Outcome, X12). */
+export interface ReplyOutcome {
+  trigger: string;
+  turns: { turnId: string; agentId: string; status: string; reason: string; messageId?: string; error?: string }[] | null;
+  bounded: boolean;
+  /** Why the chain ended early (a newer message, the hard cap, replies switched off...). */
+  stopped?: string;
+  /** The scheduler's reason when it chose nobody ("nobody addressed", "only invited speakers speak"). */
+  why?: string;
+  room?: string;
+  asked?: string;
+}
+
 export interface RoomTurn {
   turnId: string;
   roomId: string;

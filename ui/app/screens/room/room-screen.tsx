@@ -17,6 +17,7 @@ import { Icon, roomIcon } from '../../ui/icon.tsx';
 import { Page, actionsEnd } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
+import { askableAgents, askAgainOf, newestHumanMessage, outcomeWords } from './asks.ts';
 import { Composer } from './composer.tsx';
 import { MessageFeed } from './feed.ts';
 import { CheckGroup, MessageItem } from './message-item.tsx';
@@ -153,6 +154,16 @@ const jumpCss = css({
   '&:hover': { background: t.accentHover },
 });
 const notesCss = css({ padding: `0 ${t.s5}` });
+// the ask row (X12): why nobody answered, then one button per agent that can be asked
+const askRowCss = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: t.s2,
+  margin: '0',
+  padding: `${t.s2} ${t.s6} 0 ${t.s5}`,
+  '& .why': { color: t.textMuted, fontSize: t.textSm },
+});
 const olderCss = css({ display: 'flex', justifyContent: 'center', padding: `${t.s2} 0` });
 
 /** The person is looking at this window: it is visible and has focus. Messages are marked read only then. */
@@ -186,7 +197,25 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     key: () => handle.props.room.projectId,
     enabled: () => !handle.props.room.archived,
   });
+  // what the newest chain of the room did (X12): why nobody answered the person's message, with Ask under it
+  const outcome = query(handle, {
+    load: () => s.client.roomReplyOutcome(handle.props.room.id),
+    when: (e) => e.type === 'room.reply_outcome' && (e.data as { room?: string } | undefined)?.room === handle.props.room.id,
+    key: () => handle.props.room.id,
+    enabled: () => !handle.props.room.archived,
+  });
   const act = action(handle);
+  /** The person's message the ask row is open for from its hover action; undefined: only after a message nobody answered. */
+  let askFor: string | undefined;
+  /** What the last Ask said, when it gave no answer (X12): the outcome in words. */
+  let askNote = '';
+  const ask = (messageId: string, agentId: string) =>
+    void act.run('ask', async () => {
+      askFor = undefined;
+      const o = await s.client.roomReply(messageId, agentId);
+      askNote = (o?.turns ?? []).length ? '' : outcomeWords(o);
+      await Promise.all([turns.reload(), outcome.reload()]);
+    });
   const turnOn = () =>
     void act.run('replies', async () => {
       const cur = dev.data ?? (await s.client.projectdevGet(handle.props.room.projectId));
@@ -271,6 +300,14 @@ export function Conversation(handle: Handle<{ room: Room }>) {
       .filter((x) => x.status === 'running')
       .map((x) => agents.find((a) => a.id === x.agentId)?.name || x.agentId)
       .join(' and ');
+    const askable = room.archived || repliesOff ? [] : askableAgents(mem);
+    const nameOf = (id: string) => agents.find((a) => a.id === id)?.name || id;
+    // the ask row (X12): under a message of the person nobody answered (the responder's outcome says why), or for the message
+    // whose hover action was clicked; never while an agent answers it
+    const newest = newestHumanMessage(msgs);
+    const o = outcome.data;
+    const unanswered = !!o && o.trigger === newest && !(o.turns ?? []).length && !answering ? outcomeWords(o) : '';
+    const askTarget = askFor ?? (unanswered ? newest : undefined);
     const stick = list.stick;
     if (stick) seenSeq = feed.lastSeq;
     // the messages are in seq order: count back from the newest (older pages above are never "new")
@@ -300,9 +337,23 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             replies={replies.get(r.m.id) ?? 0}
             onReply={() => s.ui.openThread(room.id, r.m.id)}
             onOpenRoot={r.m.thread_root_id ? () => s.ui.openThread(room.id, r.m.thread_root_id!) : undefined}
+            onAsk={
+              askable.length && r.m.author.kind === 'human' && r.m.type === 'CHAT'
+                ? () => {
+                    askFor = r.m.id;
+                    void handle.update();
+                  }
+                : undefined
+            }
+            {...askAgainProps(r.m)}
           />
         ),
     );
+    function askAgainProps(m: Message) {
+      const again = askAgainOf(m);
+      if (!again || !askable.includes(again.agentId)) return {};
+      return { onAskAgain: () => ask(again.messageId, again.agentId), askAgainName: nameOf(again.agentId) };
+    }
     handle.queueTask(() => list.settle());
     return (
       <section mix={screenCss} class="conversation" aria-label={`Conversation ${room.name}`}>
@@ -448,6 +499,27 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             </button>
           ) : null}
         </div>
+        {askTarget && askable.length ? (
+          <div mix={askRowCss} role="group" aria-label="Ask an agent to answer" data-testid="room-ask">
+            <span class="why" data-testid="room-ask-why">
+              {askFor ? 'Ask an agent to answer this message:' : unanswered}
+            </span>
+            {askable.map((id) => (
+              <Button key={id} size="sm" disabled={!!act.busy} data-testid="room-ask-agent" mix={[on('click', () => ask(askTarget, id))]}>
+                Ask {nameOf(id)}
+              </Button>
+            ))}
+            {askFor ? (
+              <Button size="sm" variant="ghost" mix={[on('click', () => ((askFor = undefined), void handle.update()))]}>
+                Cancel
+              </Button>
+            ) : null}
+          </div>
+        ) : askNote ? (
+          <p mix={askRowCss} role="status" data-testid="room-ask-note">
+            <span class="why">{askNote}</span>
+          </p>
+        ) : null}
         <Composer
           room={room}
           agents={agents}

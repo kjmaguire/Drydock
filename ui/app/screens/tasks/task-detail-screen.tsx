@@ -7,6 +7,7 @@
 // (O) and Hand to another agent.
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
+import { TaskMinutesLink } from '../room/room-exports.tsx';
 import { ClipboardList, Columns2, MessagesSquare } from 'lucide';
 import type { AssignPreview } from '../../api/controlClient.ts';
 import type { Connection, SummaryCheck, Task, TaskDetail } from '../../api/types.ts';
@@ -254,6 +255,8 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                       Open task channel
                     </a>
                   ) : null}
+                  {/* the minutes the task's room kept when the task closed (X19) */}
+                  {d.roomId ? <TaskMinutesLink key={d.roomId} roomId={d.roomId} roomName={`task-${task.seq}`} /> : null}
                   <span mix={pillCss} data-testid="task-status" data-tone={tone}>
                     <span class="d" aria-hidden="true" />
                     {statusPill(task, d.paused, checks)}

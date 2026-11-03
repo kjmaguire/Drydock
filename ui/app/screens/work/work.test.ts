@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { NeedsYouItem, Task } from '../../api/types.ts';
 import { editAgentHref, newAgentHref } from './edit-agent.ts';
-import { filterWork, groupWork, modelEffort, needLine, openItem, workRows, type WorkChat } from './work.ts';
+import { filterWork, groupWork, modelEffort, needLine, openItem, roomsUnread, workRows, type WorkChat } from './work.ts';
 
 const now = new Date(2026, 10, 1, 15, 0, 0).getTime();
 const MIN = 60_000;
@@ -90,5 +90,12 @@ describe('Work (decision P141)', () => {
     expect(modelEffort('sonnet', '', name)).toBe('sonnet');
     expect(editAgentHref('agt 1')).toBe('/team?edit=agt%201');
     expect(newAgentHref()).toBe('/team?new=agent');
+  });
+});
+
+describe('the Rooms link of Work (X18)', () => {
+  it("adds up the rooms' unread counts", () => {
+    expect(roomsUnread([])).toBe(0);
+    expect(roomsUnread([{ unread: 2 }, { unread: 0 }, { unread: 5 }])).toBe(7);
   });
 });

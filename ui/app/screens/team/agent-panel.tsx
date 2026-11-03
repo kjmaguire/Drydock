@@ -25,6 +25,7 @@ import { Segmented } from '../../ui/segmented.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ModelField } from '../shared/model-field.tsx';
+import { AgentJoinRule } from './agent-join-rule.tsx';
 import { SkipApprovals } from '../shared/skip-approvals.tsx';
 import { noSkillChanges, type SkillChanges } from '../skills/skills.ts';
 import {
@@ -416,6 +417,8 @@ export function AgentEditor(handle: Handle<AgentPanelProps>) {
             <RunModeField caps={caps} runMode={runMode} wslDistro={wslDistro} onChange={(m, d) => set(() => ((runMode = m), (wslDistro = d)))} />
             <ClaudePracticesPanel info={pr.info} on={practices} onChange={(v) => set(() => (practices = v))} />
             <RouteModelsField routes={routes} onRoutes={(r) => set(() => (routes = r))} suggestions={models} />
+            {/* the project's join rule for this agent (X17): applied at once, apart from Save */}
+            <AgentJoinRule key={`join:${agent.id}`} projectId={agent.projectId} agentId={agent.id} agentName={agent.name} />
             {savedAs ? (
               <Notice tone="ok" role="status" testId="saved-as-template">
                 Saved as the template {savedAs}. Find it in the <a href={appRoutes.library.href()}>Library</a>.

@@ -19,6 +19,8 @@ import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { errorAttrs, Field } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { RoomDecisions } from './decisions-list.tsx';
+import { askableAgents, NO_ANSWER_STATUSES, outcomeWords } from './asks.ts';
 import { lastHumanMessageId, memberKey, MODE_TEXT } from './messages.ts';
 import { JoinRules } from './join-rules.tsx';
 import { defaultModerator, defaultOrder, inOrder } from './turn-taking.ts';
@@ -81,6 +83,8 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
   let editOrder = false;
   let editRounds = false;
   let explainOf: string | undefined; // the decision whose "Why this model?" is open
+  // what "Ask agents to reply" found when nobody answered (X12): the responder's outcome in words, instead of nothing
+  let replyNote = '';
   const update = () => void handle.update();
 
   const name = (key: string) => (key.startsWith('human:') ? key.slice(6) : (handle.props.agents.find((a) => a.id === key)?.name ?? key));
@@ -352,13 +356,20 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
               title="Ask the agents to answer your latest message now"
               mix={[
                 on('click', async () => {
-                  await act.run('reply', () => s.client.roomReply(lastHumanMessageId));
+                  const o = await act.run('reply', () => s.client.roomReply(lastHumanMessageId));
+                  replyNote = o && !(o.turns ?? []).length ? outcomeWords(o) || 'No agent answered this message.' : '';
                   turns.reload();
+                  update();
                 }),
               ]}
             >
               Ask agents to reply to my last message
             </Button>
+          ) : null}
+          {replyNote ? (
+            <p class="muted" role="status" data-testid="room-reply-note">
+              {replyNote}
+            </p>
           ) : null}
         </section>
         {/* the project's join rules (P130): they add agents to new task rooms, so they are shown beside a channel's and a task room's agents */}
@@ -389,6 +400,23 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                       <td>
                         {tr.status}
                         {tr.error ? `: ${tr.error}` : ''}
+                        {/* a turn that gave no answer: the person can ask that agent again (X12), a new turn on the same message */}
+                        {NO_ANSWER_STATUSES.has(tr.status) && askableAgents(handle.props.members).includes(tr.agentId) && !list.some((x) => x.triggerId === tr.triggerId && x.agentId === tr.agentId && x.startedAt > tr.startedAt) ? (
+                          <Button
+                            variant="link"
+                            size="sm"
+                            disabled={!!act.busy}
+                            data-testid="room-turn-ask-again"
+                            mix={[
+                              on('click', async () => {
+                                await act.run('again', () => s.client.roomReply(tr.triggerId, tr.agentId));
+                                turns.reload();
+                              }),
+                            ]}
+                          >
+                            Ask again
+                          </Button>
+                        ) : null}
                       </td>
                       <td data-testid="room-turn-model">
                         {tr.model ? <code>{tr.model}</code> : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}
@@ -454,6 +482,8 @@ export function RoomTab(handle: Handle<{ roomId: string }>) {
       <>
         <ErrorNote error={members.error} what="Could not load the members" />
         <RoomAgentsPanel key={r.id} room={r} agents={s.project.agentList} members={members.data ?? []} lastHumanMessageId={lastHumanMessageId(recent.data ?? [])} />
+        {/* the decisions taken here, or in every room of the project in #decisions (X110) */}
+        {r.kind === 'channel' || r.kind === 'task' ? <RoomDecisions key={`dec:${r.id}`} room={r} /> : null}
       </>
     );
   };

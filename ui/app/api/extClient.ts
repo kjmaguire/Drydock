@@ -70,6 +70,7 @@ import type {
   RequirementTrace,
   RequirementVersion,
   RoomTurn,
+  ReplyOutcome,
   RouteExplain,
   RoutePreview,
   RouteLevel,
@@ -270,7 +271,10 @@ export interface ExtClient {
   roomInvite(roomId: string, agentId: string, role?: string, state?: string): Promise<RoomMember[]>;
   roomRemoveMember(roomId: string, agentId: string): Promise<RoomMember[]>;
   roomTurns(roomId: string, limit?: number): Promise<RoomTurn[]>;
-  roomReply(messageId: string): Promise<unknown>;
+  /** Ask the agents to answer a person's message now; with agentId, that agent answers it (X12: Ask, Ask again). */
+  roomReply(messageId: string, agentId?: string): Promise<ReplyOutcome>;
+  /** What the newest chain of a room did while the app runs (X12); null when none ran. */
+  roomReplyOutcome(roomId: string): Promise<ReplyOutcome | null>;
   planPropose(projectId: string, goal: string, requirements?: string, plannerAgentId?: string): Promise<{ planId: string; runId: string; plannerAgentId: string }>;
   planGet(planId: string): Promise<Plan>;
   planList(projectId: string): Promise<Plan[]>;
@@ -506,7 +510,8 @@ export function createExtClient(t: Transport): ExtClient {
     roomInvite: async (roomId, agentId, role = '', state = '') => arr(await call<RoomMember[] | null>('room.invite', { roomId, agentId, role, state })),
     roomRemoveMember: async (roomId, agentId) => arr(await call<RoomMember[] | null>('room.removeMember', { roomId, agentId })),
     roomTurns: async (roomId, limit = 0) => arr(await call<RoomTurn[] | null>('room.turns', { roomId, limit })),
-    roomReply: (messageId) => call('room.reply', { messageId }),
+    roomReply: (messageId, agentId) => call<ReplyOutcome>('room.reply', agentId ? { messageId, agentId } : { messageId }),
+    roomReplyOutcome: (roomId) => call<ReplyOutcome | null>('room.replyOutcome', { roomId }),
     planPropose: (projectId, goal, requirements = '', plannerAgentId = '') => call('plan.propose', { projectId, goal, requirements, plannerAgentId }),
     planGet: (planId) => call('plan.get', { planId }),
     planList: async (projectId) => arr(await call<Plan[] | null>('plan.list', { projectId })),

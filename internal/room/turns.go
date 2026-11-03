@@ -46,6 +46,9 @@ const (
 	ReasonSequence  GrantReason = "sequence"
 	ReasonNamed     GrantReason = "named_by_moderator"
 	ReasonModerator GrantReason = "moderator_turn"
+	// ReasonAsked is a turn a person asked for by name on one of their messages (X12: "Ask Ada to answer", Ask again on a
+	// failed, empty or interrupted turn). It is the person's click on that message, never a rule's.
+	ReasonAsked GrantReason = "asked"
 )
 
 // Speaker is a member eligible to take a turn now.

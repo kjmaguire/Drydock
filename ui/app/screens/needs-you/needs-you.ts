@@ -14,6 +14,7 @@ export const KIND_LABEL: Record<string, string> = {
   budget: 'Budget',
   task_waiting: 'Task waiting',
   mention: 'Mention',
+  reply: 'Answer',
   join_request: 'Request to join',
   agent: 'Agent',
   connection: 'Agent CLI',
@@ -28,7 +29,7 @@ export function needsTarget(it: NeedsYouItem): string {
   // a tool call an agent wants to make: its exact arguments and the Approve button are on the project's Integrations page
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return routes.projectIntegrations.href();
   // decision P130: a mention is read in its room (a task room too), an agent's state on its page, a CLI on the Agents page
-  if (it.kind === 'mention' && it.roomId) return routes.room.href({ id: it.roomId });
+  if ((it.kind === 'mention' || it.kind === 'reply') && it.roomId) return routes.room.href({ id: it.roomId });
   if (it.kind === 'agent' && it.agentId) return routes.agent.href({ id: it.agentId });
   if (it.kind === 'connection') return routes.agents.href({ key: it.connectionKey || it.adapter || undefined });
   if (it.taskId) return routes.task.href({ id: it.taskId });
@@ -106,6 +107,7 @@ export type NeedsLook =
   | 'budget'
   | 'task'
   | 'mention'
+  | 'reply'
   | 'join'
   | 'agent'
   | 'connection';
@@ -128,6 +130,8 @@ export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
       return 'task';
     case 'mention':
       return 'mention';
+    case 'reply':
+      return 'reply';
     case 'join_request':
       return 'join';
     case 'agent':
@@ -153,6 +157,7 @@ export const LOOK_WORDS: Record<NeedsLook, string> = {
   budget: 'budget',
   task: 'task waiting',
   mention: 'mention',
+  reply: 'answer to you',
   join: 'request to join',
   agent: 'agent',
   connection: 'agent CLI',
@@ -235,7 +240,7 @@ export function needsSubtitle(it: NeedsYouItem, projectName: string | undefined,
  * request (a budget pause, a request to join among them) is answered instead; a task waiting or a CLI not ready goes when it
  * changes.
  */
-export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean => /^(question|check|watchdog|budget|mention|agent):/.test(it.key);
+export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean => /^(question|check|watchdog|budget|mention|reply|agent):/.test(it.key);
 
 /**
  * The running tasks the Needs you tab lists under its items (decision P144): those without an item of their own there. A task
