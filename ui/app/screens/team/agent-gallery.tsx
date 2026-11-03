@@ -5,7 +5,7 @@
 // publisher and what it gives agents. With `onPick`, each card has an Add button (the wizard adds the agent to the team
 // list; the Team page applies it to the project); without, it only shows (the Library page).
 
-import { css, on, type Handle } from 'remix/component';
+import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { ExternalLink, Info, Plug, Plus, Sparkles } from 'lucide';
 import { AGENT_CATEGORIES, type AgentCategory, type PrebuiltAgent } from '../../api/types.ts';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
@@ -13,6 +13,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Icon } from '../../ui/icon.tsx';
+import { routes } from '../../routes.ts';
 import { safeHref } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { CATEGORY_LABEL } from '../project/wizard.ts';
@@ -186,14 +187,20 @@ export function PrebuiltDetails(handle: Handle<{ entry: PrebuiltAgent }>) {
   };
 }
 
-export function AgentGallery(handle: Handle<{ entries: PrebuiltAgent[]; onPick?: (e: PrebuiltAgent) => void; pickLabel?: string; busy?: string; disabled?: boolean; label?: string }>) {
+/**
+ * The prebuilt agents as cards. `detailsExtra` is shown in an entry's Details dialog above its pick button (the install options of
+ * Add, E9). A card whose CLI is not ready links its dot to that CLI's page in Settings > Agent CLIs.
+ */
+export function AgentGallery(
+  handle: Handle<{ entries: PrebuiltAgent[]; onPick?: (e: PrebuiltAgent) => void; pickLabel?: string; busy?: string; disabled?: boolean; label?: string; detailsExtra?: RemixNode }>,
+) {
   let open = '';
   const show = (id: string) => {
     open = id;
     void handle.update();
   };
   return () => {
-    const { entries, onPick, pickLabel = 'Add', busy, disabled, label = 'Prebuilt agents' } = handle.props;
+    const { entries, onPick, pickLabel = 'Add', busy, disabled, label = 'Prebuilt agents', detailsExtra } = handle.props;
     const opened = entries.find((e) => e.id === open);
     return (
       <div aria-label={label} role="region" data-testid="agent-gallery">
@@ -220,14 +227,24 @@ export function AgentGallery(handle: Handle<{ entries: PrebuiltAgent[]; onPick?:
                       {e.summary}
                     </p>
                     <div class="foot">
-                      <span
-                        class="cli"
-                        title={ok ? (pref?.wslDistro ? `${e.preferred.adapter} is installed in WSL ${pref.wslDistro}` : `${e.preferred.adapter} is installed`) : pref?.reason || `${e.preferred.adapter} is not installed`}
-                      >
-                        <span class="dot" aria-hidden="true" style={{ background: ok ? t.success : t.warning }} />
-                        {cli}
-                        <span class="sr-only">{ok ? (pref?.wslDistro ? ' (installed in WSL)' : ' (installed)') : ' (not installed)'}</span>
-                      </span>
+                      {ok ? (
+                        <span class="cli" title={pref?.wslDistro ? `${e.preferred.adapter} is installed in WSL ${pref.wslDistro}` : `${e.preferred.adapter} is installed`}>
+                          <span class="dot" aria-hidden="true" style={{ background: t.success }} />
+                          {cli}
+                          <span class="sr-only">{pref?.wslDistro ? ' (installed in WSL)' : ' (installed)'}</span>
+                        </span>
+                      ) : (
+                        <a
+                          class="cli"
+                          href={routes.agents.href({ key: e.preferred.adapter })}
+                          title={`${pref?.reason || `${e.preferred.adapter} is not installed`}. Set it up in Agent CLIs.`}
+                          data-testid="prebuilt-cli-fix"
+                        >
+                          <span class="dot" aria-hidden="true" style={{ background: t.warning }} />
+                          {cli}
+                          <span class="sr-only"> (not installed)</span>
+                        </a>
+                      )}
                       <SkipsBadge mode={e.preferred.permissionMode} />
                       {e.skills.length > 0 ? (
                         <button
@@ -267,6 +284,7 @@ export function AgentGallery(handle: Handle<{ entries: PrebuiltAgent[]; onPick?:
         ))}
         <Dialog open={!!opened} title={opened ? opened.name : ''} wide onClose={() => show('')} label={opened ? `${opened.name}: what it comes with` : undefined}>
           {opened ? <PrebuiltDetails entry={opened} /> : null}
+          {opened && onPick ? detailsExtra : null}
           {opened && onPick ? (
             <div style={{ marginTop: 'var(--space-4)' }}>
               <Button

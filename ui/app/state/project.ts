@@ -68,9 +68,22 @@ export class ProjectData extends Model {
     return { tasks, total };
   }
 
-  start(signal?: AbortSignal): this {
+  /** `focusTarget` is where the window's focus is heard (the window; a test gives its own). */
+  start(signal?: AbortSignal, focusTarget: EventTarget | undefined = typeof window === 'undefined' ? undefined : window): this {
     for (const l of this.#all) l.start(signal);
     this.#sync();
+    // back in the window (a pull or an edit in another program): the core looks for new repository skills (E5); it scans at most
+    // every 30 seconds, and what it finds is offered, never applied. A failure is nothing to show.
+    if (focusTarget) {
+      focusTarget.addEventListener(
+        'focus',
+        () => {
+          const id = this.#id;
+          if (id) void Promise.resolve().then(() => this.#client.skillRefresh(id)).catch(() => undefined);
+        },
+        { signal },
+      );
+    }
     return this;
   }
 

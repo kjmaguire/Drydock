@@ -83,6 +83,18 @@ describe('Work (decision P141)', () => {
     expect(none.$('[data-testid="recommend-line"]')).toBeNull();
   });
 
+  it('says when memory proposals wait, with Review to the Memory page; nothing when none wait (E10)', async () => {
+    const entry = (id: string, status: string) => ({ id, projectId: 'prj_1', kind: 'decision', title: id, body: 'x', status, source: 'agent:agt1', created: 1, updated: 1 });
+    const r = mount(<WorkScreen />, svc({ memoryList: async (_p: string, status?: string) => [entry('m1', 'proposed'), entry('m2', 'proposed'), entry('m3', 'accepted')].filter((e) => e.status === status) }));
+    const line = await waitFor(() => r.$('[data-testid="memory-line"]') ?? (() => { throw new Error('no line yet'); })(), r);
+    expect(line.textContent).toContain('2 memory proposals');
+    expect(line.querySelector('[data-testid="memory-line-review"]')!.getAttribute('href')).toBe('/memory');
+    cleanup();
+    const none = mount(<WorkScreen />, svc({ memoryList: async () => [] }));
+    await waitFor(() => expect(none.$$('[data-testid="work-item"]').length).toBeGreaterThan(0), none);
+    expect(none.$('[data-testid="memory-line"]')).toBeNull();
+  });
+
   it("lists the project's tasks and chats as Needs you, Running and Earlier, opens the one that needs you, and shows the crew", async () => {
     const s = svc();
     const r = mount(<WorkScreen />, s);

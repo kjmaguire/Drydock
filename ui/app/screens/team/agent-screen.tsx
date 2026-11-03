@@ -11,6 +11,7 @@ import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
 import { formatDateTime, formatUsd, isStopped, presenceFor, presenceWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
+import { proposalsOf, proposalsText } from '../memory/memory.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Avatar, StatusChip, hueFor, presenceColor } from '../../ui/data.tsx';
@@ -386,6 +387,8 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   const skills = query(handle, { load: () => s.client.skillList(pid()), when: (e) => e.type.startsWith('skill.') || e.type.startsWith('agent.'), key: pid, enabled: () => !!pid() });
   const servers = query(handle, { load: () => s.client.mcpServerList(pid()), when: (e) => e.type.startsWith('mcp.server') || e.type === 'mcp.access_changed' || e.type.startsWith('agent.'), key: pid, enabled: () => !!pid() });
   const memory = query(handle, { load: () => s.client.memoryList(pid(), 'accepted'), when: (e) => e.type.startsWith('memory.'), key: pid, enabled: () => !!pid() });
+  // the project's open proposals: the Memory tab lists this agent's own, waiting for the person (E10)
+  const proposals = query(handle, { load: () => s.client.memoryList(pid(), 'proposed'), when: (e) => e.type.startsWith('memory.'), key: pid, enabled: () => !!pid() });
 
   const go = (href: string) => {
     if (handle.props.onNavigate) handle.props.onNavigate(href);
@@ -413,6 +416,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
     const sk = a ? skillsOf(skills.data ?? [], a, agents) : { mine: [], accepted: [] };
     const tools = serversOf(servers.data ?? [], id);
     const notes = memory.data ?? [];
+    const proposed = proposalsOf(proposals.data ?? [], id);
     const iso = d?.isolation;
     const where = a ? runsWhere(a) : '';
     const mine = tasks.filter((x) => x.assignee === id || x.reviewer === id);
@@ -597,6 +601,17 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
         {memory.loading && !memory.data ? <Loading /> : null}
         {memory.data && notes.length === 0 ? <p class="quiet">Nothing accepted yet.</p> : null}
         <MemoryNotes entries={notes} />
+        {proposed.length > 0 ? (
+          <div data-testid="agent-proposals" style={{ display: 'grid', gap: '8px' }}>
+            <h2>
+              Proposed <span>{a ? `${proposalsText(proposed.length)} from ${a.name}, waiting for you` : ''}</span>
+            </h2>
+            <p class="quiet">
+              Agents see a proposal only once you accept it on the <a href={routes.memory.href()}>Memory</a> page.
+            </p>
+            <MemoryNotes entries={proposed} limit={proposed.length} />
+          </div>
+        ) : null}
       </section>
     );
 

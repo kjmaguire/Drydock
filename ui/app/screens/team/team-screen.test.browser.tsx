@@ -958,6 +958,14 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     expect(form.closest('dialog')!.textContent).toContain('New agent');
   });
 
+  it('Describe offers first the starters of the roles the crew lacks (E6)', async () => {
+    const { r } = showCrew({}, [agent({ id: 'agt_1', name: 'Ada', role: 'developer' }), agent({ id: 'agt_2', name: 'Bo', role: 'reviewer' })]);
+    await waitAgent(r, 'Ada');
+    await r.act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true })));
+    const chips = () => Array.from(r.$$('dialog[open] [aria-label="Start from"] button')).map((b) => b.textContent);
+    await waitFor(() => expect(chips()).toEqual(['Tester', 'Docs writer', 'Team lead', 'Planner', 'Builder', 'Reviewer']), r);
+  });
+
   it('says what a team needs when there is no agent yet, and draws no timeline', async () => {
     const { r } = showCrew({ agentTimeline: async (since) => ({ since, until: NOW, agents: [] }) }, []);
     await waitFor(() => expect(r.container.textContent).toContain('A task needs a worker and a different agent as reviewer'), r);

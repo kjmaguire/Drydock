@@ -69,3 +69,12 @@ export function memorySource(source: string | undefined, nameOf: (agentId: strin
 export function memoryMeta(e: { source?: string; status: string }, updated: string, who = e.source ?? ''): string {
   return `${who ? `Proposed by ${who}. ` : ''}Updated ${updated}.${e.status === 'proposed' ? ' Agents do not see it until you accept it.' : ''}`;
 }
+
+/** How many proposals wait, in words: "1 memory proposal", "3 memory proposals" (E10). */
+export const proposalsText = (n: number): string => `${n} memory ${n === 1 ? 'proposal' : 'proposals'}`;
+
+/** The open proposals one agent made (its source is "agent:<id>", with or without the task). */
+export function proposalsOf<E extends { status: string; source?: string }>(entries: readonly E[], agentId: string): E[] {
+  const mine = (src: string) => src === `agent:${agentId}` || src.startsWith(`agent:${agentId} `);
+  return entries.filter((e) => e.status === 'proposed' && mine((e.source ?? '').trim()));
+}

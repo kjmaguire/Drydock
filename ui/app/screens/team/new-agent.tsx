@@ -9,7 +9,7 @@ import type { AgentDraft } from '../../api/libraryClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { confirmationFor, needsConfirmation, skipsApprovals, splitConfirmation } from '../../lib/permission.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
-import { action, services, watch } from '../../state/services.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -22,7 +22,7 @@ import { ModelField } from '../shared/model-field.tsx';
 import { SkipApprovals } from '../shared/skip-approvals.tsx';
 import { AddPrebuilt } from './add-prebuilt.tsx';
 import { effortList, modeList, modelList, permissionWords } from './agent-edit.ts';
-import { STARTERS, draftSourceNote, draftSummary, specFromDraft } from './agent-draft.ts';
+import { draftSourceNote, draftSummary, specFromDraft, startersFor } from './agent-draft.ts';
 import { AgentForm, FromTemplate } from './agent-forms.tsx';
 import { adapterName } from './team.ts';
 
@@ -139,20 +139,29 @@ const draftCss = css({
 
 /**
  * Describe: a sentence becomes a drafted agent the person edits, then creates. With `onDraft` (the start screen, decision P142:
- * the project does not exist yet) the button is "Add to crew" and hands the draft, with the mode its box was ticked for, back
- * instead of creating the agent.
+ * the project does not exist yet; the Agents library, E12: a template is saved) the button is `saveLabel` ("Add to crew") and
+ * hands the draft, with the mode its box was ticked for, back instead of creating the agent; a promise it returns that fails
+ * keeps the draft and shows the error. In a project the draft knows the crew (E6): the starters of the roles it lacks come first.
  */
 export function DescribeAgent(
   handle: Handle<{
     projectId: string;
     adapters: AdapterInfo[];
     onCreated: () => void;
-    onDraft?: (d: AgentDraft, confirmedMode: string) => void;
+    onDraft?: (d: AgentDraft, confirmedMode: string) => void | Promise<unknown>;
+    saveLabel?: string;
   }>,
 ) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
+  // the project's crew, for the order of the starters (none without a project)
+  const crew = query(handle, {
+    load: () => s.client.agentList(handle.props.projectId),
+    when: (e) => e.type.startsWith('agent.'),
+    key: () => handle.props.projectId,
+    enabled: () => !!handle.props.projectId,
+  });
   let text = '';
   let draft: AgentDraft | undefined;
   let confirmedMode = '';
@@ -170,9 +179,13 @@ export function DescribeAgent(
   const create = async () => {
     const d = draft;
     if (!d) return;
-    if (handle.props.onDraft) {
-      handle.props.onDraft(d, confirmedMode);
-      set(() => ((draft = undefined), (text = '')));
+    const onDraft = handle.props.onDraft;
+    if (onDraft) {
+      const ok = await act.run('create', async () => {
+        await onDraft(d, confirmedMode);
+        return true;
+      });
+      if (ok) set(() => ((draft = undefined), (text = '')));
       return;
     }
     const projectId = handle.props.projectId;
@@ -228,14 +241,14 @@ export function DescribeAgent(
             <span>or start from:</span>
           </div>
           <div class="starters" role="group" aria-label="Start from">
-            {STARTERS.map((x) => (
+            {startersFor((crew.data ?? []).map((a) => a.role)).map((x) => (
               <button key={x.label} type="button" class="starter" disabled={busy} mix={on('click', () => (set(() => (text = x.text)), void ask(x.text)))}>
                 {x.label}
               </button>
             ))}
           </div>
           <p class="note" data-testid="draft-source">
-            {draftSourceNote(d)}
+            {draftSourceNote(d, handle.props.onDraft ? (handle.props.saveLabel ?? 'Add to crew') : 'Create agent')}
           </p>
         </form>
         <div style={{ display: 'grid', gap: '12px', minWidth: '0' }}>
@@ -387,7 +400,7 @@ export function DescribeAgent(
                   title={ro.readOnly ? ro.reason : undefined}
                   mix={on('click', () => void create())}
                 >
-                  {handle.props.onDraft ? 'Add to crew' : act.busy === 'create' ? 'Creating...' : 'Create agent'}
+                  {handle.props.onDraft ? (act.busy === 'create' ? 'Saving...' : (handle.props.saveLabel ?? 'Add to crew')) : act.busy === 'create' ? 'Creating...' : 'Create agent'}
                 </Button>
               </div>
             </section>

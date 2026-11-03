@@ -12,6 +12,7 @@ import type {
   McpCatalogEntry,
   PrebuiltAgent,
   PrebuiltApplied,
+  AppliedNote,
   PrebuiltApplyManyReq,
   PrebuiltApplyManyResult,
   PrebuiltApplyReq,
@@ -115,7 +116,8 @@ export function createSetupClient(t: Transport): SetupClient {
         ...r,
         mcp: { granted: arr(r.mcp?.granted), skipped: arr(r.mcp?.skipped) },
         skills: { assigned: arr(r.skills?.assigned), shared: arr(r.skills?.shared), pending: arr(r.skills?.pending), failed: arr(r.skills?.failed) },
-        notes: arr(r.notes),
+        // an older core sends each note as plain text
+        notes: arr(r.notes as unknown[] | null).map((n) => (typeof n === 'string' ? { text: n } : (n as AppliedNote))),
       };
     },
   };

@@ -198,7 +198,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   // skills: repository skills are offered, never applied; the human opens the skill's row and accepts in the panel that opens
   // inside it (decisions P48, P49)
   await projectNav(page, 'nav-skills');
-  await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
+  await page.getByRole('button', { name: 'Scan again' }).click();
   await expect(page.getByTestId('skill-scan')).toContainText('1 offered, 0 accepted');
   const goTile = page.locator('[data-testid=skill-tile][data-name=go-style]');
   await expect(goTile).toHaveAttribute('data-status', 'offered');
@@ -234,27 +234,25 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(wranglerInLibrary).toHaveCount(0); // it left the "Add from the Library" grid
   await expect(page.locator('[data-testid=skill][data-skill=wrangler]').getByTestId('skill-status')).toHaveText('accepted ✓');
 
-  // memory: propose, accept, delete
+  // memory: the person's own entry is accepted when it is added (E10), then deleted
   await projectNav(page, 'nav-memory');
-  await expect(page.getByRole('heading', { name: 'Propose an entry' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add to memory' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Use gofmt');
   await page.getByLabel('Body').fill('Run gofmt before every commit.');
-  await page.getByRole('button', { name: 'Propose' }).click();
+  await page.getByRole('button', { name: 'Add to memory' }).click();
   const mem = page.locator('[data-testid=memory][data-title="Use gofmt"]');
-  await expect(mem).toHaveAttribute('data-status', 'proposed');
-  await mem.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect(mem).toHaveAttribute('data-status', 'accepted');
   await mem.getByRole('button', { name: 'Delete' }).click();
   await mem.getByRole('button', { name: 'Yes, delete' }).click();
   await expect(mem).toHaveCount(0);
 
-  // a long proposal is shown whole before it can be accepted (M26): the last line is in the box, with the length beside it
+  // a long entry is shown whole (M26): the last line is in the box, with the length beside it
   const long = `${'Run gofmt before every commit.\n'.repeat(240)}LAST-LINE-MARKER`;
   await page.getByLabel('Title', { exact: true }).fill('A long rule');
   await page.getByLabel('Body').fill(long);
-  await page.getByRole('button', { name: 'Propose' }).click();
+  await page.getByRole('button', { name: 'Add to memory' }).click();
   const big = page.locator('[data-testid=memory][data-title="A long rule"]');
-  await expect(big).toHaveAttribute('data-status', 'proposed');
+  await expect(big).toHaveAttribute('data-status', 'accepted');
   await expect(big.getByTestId('memory-body')).toContainText('LAST-LINE-MARKER');
   await expect(big.getByTestId('memory-body')).toHaveAttribute('tabindex', '0');
   await expect(big.getByTestId('memory-chars')).toHaveText(`${[...long].length.toLocaleString('en-US')} characters`);

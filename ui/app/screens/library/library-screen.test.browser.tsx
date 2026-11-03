@@ -187,7 +187,7 @@ describe('Agents > My agents (decision P140)', () => {
     expect(r.$('a[href="/library/skills"]')).toBeNull();
   });
 
-  it('Starters: the prebuilt agents, read-only; Use opens the agent form filled from the starter and saves it as my agent', async () => {
+  it('Starters: the prebuilt agents, read-only; Use saves the starter as my agent at once and selects it (E12)', async () => {
     const saved: Calls = [];
     const went: string[] = [];
     const s = testServices({
@@ -214,18 +214,42 @@ describe('Agents > My agents (decision P140)', () => {
     expect(names).toContain('What Cloudflare Engineer comes with');
     const first = CATALOG[0]!;
     await r.act(() => sec.querySelector<HTMLButtonElement>(`button[aria-label="Use ${first.name}"]`)!.click());
-    const tf = await one(r, '[data-testid="template-form"]');
-    expect(r.$('dialog[open]')!.textContent).toContain(`Save ${first.name} as my agent`);
-    expect((byLabel(tf, 'Template name') as HTMLInputElement).value).toBe(first.name);
-    expect((byLabel(tf, 'Role') as HTMLInputElement).value).toBe(first.role);
-    r.root.flush();
-    await r.act(() => byText(tf, 'button', 'Create template').click());
     await waitFor(() => expect(saved.length).toBe(1), r);
+    // no form in between: a starter that keeps approvals is saved by the one click
+    expect(r.$('dialog[open]')).toBeNull();
     // a new one: no id is sent, so the starter never overwrites an agent of mine
     expect((saved[0]![0] as { id?: string }).id).toBe(undefined);
-    expect((saved[0]![0] as { name: string }).name).toBe(first.name);
+    expect(saved[0]![0]).toMatchObject({ name: first.name, role: first.role, adapter: 'claude', model: first.preferred.model });
     await waitFor(() => expect(went).toEqual(['/library']), r);
     expect(note(r)).toBe(`${first.name} is one of your agents now.`);
+  });
+
+  it('Use on a starter that acts without asking saves only after the person confirms it', async () => {
+    const saved: Calls = [];
+    const skipper = { ...CATALOG[0]!, preferred: { ...CATALOG[0]!.preferred, permissionMode: 'bypassPermissions' } };
+    const s = testServices({
+      licenseStatus: async () => devLicense,
+      appInfo: async () => ({}) as never,
+      projectList: async () => projects,
+      adapterList: async () => [claude],
+      mcpLibList: async () => [],
+      agentTemplateList: async () => [],
+      agentCatalogList: async () => [skipper],
+      agentTemplateSave: rec(saved, (x) => ({ ...tpl(), ...(x as object), id: 'tpl_new' })) as never,
+    });
+    s.workspace.start();
+    const r = mount(<LibraryScreen tab="starters" onNavigate={() => {}} />, s);
+    const sec = await one(r, '[data-testid="library-prebuilt"]');
+    await waitFor(() => expect(sec.querySelector(`button[aria-label="Use ${skipper.name}"]`)).not.toBeNull(), r);
+    await r.act(() => sec.querySelector<HTMLButtonElement>(`button[aria-label="Use ${skipper.name}"]`)!.click());
+    const box = await one(r, '[data-testid="lib-starter-confirm"]');
+    expect(saved).toEqual([]);
+    const save = byText<HTMLButtonElement>(box, 'button', `Save ${skipper.name}`);
+    expect(save.disabled).toBe(true);
+    await r.act(() => box.querySelector<HTMLInputElement>('[data-testid="skip-approvals"] input[type="checkbox"]')!.click());
+    await r.act(() => byText(box, 'button', `Save ${skipper.name}`).click());
+    await waitFor(() => expect(saved.length).toBe(1), r);
+    expect(saved[0]![0]).toMatchObject({ permissionMode: 'bypassPermissions', confirmSkipsApprovals: true });
   });
 
   it('opens the panel of a template just made: the next step is there', async () => {
@@ -236,6 +260,8 @@ describe('Agents > My agents (decision P140)', () => {
     } as never);
     await waitFor(() => expect(r.container.textContent).toContain('No agents of your own yet.'), r);
     await r.act(() => byText(r.container, 'button', 'New agent').click());
+    // the full form is the second tab, Configure
+    await r.act(() => one(r, '[data-testid="library-new-configure"]').then((b) => b.click()));
     const tf = await one(r, '[data-testid="template-form"]');
     type(byLabel(tf, 'Template name'), 'Payments dev');
     type(byLabel(tf, 'Role'), 'backend');
@@ -276,11 +302,41 @@ describe('Agents > My agents (decision P140)', () => {
     expect(byText(tf, 'button', 'Save template')).not.toBeNull();
   });
 
-  it('New agent opens the agent form (the form itself belongs to the team screen)', async () => {
-    const r = show({ agentTemplateList: async () => [] });
+  it('New agent opens on Describe: a sentence drafts the agent without a project and Save agent keeps it as my agent (E12)', async () => {
+    const saved: Calls = [];
+    const drafted: Calls = [];
+    let tpls: ReturnType<typeof tpl>[] = [];
+    const r = show({
+      agentTemplateList: async () => tpls,
+      agentDraft: rec(drafted, () => ({
+        name: 'Tester',
+        role: 'tester',
+        adapter: 'claude',
+        model: 'sonnet',
+        effort: 'medium',
+        permissionMode: 'acceptEdits',
+        purpose: 'You write the tests.',
+        skills: [],
+        tools: ['github'],
+        why: 'A tester.',
+        source: 'rules',
+      })) as never,
+      agentTemplateSave: rec(saved, (x) => ((tpls = [{ ...tpl(), ...(x as object), id: 'tpl_new' }]), tpls[0]!)) as never,
+    });
     await waitFor(() => expect(r.container.textContent).toContain('No agents of your own yet.'), r);
     expect(r.$('dialog[open]')).toBeNull();
     await r.act(() => byText(r.container, 'button', 'New agent').click());
-    await waitFor(() => expect(r.$('dialog[open] [data-testid="template-form"]')).not.toBeNull(), r);
+    const form = await one(r, 'dialog[open] [data-testid="describe-agent"]');
+    expect(r.$('dialog[open] [data-testid="template-form"]')).toBeNull();
+    expect(form.textContent).toContain('Nothing is saved until you press Save agent.');
+    await r.act(() => byText(form, 'button', 'Tester').click());
+    await waitFor(() => expect(drafted).toEqual([['Writes and runs the tests, and reproduces each bug with a failing test first.', undefined]]), r);
+    const draft = await one(r, '[data-testid="agent-draft"]');
+    await r.act(() => byText(draft, 'button', 'Save agent').click());
+    await waitFor(() => expect(saved.length).toBe(1), r);
+    expect(saved[0]![0]).toMatchObject({ name: 'Tester', role: 'tester', adapter: 'claude', model: 'sonnet', permissionMode: 'acceptEdits', mcpServers: ['github'], skills: [] });
+    await waitFor(() => expect(r.$('dialog[open]')).toBeNull(), r);
+    expect(note(r)).toBe('Tester is one of your agents now.');
+    await waitFor(() => expect(r.$('[data-testid="lib-template"]')!.getAttribute('data-template')).toBe('Tester'), r);
   });
 });

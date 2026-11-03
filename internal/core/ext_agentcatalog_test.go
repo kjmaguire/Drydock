@@ -155,7 +155,8 @@ func TestPrebuiltAgentsAreAppliedWithTheirSkillsAndServers(t *testing.T) {
 		t.Fatalf("mcp %+v", res.MCP)
 	}
 	if strings.Join(res.Skills.Assigned, ",") != "cloudflare,workers-best-practices,wrangler" || skillNames(res.Skills.Pending) != "durable-objects" ||
-		!strings.Contains(res.Skills.Pending[0].Reason, "blocked") || len(res.Skills.Failed) != 0 {
+		!strings.Contains(res.Skills.Pending[0].Reason, "blocked") || len(res.Skills.Failed) != 0 ||
+		res.Skills.Pending[0].Fix == nil || *res.Skills.Pending[0].Fix != (core.Fix{Kind: "skills", Key: "durable-objects"}) {
 		t.Fatalf("skills %+v", res.Skills)
 	}
 	var sk []skills.Skill
@@ -232,8 +233,15 @@ func TestPrebuiltAgentsAreAppliedWithTheirSkillsAndServers(t *testing.T) {
 	if strings.Join(ms.Skills.Assigned, ",") != "microsoft-docs" || skillNames(ms.Skills.Failed) != "microsoft-code-reference" || strings.Join(ms.MCP.Granted, ",") != "mslearn" {
 		t.Fatalf("microsoft %+v", ms)
 	}
-	if !strings.Contains(strings.Join(ms.Notes, " "), "gemini reaches MCP servers only after you allow") {
-		t.Fatalf("notes %v", ms.Notes)
+	// each note says where it is fixed (E9): the CLI's MCP switch in Settings, MCP
+	mcpNote := false
+	for _, n := range ms.Notes {
+		if strings.Contains(n.Text, "gemini reaches MCP servers only after you allow") && n.Fix != nil && n.Fix.Kind == "mcp" && n.Fix.Key == "gemini" {
+			mcpNote = true
+		}
+	}
+	if !mcpNote {
+		t.Fatalf("notes %+v", ms.Notes)
 	}
 	var md skills.Skill
 	a.call("skill.get", map[string]string{"projectId": p.ID, "name": "microsoft-docs"}, &md)

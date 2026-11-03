@@ -1,16 +1,18 @@
 // Agents (decision P140; once the Library, P51): one page with the tabs My agents (the agent templates: a team member defined once
-// for the whole workspace, shown as cards), Starters (the prebuilt agents, read-only; Use saves one as my agent) and Skills (its
+// for the whole workspace, shown as cards; New agent drafts one from a sentence, E12, or Configure gives the full form), Starters
+// (the prebuilt agents, read-only; Use saves one as my agent at once, after the person's confirmation only when its permission mode
+// lets it act without asking) and Skills (its
 // own screen, screens/skills/skill-library-screen.tsx, /library/skills). The tabs are the hub's pills (shell/hubnav.tsx), with
 // every project's crew (/crew) set apart at the end. Nothing of a single project is shown here: a team member is made from a
 // template on a project's Crew page. The MCP servers you add yourself are in Settings > Integrations (decision P98).
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { Bot, Cpu, Pencil, Plug, Plus, Trash2, Users } from 'lucide';
-import type { AgentTemplate } from '../../api/libraryClient.ts';
+import type { AgentDraft, AgentTemplate, AgentTemplateInput } from '../../api/libraryClient.ts';
 import { AgentGallery } from '../team/agent-gallery.tsx';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import type { PrebuiltAgent } from '../../api/types.ts';
-import { skipsApprovals } from '../../lib/permission.ts';
+import { confirmationFor, needsConfirmation, skipsApprovals, splitConfirmation } from '../../lib/permission.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -23,8 +25,10 @@ import { MoreMenu } from '../../ui/menu.tsx';
 import { emptyLine } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
 import { actionsRow, cardHead } from '../mcp/mcp-screen.tsx';
-import { SkipsBadge } from '../shared/skip-approvals.tsx';
+import { SkipApprovals, SkipsBadge } from '../shared/skip-approvals.tsx';
+import { DescribeAgent } from '../team/new-agent.tsx';
 import { TemplateForm } from '../team/template-form.tsx';
+import { Tabs } from '../../ui/tabs.tsx';
 import { modelChip, purposeLine, starterDraft, templateBlurb, templateState } from './tiles.ts';
 
 const sectionsCss = css({ display: 'grid', gap: t.s4, minWidth: '0' });
@@ -202,8 +206,10 @@ export function LibraryScreen(handle: Handle<{ tab?: LibraryTab; onNavigate?: (h
   const prebuilt = query(handle, { load: () => s.client.agentCatalogList() });
   const act = action(handle);
   let note = '';
-  // the form open: a new agent, one to edit, or a starter being saved as my agent (undefined: none)
-  let form: { kind: 'new' } | { kind: 'edit'; t: AgentTemplate } | { kind: 'starter'; e: PrebuiltAgent } | undefined;
+  // the dialog open: a new agent (Describe or Configure), one to edit, or a starter that skips approvals waiting for the
+  // person's confirmation before it is saved as my agent (undefined: none)
+  let form: { kind: 'new'; tab: 'describe' | 'configure' } | { kind: 'edit'; t: AgentTemplate } | { kind: 'starter'; e: PrebuiltAgent } | undefined;
+  let confirmedMode = '';
   let deleting: AgentTemplate | undefined;
   // The selected card ('' for none); its panel shows below the grid. Clicking the selected card again closes it.
   let template = '';
@@ -217,11 +223,48 @@ export function LibraryScreen(handle: Handle<{ tab?: LibraryTab; onNavigate?: (h
   };
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href));
 
-  /**
-   * "New agent" from the library: the one place that says what it opens (today the agent template form), so a new way to make an
-   * agent (describing it in a sentence) takes it over by changing this function alone.
-   */
-  const openNewAgent = () => set(() => (form = { kind: 'new' }));
+  /** "New agent" from the library opens on Describe: one sentence drafts the agent, Save agent keeps it (E12). */
+  const openNewAgent = () => set(() => (form = { kind: 'new', tab: 'describe' }));
+  /** A template was saved: close the dialog, select its card on My agents and say so. */
+  const saved = (tp: AgentTemplate, words: string) => {
+    set(() => {
+      form = undefined;
+      confirmedMode = '';
+      template = tp.id;
+      note = words;
+    });
+    reload();
+    if ((handle.props.tab ?? 'mine') !== 'mine') go(routes.library.href());
+  };
+  /** Describe's Save agent: the draft as a template (its MCP servers are the library's; a project's skills it has none of). */
+  const saveDraft = async (d: AgentDraft, confirmed: string) => {
+    const input: AgentTemplateInput = {
+      name: d.name.trim(),
+      role: d.role.trim(),
+      purpose: d.purpose.trim(),
+      adapter: d.adapter,
+      model: d.model.trim(),
+      effort: d.effort.trim(),
+      permissionMode: d.permissionMode,
+      providerId: '',
+      mcpServers: [...d.tools],
+      skills: [],
+      ...confirmationFor(d.permissionMode, confirmed),
+    };
+    const tp = await s.client.agentTemplateSave(input);
+    saved(tp, `${tp.name} is one of your agents now.`);
+  };
+  /** Starters > Use: saved as my agent at once; one whose mode skips approvals asks first. */
+  const useStarter = async (e: PrebuiltAgent, confirmed = '') => {
+    const mode = e.preferred.permissionMode ?? '';
+    if (needsConfirmation(mode, confirmed)) {
+      act.clear();
+      set(() => ((form = { kind: 'starter', e }), (confirmedMode = '')));
+      return;
+    }
+    const tp = await act.run(`use:${e.id}`, () => s.client.agentTemplateSave({ ...(starterDraft(e) as AgentTemplateInput), providerId: '', ...confirmationFor(mode, confirmed) }));
+    if (tp) saved(tp, `${tp.name} is one of your agents now.`);
+  };
   const onAction = (tp: AgentTemplate, what: 'edit' | 'delete') => set(() => (what === 'edit' ? (form = { kind: 'edit', t: tp }) : (deleting = tp)));
   const remove = async (tp: AgentTemplate) => {
     const done = await act.run('delete', async () => {
@@ -245,6 +288,8 @@ export function LibraryScreen(handle: Handle<{ tab?: LibraryTab; onNavigate?: (h
     const libraryIds = new Set(libServers.map((x) => x.id));
     const openTemplate = tpls.find((x) => x.id === template);
     const formTitle = !form ? '' : form.kind === 'new' ? 'New agent' : form.kind === 'edit' ? `Edit ${form.t.name}` : `Save ${form.e.name} as my agent`;
+    const { confirm: refusal, other: failure } = splitConfirmation(act.error);
+    const starterMode = form?.kind === 'starter' ? (form.e.preferred.permissionMode ?? '') : '';
     return (
       <Page
         title={tab === 'starters' ? 'Starters' : 'My agents'}
@@ -298,31 +343,69 @@ export function LibraryScreen(handle: Handle<{ tab?: LibraryTab; onNavigate?: (h
             <section aria-label="Starters" data-testid="library-prebuilt" mix={sectionsCss}>
               <ErrorNote error={prebuilt.error} what="Could not load the starters" />
               {prebuilt.loading && !prebuilt.data ? <Loading /> : null}
-              <AgentGallery entries={prebuilt.data ?? []} label="Starters" pickLabel="Use" onPick={(e) => set(() => (form = { kind: 'starter', e }))} />
+              {form?.kind !== 'starter' ? <ErrorNote error={failure} what="Not saved" /> : null}
+              <AgentGallery entries={prebuilt.data ?? []} label="Starters" pickLabel="Use" busy={act.busy.startsWith('use:') ? act.busy.slice(4) : ''} onPick={(e) => void useStarter(e)} />
             </section>
           )}
         </div>
 
         <Dialog open={!!form} title={formTitle} wide onClose={() => set(() => (form = undefined))}>
-          {form ? (
+          {form?.kind === 'new' ? (
+            <Tabs
+              label="How to make the agent"
+              active={form.tab}
+              onChange={(n) => set(() => (form = { kind: 'new', tab: n === 'configure' ? 'configure' : 'describe' }))}
+              items={[
+                { name: 'describe', label: 'Describe', testId: 'library-new-describe' },
+                { name: 'configure', label: 'Configure', testId: 'library-new-configure' },
+              ]}
+            >
+              {(name) =>
+                name === 'describe' ? (
+                  <DescribeAgent key="lib-describe" projectId="" adapters={adapterList} onCreated={() => undefined} onDraft={saveDraft} saveLabel="Save agent" />
+                ) : (
+                  <TemplateForm
+                    key="new"
+                    adapters={adapterList}
+                    servers={libServers}
+                    onCancel={() => set(() => (form = undefined))}
+                    onDone={(tp) => saved(tp, `${tp.name} is one of your agents now.`)}
+                  />
+                )
+              }
+            </Tabs>
+          ) : null}
+          {form?.kind === 'edit' ? (
             <TemplateForm
-              key={form.kind === 'edit' ? form.t.id : form.kind === 'starter' ? `starter:${form.e.id}` : 'new'}
-              initial={form.kind === 'edit' ? form.t : undefined}
-              draft={form.kind === 'starter' ? starterDraft(form.e) : undefined}
+              key={form.t.id}
+              initial={form.t}
               adapters={adapterList}
               servers={libServers}
               onCancel={() => set(() => (form = undefined))}
-              onDone={(saved) => {
-                const was = form;
-                set(() => {
-                  form = undefined;
-                  template = saved.id;
-                  note = was?.kind === 'edit' ? `${saved.name} was saved.` : `${saved.name} is one of your agents now.`;
-                });
-                reload();
-                if (tab !== 'mine') go(routes.library.href());
-              }}
+              onDone={(tp) => saved(tp, `${tp.name} was saved.`)}
             />
+          ) : null}
+          {form?.kind === 'starter' ? (
+            <div mix={panelCard} data-testid="lib-starter-confirm">
+              <p>
+                <strong>{form.e.name}</strong> comes with the permission mode "{starterMode}".
+              </p>
+              <SkipApprovals mode={starterMode} confirmed={confirmedMode} onConfirm={(m) => set(() => (confirmedMode = m))} who={`agents made from ${form.e.name}`} error={refusal} />
+              <ErrorNote error={failure} what="Not saved" />
+              <div mix={actionsRow}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={act.busy !== '' || needsConfirmation(starterMode, confirmedMode)}
+                  mix={[on('click', () => { if (form?.kind === 'starter') void useStarter(form.e, confirmedMode); })]}
+                >
+                  {act.busy ? 'Saving...' : `Save ${form.e.name}`}
+                </Button>
+                <Button size="sm" mix={[on('click', () => set(() => (form = undefined)))]}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
           ) : null}
         </Dialog>
         <Dialog open={!!deleting} title={deleting ? `Delete ${deleting.name}?` : ''} onClose={() => set(() => (deleting = undefined))}>

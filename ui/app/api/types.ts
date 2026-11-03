@@ -372,10 +372,26 @@ export interface PrebuiltApplyManyResult {
   error?: string;
 }
 
+/**
+ * Where something still missing is put right (E9): "integration" (Settings > Integrations; key the library server, none for the
+ * list), "mcp" (the CLI's page in Settings > Agent CLIs, with its MCP gateway switch; key the CLI), "skills" (the project's Skills).
+ */
+export interface ApplyFix {
+  kind: 'integration' | 'mcp' | 'skills' | string;
+  key?: string;
+}
+
 export interface SkippedItem {
   id?: string;
   name?: string;
   reason: string;
+  fix?: ApplyFix;
+}
+
+/** One thing the person should know after an apply, with where it is fixed. */
+export interface AppliedNote {
+  text: string;
+  fix?: ApplyFix;
 }
 
 export interface PrebuiltApplied {
@@ -383,7 +399,7 @@ export interface PrebuiltApplied {
   agent: Agent;
   mcp: { granted: string[]; skipped: SkippedItem[] };
   skills: { assigned: string[]; shared: string[]; pending: SkippedItem[]; failed: SkippedItem[] };
-  notes: string[];
+  notes: AppliedNote[];
 }
 
 export interface Agent {

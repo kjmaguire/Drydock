@@ -235,7 +235,7 @@ describe('SkillsScreen', () => {
       }),
     );
     await waitFor(() => expect(r.$$('[data-testid="skill-tile"]').length).toBe(2), r);
-    await r.act(() => byText(r.container, 'button', 'Scan the repository for skills').click());
+    await r.act(() => byText(r.container, 'button', 'Scan again').click());
     await waitFor(() => expect(r.$('[data-testid="skill-scan"]')!.textContent).toContain('1 offered, 0 accepted, 1 blocked'), r);
     expect(r.$('[data-testid="skill-scan"]')!.getAttribute('role')).toBe('status');
     const danger = await open(r, 'danger');

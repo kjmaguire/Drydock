@@ -891,8 +891,9 @@ export function SkillsScreen(handle: Handle) {
         guide="skills"
         subtitle={q.data ? `${skills.length} skill${skills.length === 1 ? '' : 's'}${offered ? `, ${offered} waiting for you` : ''}` : undefined}
         actions={
-          <Button icon={ScanSearch} disabled={act.busy !== ''} mix={on('click', () => void runScan())}>
-            Scan the repository for skills
+          // the repository is scanned when the project gets it, after Sync now and when the window gets focus (E5): this is again
+          <Button icon={ScanSearch} title="Look in the repository's .aet/skills folder again now" disabled={act.busy !== ''} mix={on('click', () => void runScan())}>
+            {act.busy === 'scan' ? 'Scanning...' : 'Scan again'}
           </Button>
         }
       >
@@ -921,7 +922,7 @@ export function SkillsScreen(handle: Handle) {
           {q.data && skills.length === 0 ? (
             <div mix={card}>
               <Empty title="No skills in this project yet." icon={Cpu}>
-                <p>Add one from the Library below, or scan the repository for its own skills.</p>
+                <p>Add one from the Library below. Skills in the repository's .aet/skills folder show here on their own.</p>
               </Empty>
             </div>
           ) : null}

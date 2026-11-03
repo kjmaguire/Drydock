@@ -330,6 +330,9 @@ func (y *repoSyncer) syncNow(ctx context.Context, projectID string) (RepoSync, e
 	y.mu.Unlock()
 	unlock()
 	y.announce(ctx, projectID)
+	if outcome == string(git.SyncUpdated) {
+		y.c.scanRepoSkillsQuietly(ctx, projectID) // the fast-forward may have brought skills (E5)
+	}
 	return y.state(ctx, projectID)
 }
 

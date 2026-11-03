@@ -1,13 +1,15 @@
-// Add a prebuilt agent to the current project (Team page): the gallery, whether to install the agent's skills and connect
-// its MCP connectors, and what the core reports back (skills waiting for a decision, connectors that need sign-in).
+// Add a prebuilt agent to the current project (Team page): the gallery and what the core reports back (skills waiting for a
+// decision, connectors that need sign-in), each line with a button to the page that fixes it (E9). Whether to install the agent's
+// skills and connect its MCP connectors is chosen in its Details dialog (both on by default), not above the gallery.
 // An entry whose permission mode lets the agent act without asking is not added by one click: it asks for the person's
 // confirmation first (screens/shared/skip-approvals.tsx), and the core is told (audit 2026-10-16, M1).
 
 import { css, on, type Handle } from 'remix/component';
-import type { PrebuiltAgent, PrebuiltApplied } from '../../api/types.ts';
+import type { ApplyFix, PrebuiltAgent, PrebuiltApplied } from '../../api/types.ts';
 import { confirmationFor, needsConfirmation, skipsApprovals, splitConfirmation } from '../../lib/permission.ts';
+import { routes } from '../../routes.ts';
 import { action, query, services } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, buttonStyle } from '../../ui/button.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -16,15 +18,40 @@ import { AgentGallery } from './agent-gallery.tsx';
 import { skillLines } from './team.ts';
 
 const wrapCss = css({ display: 'grid', gap: t.s4, '& ul': { margin: '4px 0 0', paddingLeft: '18px' } });
-const optsCss = css({ display: 'grid', gap: t.s1 });
+const optsCss = css({ display: 'grid', gap: t.s1, marginTop: t.s4 });
+const lineCss = css({ '& > a': { marginLeft: t.s2 } });
 const confirmCss = css({ display: 'grid', gap: t.s3, padding: t.s3, border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, '& p': { margin: '0' }, '& .row': { display: 'flex', gap: t.s2, flexWrap: 'wrap' } });
 
-/** What an apply did, in sentences for the person. */
-export function appliedLines(r: PrebuiltApplied): string[] {
-  const out = skillLines(r.skills);
-  if (r.mcp.granted.length) out.push(`Connectors: ${r.mcp.granted.join(', ')}.`);
-  for (const x of r.mcp.skipped) out.push(`Connector ${x.id ?? x.name} not connected: ${x.reason}`);
-  return [...out, ...r.notes];
+/** One line of what an apply did, with the page that fixes it when something is still missing. */
+export interface AppliedLine {
+  text: string;
+  fix?: ApplyFix;
+}
+
+/** What an apply did, in sentences for the person, each still-missing thing with its fix. */
+export function appliedLines(r: PrebuiltApplied): AppliedLine[] {
+  const out: AppliedLine[] = [];
+  if (r.skills.assigned.length || r.skills.shared.length) out.push(...skillLines({ ...r.skills, pending: [], failed: [] }).map((text) => ({ text })));
+  for (const x of r.skills.pending) out.push({ text: `Skill ${x.name ?? x.id} waits for your decision: ${x.reason}`, fix: x.fix });
+  for (const x of r.skills.failed) out.push({ text: `Skill ${x.name ?? x.id} not installed: ${x.reason}`, fix: x.fix });
+  if (r.mcp.granted.length) out.push({ text: `Connectors: ${r.mcp.granted.join(', ')}.` });
+  for (const x of r.mcp.skipped) out.push({ text: `Connector ${x.id ?? x.name} not connected: ${x.reason}`, fix: x.fix });
+  return [...out, ...r.notes.map((n) => ({ text: n.text, fix: n.fix }))];
+}
+
+/** Where a fix is made, and the button's words; undefined for a kind this UI does not know. */
+export function fixLink(fix: ApplyFix | undefined): { href: string; label: string } | undefined {
+  if (!fix) return undefined;
+  switch (fix.kind) {
+    case 'integration':
+      return { href: routes.integrations.href(fix.key ? { key: `server-${fix.key}` } : {}), label: 'Open Integrations' };
+    case 'mcp':
+      return fix.key ? { href: routes.agents.href({ key: fix.key }), label: `Allow MCP for ${fix.key}` } : undefined;
+    case 'skills':
+      return { href: routes.skills.href(), label: 'Open Skills' };
+    default:
+      return undefined;
+  }
 }
 
 export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: PrebuiltApplied) => void }>) {
@@ -80,20 +107,6 @@ export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: Pre
     const mode = pending ? modeOf(pending) : '';
     return (
       <div mix={wrapCss} data-testid="add-prebuilt">
-        <div mix={optsCss}>
-          <Checkbox
-            label="Install the skills this agent comes with"
-            description="Pinned skills from public registries, checked by Drydock before use."
-            checked={installSkills}
-            onChange={(v) => ((installSkills = v), void handle.update())}
-          />
-          <Checkbox
-            label="Connect its MCP connectors"
-            description="Adds them from the built-in catalog when needed; some need sign-in afterwards."
-            checked={connectMcp}
-            onChange={(v) => ((connectMcp = v), void handle.update())}
-          />
-        </div>
         <ErrorNote error={failure ?? catalog.error} what="Agent not added" />
         {pending || refusal ? (
           <div mix={confirmCss} data-testid="prebuilt-confirm">
@@ -126,15 +139,46 @@ export function AddPrebuilt(handle: Handle<{ projectId: string; onAdded: (r: Pre
           <Notice tone="ok" role="status" title={`${last.agent.name} joined the team.`} testId="prebuilt-added">
             {appliedLines(last).length ? (
               <ul>
-                {appliedLines(last).map((l, i) => (
-                  <li key={i}>{l}</li>
-                ))}
+                {appliedLines(last).map((l, i) => {
+                  const fix = fixLink(l.fix);
+                  return (
+                    <li key={i} mix={lineCss}>
+                      <span>{l.text}</span>
+                      {fix ? (
+                        <a href={fix.href} mix={buttonStyle('ghost', 'sm')} data-testid="prebuilt-fix">
+                          {fix.label}
+                        </a>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
           </Notice>
         ) : null}
         {catalog.loading && !catalog.data ? <Loading label="Loading prebuilt agents..." /> : null}
-        <AgentGallery entries={catalog.data ?? []} onPick={pick} busy={busy} disabled={!handle.props.projectId} />
+        <AgentGallery
+          entries={catalog.data ?? []}
+          onPick={pick}
+          busy={busy}
+          disabled={!handle.props.projectId}
+          detailsExtra={
+            <div mix={optsCss} data-testid="prebuilt-options">
+              <Checkbox
+                label="Install the skills this agent comes with"
+                description="Pinned skills from public registries, checked by Drydock before use."
+                checked={installSkills}
+                onChange={(v) => ((installSkills = v), void handle.update())}
+              />
+              <Checkbox
+                label="Connect its MCP connectors"
+                description="Adds them from the built-in catalog when needed; some need sign-in afterwards."
+                checked={connectMcp}
+                onChange={(v) => ((connectMcp = v), void handle.update())}
+              />
+            </div>
+          }
+        />
       </div>
     );
   };

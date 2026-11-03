@@ -159,15 +159,11 @@ test('Agents: My agents, Starters and Skills as tabs, All crews set apart, and U
   await expect(page.getByRole('heading', { level: 1, name: 'Starters' })).toBeVisible();
   const starters = page.getByTestId('library-prebuilt');
   await expect(starters.getByTestId('prebuilt').first()).toBeVisible();
-  // Use: the agent form, filled from the starter; saving makes it one of my agents
+  // Use: one click makes it one of my agents (E12), and My agents opens with its card selected
   await starters.getByRole('button', { name: 'Use Backend Engineer' }).click();
-  const form = page.getByTestId('template-form');
-  await expect(form.getByLabel('Template name')).toHaveValue('Backend Engineer');
-  await form.getByLabel('Template name').fill('Backend Engineer (nav)');
-  await form.getByRole('button', { name: 'Create template' }).click();
   await expect(page).toHaveURL(/\/library$/);
-  const card = page.getByTestId('lib-template-card').filter({ hasText: 'Backend Engineer (nav)' });
-  await expect(card).toBeVisible();
+  const card = page.locator('[data-testid="lib-template-card"]:has(> button[aria-pressed="true"])');
+  await expect(card).toContainText('Backend Engineer');
   await expect(page.getByTestId('library-note')).toContainText('is one of your agents now');
   // its ⋯ menu deletes it after a confirmation
   await card.getByTestId('lib-template-more').click();

@@ -646,7 +646,9 @@ func (k *Knowledge) methods() map[string]Method {
 		return k.Skills.List(ctx, p.ProjectID, p.Statuses...)
 	})
 	m["skill.get"] = bind(func(ctx context.Context, p skillRef) (any, error) { return k.Skills.Get(ctx, p.ProjectID, p.Name) })
-	m["skill.scan"] = bind(func(ctx context.Context, p knowProject) (any, error) { return k.Skills.ScanRepo(ctx, p.ProjectID) })
+	m["skill.scan"] = bind(func(ctx context.Context, p knowProject) (any, error) { return k.c.ScanRepoSkills(ctx, p.ProjectID) })
+	// the window got focus with the project open: a scan when the last is 30 seconds old (true when it scanned)
+	m["skill.refresh"] = bind(func(ctx context.Context, p knowProject) (any, error) { return k.c.refreshRepoSkills(ctx, p.ProjectID) })
 	m["skill.registries"] = bind(func(ctx context.Context, _ struct{}) (any, error) { return k.Skills.Registries(ctx) })
 	m["skill.registryAdd"] = bind(func(ctx context.Context, p struct {
 		Registry     skills.Registry `json:"registry"`
@@ -775,7 +777,23 @@ func (k *Knowledge) methods() map[string]Method {
 		Body      string `json:"body"`
 		Source    string `json:"source"`
 	}) (any, error) {
-		return k.ProposeMemory(ctx, p.ProjectID, p.Kind, p.Title, p.Body, firstNonEmpty(p.Source, h()))
+		// a person's own entry is their decision already: it is stored accepted, with the audit an acceptance gets (E10)
+		if p.Source == "" || p.Source == h() {
+			return k.AddMemory(ctx, h(), p.ProjectID, p.Kind, p.Title, p.Body)
+		}
+		return k.ProposeMemory(ctx, p.ProjectID, p.Kind, p.Title, p.Body, p.Source)
+	})
+	// Accept all: the proposals named, at once; one that is no longer a proposal is skipped. It answers the ids accepted, for Undo.
+	m["memory.acceptMany"] = bind(func(ctx context.Context, p struct {
+		IDs []string `json:"ids"`
+	}) (any, error) {
+		return k.AcceptMemoryMany(ctx, h(), p.IDs)
+	})
+	// Undo of Accept all: the entries named go back to proposals (agents stop seeing them).
+	m["memory.unacceptMany"] = bind(func(ctx context.Context, p struct {
+		IDs []string `json:"ids"`
+	}) (any, error) {
+		return k.UnacceptMemoryMany(ctx, h(), p.IDs)
 	})
 	m["memory.accept"] = bind(func(ctx context.Context, p idParam) (any, error) {
 		return k.DecideMemory(ctx, h(), p.ID, memory.Accepted)
@@ -821,6 +839,83 @@ func (k *Knowledge) ProposeMemory(ctx context.Context, projectID, kind, title, b
 	}
 	k.c.publish(ctx, "memory.proposed", projectID, map[string]any{"id": e.ID, "kind": e.Kind, "title": e.Title, "source": e.Source})
 	return e, nil
+}
+
+// AddMemory stores a person's own entry, accepted: the person wrote it, so it needs no second decision. Secrets are redacted
+// as in a proposal; the audit and the event are those of an acceptance.
+func (k *Knowledge) AddMemory(ctx context.Context, by, projectID, kind, title, body string) (memory.Entry, error) {
+	if err := security.RequireHuman(by); err != nil {
+		return memory.Entry{}, err
+	}
+	if !memory.ValidKind(kind) {
+		return memory.Entry{}, fmt.Errorf("memory: kind must be one of decision, convention, api_contract, rejected, known_issue, preference")
+	}
+	if _, err := k.c.GetProject(ctx, projectID); err != nil {
+		return memory.Entry{}, err
+	}
+	e := memory.Normalize(memory.Entry{ProjectID: projectID, Kind: kind, Title: title, Body: body, Source: by})
+	if err := memory.CheckSize(e); err != nil {
+		return memory.Entry{}, err
+	}
+	e.Title, e.Body = k.c.Scanner.Redact(e.Title), k.c.Scanner.Redact(e.Body)
+	e, err := k.Memory.Add(ctx, e, true)
+	if err != nil {
+		return e, err
+	}
+	k.audit(ctx, "memory.accept", e.ID, map[string]any{"project": projectID, "kind": e.Kind, "own": true})
+	k.c.publish(ctx, "memory.accepted", projectID, map[string]any{"id": e.ID, "kind": e.Kind, "by": by})
+	return e, nil
+}
+
+// MaxMemoryMany bounds how many entries one Accept all (or its Undo) touches.
+const MaxMemoryMany = 200
+
+// AcceptMemoryMany accepts each named proposal (human only, each audited as one acceptance). An entry that is no longer a
+// proposal is skipped. It returns the ids accepted.
+func (k *Knowledge) AcceptMemoryMany(ctx context.Context, by string, ids []string) ([]string, error) {
+	if err := security.RequireHuman(by); err != nil {
+		return nil, err
+	}
+	if len(ids) > MaxMemoryMany {
+		return nil, fmt.Errorf("at most %d entries at once, not %d", MaxMemoryMany, len(ids))
+	}
+	done := []string{}
+	for _, id := range ids {
+		e, err := k.Memory.Get(ctx, id)
+		if err != nil || e.Status != memory.Proposed {
+			continue
+		}
+		if _, err := k.DecideMemory(ctx, by, id, memory.Accepted); err != nil {
+			return done, err
+		}
+		done = append(done, id)
+	}
+	return done, nil
+}
+
+// UnacceptMemoryMany is Undo of Accept all: each named accepted entry becomes a proposal again (human only, audited). Others
+// are skipped. It returns the ids changed.
+func (k *Knowledge) UnacceptMemoryMany(ctx context.Context, by string, ids []string) ([]string, error) {
+	if err := security.RequireHuman(by); err != nil {
+		return nil, err
+	}
+	if len(ids) > MaxMemoryMany {
+		return nil, fmt.Errorf("at most %d entries at once, not %d", MaxMemoryMany, len(ids))
+	}
+	done := []string{}
+	for _, id := range ids {
+		e, err := k.Memory.Get(ctx, id)
+		if err != nil || e.Status != memory.Accepted {
+			continue
+		}
+		if err := k.Memory.SetStatus(ctx, id, memory.Proposed); err != nil {
+			return done, err
+		}
+		k.audit(ctx, "memory.unaccept", id, map[string]any{"project": e.ProjectID, "kind": e.Kind})
+		k.c.publish(ctx, "memory.proposed", e.ProjectID, map[string]any{"id": id, "kind": e.Kind, "title": e.Title, "source": e.Source, "undo": true})
+		done = append(done, id)
+	}
+	return done, nil
 }
 
 // DecideMemory accepts or rejects a proposal. Only a human principal can; an accepted entry reaches the generated

@@ -477,6 +477,18 @@ describe("an agent's page", () => {
       await waitFor(() => expect(skillRows(r)[0]!.getAttribute('data-skill')).toBe('skill-000'), r);
     });
 
+    it("lists the agent's own open memory proposals in the Memory tab, waiting for the person (E10)", async () => {
+      const prop = (id: string, source: string) => ({ id, projectId: 'prj_1', kind: 'decision', title: `Proposal ${id}`, body: 'x', status: 'proposed', source, created: 1, updated: 1 });
+      const { r } = show('agt_1', { memoryList: async (_p, status) => (status === 'proposed' ? [prop('p1', 'agent:agt_1 task:t1'), prop('p2', 'agent:agt_9')] : []) });
+      await hero(r);
+      await r.act(() => r.$('[data-testid="agent-tab-memory"]')!.click());
+      const box = await waitFor(() => r.$('[data-testid="agent-proposals"]') ?? (() => { throw new Error('no proposals yet'); })(), r);
+      expect(box.querySelector('h2')!.textContent).toContain('1 memory proposal from');
+      expect(box.textContent).toContain('Proposal p1');
+      expect(box.textContent).not.toContain('Proposal p2');
+      expect(box.querySelector('a')!.getAttribute('href')).toBe('/memory');
+    });
+
     it('draws only the notes near the view in the Memory tab, each as Markdown, and reaches the first and the last', async () => {
       const { r } = show('agt_1', { memoryList: async () => manyNotes });
       await hero(r);

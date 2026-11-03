@@ -16,7 +16,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
 
   // the green fixture repository has go-style (roles: Backend); accepted with no agent on the team, it goes to nobody yet (P76)
   await projectNav(page, 'nav-skills');
-  await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
+  await page.getByRole('button', { name: 'Scan again' }).click();
   await expect(page.locator('[data-testid=skill-tile][data-name=go-style]')).toHaveAttribute('data-status', 'offered');
   let card = await openSkill(page, 'go-style');
   await card.getByRole('button', { name: 'Accept go-style' }).click();
@@ -75,6 +75,9 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   // a template carries a registry skill (one a prebuilt agent comes with) and keeps it when it is edited
   await workspaceNav(page, 'nav-library');
   await page.getByTestId('library-new-agent').click();
+  // New agent opens on Describe (E12); the full form is Configure
+  await expect(page.getByTestId('describe-agent')).toBeVisible();
+  await page.getByTestId('library-new-configure').click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('UI dev');
   await tf.getByLabel('Role').fill('frontend');

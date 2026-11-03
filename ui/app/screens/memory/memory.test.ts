@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { bodyNote, charCount, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memorySource, memoryTone } from './memory.ts';
+import { bodyNote, charCount, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memorySource, memoryTone, proposalsOf, proposalsText } from './memory.ts';
 
 describe('Memory helpers', () => {
   it('says a proposal is invisible to agents until accepted', () => {
@@ -49,5 +49,20 @@ describe('Memory helpers', () => {
     const long = bodyNote('x'.repeat(8001));
     expect(long.over).toBe(true);
     expect(long.text).toBe(`${(8001).toLocaleString()} characters. This is longer than the ${(8000).toLocaleString()} characters a proposal may have now. All of it is shown above.`);
+  });
+});
+
+describe('memory proposals in words (E10)', () => {
+  it('counts them and finds one agent\'s own open ones', () => {
+    expect(proposalsText(1)).toBe('1 memory proposal');
+    expect(proposalsText(3)).toBe('3 memory proposals');
+    const es = [
+      { id: 'a', status: 'proposed', source: 'agent:agt_1 task:t1' },
+      { id: 'b', status: 'proposed', source: 'agent:agt_1' },
+      { id: 'c', status: 'accepted', source: 'agent:agt_1' },
+      { id: 'd', status: 'proposed', source: 'agent:agt_12' },
+      { id: 'e', status: 'proposed', source: 'human:me' },
+    ];
+    expect(proposalsOf(es, 'agt_1').map((e) => e.id)).toEqual(['a', 'b']);
   });
 });

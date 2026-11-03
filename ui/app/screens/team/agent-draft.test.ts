@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AgentDraft } from '../../api/libraryClient.ts';
-import { STARTERS, draftSourceNote, draftSummary, specFromDraft } from './agent-draft.ts';
+import { STARTERS, draftSourceNote, draftSummary, specFromDraft, startersFor } from './agent-draft.ts';
 
 const draft = (over: Partial<AgentDraft> = {}): AgentDraft => ({
   name: 'Security Reviewer',
@@ -21,6 +21,16 @@ const draft = (over: Partial<AgentDraft> = {}): AgentDraft => ({
 describe('describe a new agent (P138)', () => {
   it('has the six starters of the mockup', () => {
     expect(STARTERS.map((s) => s.label)).toEqual(['Builder', 'Reviewer', 'Tester', 'Docs writer', 'Team lead', 'Planner']);
+  });
+
+  it('puts the starters of the roles the crew lacks first (E6)', () => {
+    expect(startersFor([]).map((s) => s.label)).toEqual(['Builder', 'Reviewer', 'Tester', 'Docs writer', 'Team lead', 'Planner']);
+    expect(startersFor(['Reviewer', 'developer']).map((s) => s.label)).toEqual(['Tester', 'Docs writer', 'Team lead', 'Planner', 'Builder', 'Reviewer']);
+  });
+
+  it('names the button that saves the draft', () => {
+    expect(draftSourceNote(undefined, 'Save agent')).toBe('One sentence is enough. Nothing is saved until you press Save agent.');
+    expect(draftSourceNote(undefined)).toBe('One sentence is enough. Nothing is saved until you press Create agent.');
   });
 
   it('a draft becomes the agent.create spec; empty values are left to the core', () => {

@@ -31,6 +31,9 @@ describe('the prebuilt agents gallery', () => {
     expect(cf.textContent).toContain('claude · sonnet');
     expect(cf.textContent).toContain('(installed)');
     expect(r.container.querySelector('[data-id="lead-2"]')!.textContent).toContain('(not installed)');
+    // E9: a CLI that is not ready links to its page in Agent CLIs; a ready one is plain text
+    expect(r.container.querySelector('[data-id="lead-2"] [data-testid="prebuilt-cli-fix"]')!.getAttribute('href')).toBe('/agents/claude');
+    expect(cf.querySelector('[data-testid="prebuilt-cli-fix"]')).toBeNull();
     byText<HTMLButtonElement>(r.container, 'button', 'Add UI Engineer').click();
     expect(picked).toEqual(['ui-engineer']);
   });
@@ -106,16 +109,21 @@ describe('adding a prebuilt agent on the Team page', () => {
         {
           id: req.id,
           agent: { id: 'a9', name: 'Cloudflare Engineer' } as never,
-          mcp: { granted: [], skipped: [{ id: 'cloudflare-docs', reason: 'needs sign-in on the Library page' }] },
-          skills: { assigned: ['cloudflare', 'wrangler'], shared: [], pending: [{ name: 'durable-objects', reason: 'a newer pin is offered' }], failed: [] },
-          notes: [],
+          mcp: { granted: [], skipped: [{ id: 'cloudflare-docs', reason: 'needs sign-in on the Library page', fix: { kind: 'integration', key: 'cfdocs' } }] },
+          skills: { assigned: ['cloudflare', 'wrangler'], shared: [], pending: [{ name: 'durable-objects', reason: 'a newer pin is offered', fix: { kind: 'skills', key: 'durable-objects' } }], failed: [] },
+          notes: [{ text: 'gemini reaches MCP servers only after you allow MCP for it', fix: { kind: 'mcp', key: 'gemini' } }],
         }
       ),
     });
     const r = mount(<AddPrebuilt projectId="p1" onAdded={(x) => added.push(x.agent.id)} />, s);
     await waitFor(() => byText(r.container, 'button', 'Add Cloudflare Engineer'), r);
-    await r.act(() => (Array.from(r.container.querySelectorAll('label')).find((l) => l.textContent!.startsWith('Connect its MCP connectors'))!.querySelector('input') as HTMLInputElement).click());
-    await r.act(() => byText(r.container, 'button', 'Add Cloudflare Engineer').click());
+    // E9: the install options are not above the gallery; they are in the entry's Details dialog
+    expect(r.container.querySelector('[data-testid="prebuilt-options"]')).toBeNull();
+    await r.act(() => byText(r.container, 'button', 'What Cloudflare Engineer comes with').click());
+    const dialog = () => r.container.querySelector('dialog[open]')!;
+    await waitFor(() => expect(dialog().querySelector('[data-testid="prebuilt-options"]')).not.toBeNull(), r);
+    await r.act(() => (Array.from(dialog().querySelectorAll('label')).find((l) => l.textContent!.startsWith('Connect its MCP connectors'))!.querySelector('input') as HTMLInputElement).click());
+    await r.act(() => byText(dialog(), 'button', 'Add Cloudflare Engineer').click());
     await waitFor(() => expect(r.container.querySelector('[data-testid="prebuilt-added"]')!.textContent).toContain('Cloudflare Engineer joined the team.'), r);
     expect(sent).toEqual([{ id: 'cloudflare-engineer', projectId: 'p1', installSkills: true, connectMcp: false }]);
     expect(added).toEqual(['a9']);
@@ -123,6 +131,13 @@ describe('adding a prebuilt agent on the Team page', () => {
     expect(text).toContain('Skills: cloudflare, wrangler.');
     expect(text).toContain('Skill durable-objects waits for your decision: a newer pin is offered');
     expect(text).toContain('Connector cloudflare-docs not connected: needs sign-in on the Library page');
+    // each missing thing has a button to the page that fixes it
+    const fixes = Array.from(r.container.querySelectorAll('[data-testid="prebuilt-fix"]')).map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(fixes).toEqual([
+      ['Open Skills', '/skills'],
+      ['Open Integrations', '/integrations/server-cfdocs'],
+      ['Allow MCP for gemini', '/agents/gemini'],
+    ]);
   });
 
   it('shows the core refusal', async () => {
@@ -145,8 +160,8 @@ describe('adding a prebuilt agent on the Team page', () => {
         agent: { name: 'X' } as never,
         mcp: { granted: ['ms-learn'], skipped: [] },
         skills: { assigned: [], shared: [], pending: [], failed: [{ name: 's', reason: 'blocked by policy' }] },
-        notes: ['note'],
-      }),
+        notes: [{ text: 'note' }],
+      }).map((l) => l.text),
     ).toEqual(['Skill s not installed: blocked by policy', 'Connectors: ms-learn.', 'note']);
   });
 });

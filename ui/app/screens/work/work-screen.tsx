@@ -27,6 +27,7 @@ import { findingsText } from '../security/security.ts';
 import { TaskDetailScreen } from '../tasks/task-detail-screen.tsx';
 import { AgentPanelHost } from '../team/agent-panel.tsx';
 import { editAgent, editAgentHref, newAgentHref } from './edit-agent.ts';
+import { MemoryLine } from './memory-line.tsx';
 import { RecommendLine } from './recommend-line.tsx';
 import { RepoSyncLine } from './repo-sync-line.tsx';
 import { SetupNotes } from './setup-notes.tsx';
@@ -273,6 +274,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
           </div>
           {/* recommendations waiting for the person: one line, to the Skills page where each is applied or dismissed */}
           {pid() ? <RecommendLine key={`rec:${pid()}`} projectId={pid()!} /> : null}
+          {/* memory the agents proposed, waiting for the person: one line, to the Memory page (E10) */}
+          {pid() ? <MemoryLine key={`mem:${pid()}`} projectId={pid()!} /> : null}
           {/* the sync line sits under the list, which every width keeps (the crew rail leaves under 1180 px) */}
           {s.workspace.project?.hasRepo && pid() ? (
             <div mix={syncFootCss}>

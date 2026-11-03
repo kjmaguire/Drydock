@@ -4,33 +4,49 @@
 import type { AgentDraft } from '../../api/libraryClient.ts';
 import type { AgentSpec } from '../../api/types.ts';
 
-/** The starter chips under the description box: a label and the sentence it puts in the box. */
-export const STARTERS: readonly { label: string; text: string }[] = [
+/** The starter chips under the description box: a label, the role it drafts and the sentence it puts in the box. */
+export const STARTERS: readonly { label: string; role: string; text: string }[] = [
   {
     label: 'Builder',
+    role: 'developer',
     text: 'Builds features end to end: reads the code first, keeps each change small and tested.',
   },
   {
     label: 'Reviewer',
+    role: 'reviewer',
     text: 'Reviews every change before it is merged. Never edits code, just comments.',
   },
   {
     label: 'Tester',
+    role: 'tester',
     text: 'Writes and runs the tests, and reproduces each bug with a failing test first.',
   },
   {
     label: 'Docs writer',
+    role: 'docs',
     text: 'Keeps the README and the docs true to the code.',
   },
   {
     label: 'Team lead',
+    role: 'team lead',
     text: 'A team lead that splits the work and keeps the crew on task.',
   },
   {
     label: 'Planner',
+    role: 'planner',
     text: 'Plans each feature and writes the spec before anyone codes.',
   },
 ];
+
+/**
+ * The starters in the order the crew needs them (E6): the roles no agent of the crew has first, each group in the usual order.
+ * Roles compare without case.
+ */
+export function startersFor(crewRoles: readonly string[]): { label: string; role: string; text: string }[] {
+  const have = new Set(crewRoles.map((r) => r.trim().toLowerCase()));
+  const lacking = STARTERS.filter((x) => !have.has(x.role));
+  return [...lacking, ...STARTERS.filter((x) => have.has(x.role))];
+}
 
 /** The agent.create spec of a (possibly edited) draft. Empty values are left out: the core then uses its defaults. */
 export function specFromDraft(d: AgentDraft, projectId: string): AgentSpec {
@@ -48,12 +64,11 @@ export function specFromDraft(d: AgentDraft, projectId: string): AgentSpec {
   return spec;
 }
 
-/** The quiet line under the draft. */
-export function draftSourceNote(d: AgentDraft | undefined): string {
-  if (!d) return 'One sentence is enough. Nothing is saved until you press Create agent.';
-  return d.source === 'model'
-    ? 'Drafted by your default model. Nothing is saved until you press Create agent.'
-    : 'Drafted from your words on this PC (no model was used). Nothing is saved until you press Create agent.';
+/** The quiet line under the draft; `button` is the words of the button that saves it. */
+export function draftSourceNote(d: AgentDraft | undefined, button = 'Create agent'): string {
+  const saved = `Nothing is saved until you press ${button}.`;
+  if (!d) return `One sentence is enough. ${saved}`;
+  return d.source === 'model' ? `Drafted by your default model. ${saved}` : `Drafted from your words on this PC (no model was used). ${saved}`;
 }
 
 /** A one-line summary of the draft under its name: the role and the first sentence of its instructions. */

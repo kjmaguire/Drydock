@@ -223,6 +223,8 @@ export interface ExtClient {
   // skills
   skillList(projectId: string, statuses?: string[]): Promise<Skill[]>;
   skillScan(projectId: string): Promise<SkillScan>;
+  /** The window got focus with the project open: the core scans the repository's skills when its last scan is 30 s old (E5). */
+  skillRefresh(projectId: string): Promise<boolean>;
   skillAccept(projectId: string, name: string): Promise<Skill>;
   skillReject(projectId: string, name: string): Promise<Skill>;
   skillRelease(projectId: string, name: string): Promise<Skill>;
@@ -262,6 +264,10 @@ export interface ExtClient {
   memorySearch(projectId: string, query: string, status?: string): Promise<MemoryEntry[]>;
   memoryPropose(projectId: string, kind: string, title: string, body: string): Promise<MemoryEntry>;
   memoryAccept(id: string): Promise<MemoryEntry>;
+  /** Accept all: the proposals named; answers the ids accepted (E10). */
+  memoryAcceptMany(ids: string[]): Promise<string[]>;
+  /** Undo of Accept all: the entries named become proposals again; answers the ids changed. */
+  memoryUnacceptMany(ids: string[]): Promise<string[]>;
   memoryReject(id: string): Promise<MemoryEntry>;
   memoryDelete(id: string): Promise<void>;
   // development flow
@@ -462,6 +468,7 @@ export function createExtClient(t: Transport): ExtClient {
 
     skillList: async (projectId, statuses = []) => arr(await call<Skill[] | null>('skill.list', { projectId, statuses })),
     skillScan: (projectId) => call('skill.scan', { projectId }),
+    skillRefresh: async (projectId) => (await call<boolean | null>('skill.refresh', { projectId })) === true,
     skillAccept: (projectId, name) => call('skill.accept', { projectId, name }),
     skillReject: (projectId, name) => call('skill.reject', { projectId, name }),
     skillRelease: (projectId, name) => call('skill.release', { projectId, name }),
@@ -501,6 +508,8 @@ export function createExtClient(t: Transport): ExtClient {
     memorySearch: async (projectId, query, status = '') => arr(await call<MemoryEntry[] | null>('memory.search', { projectId, query, status })),
     memoryPropose: (projectId, kind, title, body) => call('memory.propose', { projectId, kind, title, body }),
     memoryAccept: (id) => call('memory.accept', { id }),
+    memoryAcceptMany: async (ids) => arr(await call<string[] | null>('memory.acceptMany', { ids })),
+    memoryUnacceptMany: async (ids) => arr(await call<string[] | null>('memory.unacceptMany', { ids })),
     memoryReject: (id) => call('memory.reject', { id }),
     memoryDelete: (id) => voidCall('memory.delete', { id }),
 

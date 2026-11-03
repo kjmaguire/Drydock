@@ -123,3 +123,30 @@ func TestAReadOnlyAgentRunsReadOnly(t *testing.T) {
 		t.Fatalf("rules draft %+v", d)
 	}
 }
+
+// E6: the rules choose the first kind of work named that the crew lacks, and the model is told the crew and the brief.
+func TestDraftKnowsTheCrewAndTheBrief(t *testing.T) {
+	desc := "Reviews every change and writes the missing tests"
+	if d := ruleDraft(desc, testEnv); d.Role != "reviewer" {
+		t.Fatalf("an empty crew gets the first role named: %+v", d)
+	}
+	env := testEnv
+	env.Crew = []draftMember{{Name: "Code Reviewer", Role: "reviewer", Purpose: "You review every change."}}
+	env.Brief = "A calculator in Go."
+	if d := ruleDraft(desc, env); d.Role != "tester" || d.Name != "Tester" {
+		t.Fatalf("a crew with a reviewer gets the tester: %+v", d)
+	}
+	env.Crew = append(env.Crew, draftMember{Name: "Tester", Role: "tester"})
+	if d := ruleDraft(desc, env); d.Role != "reviewer" {
+		t.Fatalf("a crew with both gets the first named: %+v", d)
+	}
+	p := draftPrompt(env)
+	for _, want := range []string{"Crew already on the project:", "- Code Reviewer (reviewer): You review every change.", "Project brief (the start):\nA calculator in Go.", "a name no crew member has"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("the prompt lacks %q:\n%s", want, p)
+		}
+	}
+	if p := draftPrompt(testEnv); !strings.Contains(p, "Crew already on the project: none") || strings.Contains(p, "Project brief") {
+		t.Errorf("no crew and no brief: %s", p)
+	}
+}

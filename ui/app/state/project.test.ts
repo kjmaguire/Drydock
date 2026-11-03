@@ -124,3 +124,34 @@ describe('needsChanged', () => {
     expect(needsChanged(ev('connection.sign_in_started'))).toBe(false);
   });
 });
+
+describe('repository skills are looked for when the window gets focus again (E5)', () => {
+  it('asks the core to refresh the open project\'s skills on focus, and nothing without a project', async () => {
+    const store = new EventStore(new FakeTransport(), { scheduler: new ManualScheduler(), backoff: () => 100 });
+    const asked: string[] = [];
+    const c = {
+      agentList: async () => [],
+      roomList: async () => [],
+      roomUnread: async () => [],
+      needsYouList: async () => [],
+      presenceList: async () => [],
+      taskList: async () => [],
+      taskCount: async () => ({ total: 0 }),
+      skillRefresh: async (id: string) => (asked.push(id), true),
+    } as unknown as Client;
+    const ws = new Workspace(c, store, { persist: false });
+    const win = new EventTarget();
+    const ctl = new AbortController();
+    new ProjectData(c, store, ws).start(ctl.signal, win);
+    win.dispatchEvent(new Event('focus'));
+    expect(asked).toEqual([]);
+    ws.projects.set([{ id: 'p1', name: 'gocalc' } as Project]);
+    await until(() => ws.projectId === 'p1');
+    win.dispatchEvent(new Event('focus'));
+    await until(() => asked.length === 1);
+    expect(asked).toEqual(['p1']);
+    ctl.abort();
+    win.dispatchEvent(new Event('focus'));
+    expect(asked).toEqual(['p1']);
+  });
+});

@@ -128,3 +128,22 @@ func TestEverywhereSavesTheChangeToTheTemplateAndItsOtherAgents(t *testing.T) {
 		t.Fatalf("after the template was deleted: %+v", g)
 	}
 }
+
+// E6: the draft is written for the project's crew and brief, and every way of making an agent gives it a unique name.
+func TestDraftForTheCrewAndCreateWithAUniqueName(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	a.call("project.setBrief", map[string]any{"id": p.ID, "brief": "A calculator in Go."}, nil)
+	var first, second core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Code Reviewer", Role: "reviewer", Adapter: "claude"}, &first)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "code reviewer", Role: "reviewer", Adapter: "claude"}, &second)
+	if first.Name != "Code Reviewer" || second.Name != "code reviewer 2" {
+		t.Fatalf("names %q and %q", first.Name, second.Name)
+	}
+	var d core.AgentDraft
+	a.call("agent.draft", map[string]any{"description": "Reviews every change and writes the missing tests", "projectId": p.ID}, &d)
+	if d.Role != "tester" {
+		t.Fatalf("the crew has a reviewer, so the draft is the tester: %+v", d)
+	}
+}

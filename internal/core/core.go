@@ -602,6 +602,9 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 	}
 	c.publish(ctx, "project.created", p.ID, map[string]any{"name": p.Name, "hasRepo": p.HasRepo})
 	c.placeNewProject(ctx, p.ID) // where its agents run: on Windows, or where the agent CLI is ready (decision P58)
+	if p.HasRepo {
+		c.scanRepoSkillsQuietly(ctx, p.ID) // the repository's own skills are found now, not at the first run (E5)
+	}
 	return p, nil
 }
 
@@ -646,6 +649,7 @@ func (c *Core) AttachRepository(ctx context.Context, projectID, repoPath string)
 	c.mu.Unlock()
 	c.trustGitConfigNow(ctx, projectID)
 	c.publish(ctx, "project.updated", projectID, map[string]any{"repoAttached": true})
+	c.scanRepoSkillsQuietly(ctx, projectID)
 	return c.GetProject(ctx, projectID)
 }
 
@@ -862,6 +866,12 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	if strings.TrimSpace(s.Name) == "" || strings.TrimSpace(s.Role) == "" {
 		return Agent{}, errors.New("an agent needs a name and a role")
 	}
+	// every way of making an agent gives it a name no other agent of the project has ("Code Reviewer 2")
+	name, err := c.uniqueAgentName(ctx, s.ProjectID, strings.TrimSpace(s.Name))
+	if err != nil {
+		return Agent{}, err
+	}
+	s.Name = name
 	if err := c.validateAgentFields(s.Adapter, s.Model, s.Effort, s.Purpose); err != nil {
 		return Agent{}, err
 	}
@@ -872,7 +882,6 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	if err := c.checkPermissionMode(s.Adapter, s.PermissionMode); err != nil {
 		return Agent{}, err
 	}
-	var err error
 	if s.RunMode, s.WSLDistro, err = c.checkRunMode(ctx, s.ProjectID, s.Adapter, s.RunMode, s.WSLDistro); err != nil {
 		return Agent{}, err
 	}
