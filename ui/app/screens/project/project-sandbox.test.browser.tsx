@@ -209,6 +209,10 @@ describe('Sandbox settings', () => {
       expect(lines(r)).toEqual(changed.changes);
       expect(box.textContent).toContain('Tasks of this project wait, in Needs you, until you confirm this definition.');
       expect(byText<HTMLButtonElement>(box, 'button', 'Confirm this definition').disabled).toBe(false);
+      // one confirmation lets every held task go on, and the callout says so before the click (X38)
+      expect(box.querySelector('[data-testid="sandbox-confirm-note"]')?.textContent).toContain(
+        'lets every task of this project that waits for it go on',
+      );
     });
 
     it('shows a line of the definition as the text it is, never as markup', async () => {

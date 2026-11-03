@@ -368,7 +368,7 @@ describe('Merge gates of a pull request', () => {
           id: 'sb-1',
           nodeId: 'work',
           step: 2,
-          spec: { kind: 'question', title: "The task's sandbox could not start: x. Fix it, then answer to try again.", payload: { gate: 'sandbox', step: 'sandbox', error: 'x', projectId: 'p1', ...payload } },
+          spec: { kind: 'question', title: "The task's sandbox could not start: x. Fix it, then try again.", payload: { gate: 'sandbox', step: 'sandbox', error: 'x', projectId: 'p1', ...payload } },
         },
       ],
     });

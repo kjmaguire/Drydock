@@ -71,7 +71,8 @@ func TestCreatingATaskSandboxSaysEachStep(t *testing.T) {
 	a.call("sandbox.set", map[string]any{"projectId": p.ID, "enabled": true}, nil)
 	var task tasks.Task
 	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Serve the app", Description: "x"}, &task)
-	fakeContainerCLI(t, task.ID, `case "$1" in
+	fakeContainerCLI(t, task.ID, `[ "$FAKE_ENGINE" = gone ] && { echo "cannot connect to the engine" >&2; exit 1; }
+case "$1" in
 version) echo '{"Version":"29","Os":"linux","Arch":"amd64"}';;
 image) exit 1;;
 pull) [ "$FAKE_PULL" = fail ] && { echo "pull access denied" >&2; exit 1; };;
@@ -105,8 +106,23 @@ exit 0`)
 		t.Fatalf("events %s", got)
 	}
 
-	// a start that fails: the page stops saying it is starting
+	// the engine goes away after a start that went well: a failure before any step ends the "started" record too
 	_ = a.c.TestRemoveTaskSandbox(ctx, task.ID)
+	t.Setenv("FAKE_ENGINE", "gone")
+	if err := a.c.TestStartTaskSandbox(ctx, task.ID, t.TempDir()); err == nil {
+		t.Fatal("a sandbox started with no engine")
+	}
+	var d1 core.TaskDetail
+	a.call("task.get", map[string]string{"id": task.ID}, &d1)
+	if d1.SandboxStart != nil && (d1.SandboxStart.Ready || len(d1.SandboxStart.Steps) > 0) {
+		t.Fatalf("still reads as started: %+v", d1.SandboxStart)
+	}
+	if ev := types(); ev[len(ev)-1] != "sandbox.start_failed" {
+		t.Fatalf("events %v", ev)
+	}
+	t.Setenv("FAKE_ENGINE", "")
+
+	// a start that fails: the page stops saying it is starting
 	t.Setenv("FAKE_PULL", "fail")
 	if err := a.c.TestStartTaskSandbox(ctx, task.ID, t.TempDir()); err == nil {
 		t.Fatal("a pull that fails started the sandbox")

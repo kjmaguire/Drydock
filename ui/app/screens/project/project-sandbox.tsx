@@ -198,6 +198,9 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
                         <li key={i}>{c}</li>
                       ))}
                     </ul>
+                    <p data-testid="sandbox-confirm-note">
+                      Confirming it, or switching the sandbox off and on again, lets every task of this project that waits for it go on, each with its agent&apos;s next turn.
+                    </p>
                     <div class="row">
                       <Button size="sm" variant="primary" disabled={act.busy === 'trust'} data-testid="sandbox-confirm" mix={on('click', () => void confirm(st.fingerprint!))}>
                         {act.busy === 'trust' ? 'Confirming...' : 'Confirm this definition'}

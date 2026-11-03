@@ -36,7 +36,8 @@ and volumes are removed.
    merged change still does not run until you confirm it: switching the sandbox on records the definition you saw, and a task
    whose definition differs is held in Needs you with the list of what changed (network, allowed hosts, image, setup commands,
    services). Confirm it in the project's sandbox settings (`sandbox.trust`, which takes the digest of the definition you were
-   shown and is recorded in the audit log) or switch the sandbox off and on again, then answer to try again. A sandbox that was
+   shown and is recorded in the audit log), with "Confirm this definition and try again" on the held task's card, or switch the
+   sandbox off and on again: confirming lets every task of the project that waits for it go on. A sandbox that was
    switched on before this existed is asked once.
    Project settings > Sandbox suggests a starting point from the project's files: the language files (package.json, go.mod,
    Python), and since effort review X35 what the project already says about its containers. A compose file's services that run an

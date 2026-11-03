@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -79,7 +80,17 @@ services:
 
 func TestJSONCKeepsStringsAndDropsCommentsAndTrailingCommas(t *testing.T) {
 	got := jsonc("{\"a\": \"http://x // not a comment\", /* c */ \"b\": [1, 2,], // end\n}")
-	if got != "{\"a\": \"http://x // not a comment\",  \"b\": [1, 2], \n}" {
+	if got != "{\"a\": \"http://x // not a comment\",  \"b\": [1, 2] \n}" {
+		t.Fatalf("%q", got)
+	}
+	// a commented-out last property: the comma before it is a trailing comma, so the image is read
+	var dc struct{ Image string }
+	text := jsonc("{\"name\":\"Go\",\"image\":\"mcr.microsoft.com/devcontainers/go:1\",\n  // \"features\": {},\n  /* \"x\": 1 */\n}")
+	if err := json.Unmarshal([]byte(text), &dc); err != nil || dc.Image != "mcr.microsoft.com/devcontainers/go:1" {
+		t.Fatalf("%q: %v", text, err)
+	}
+	// strings keep escaped quotes, commas and brackets
+	if got := jsonc(`{"a": "x\",]", "b": ",}" ,}`); got != `{"a": "x\",]", "b": ",}" }` {
 		t.Fatalf("%q", got)
 	}
 }

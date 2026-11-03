@@ -13,7 +13,7 @@ function double(opts: { running?: boolean; canView?: boolean; max?: number; list
   const calls: string[] = [];
   /** The ports whose window is open (X314): the viewer's one window per forward. */
   const windows = new Set<number>();
-  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards].sort((a, b) => a.port - b.port), canView: opts.canView ?? true, max: opts.max ?? 5, viewing: [...windows], listening: opts.listening ?? [] });
+  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards].sort((a, b) => a.port - b.port), canView: opts.canView ?? true, max: opts.max ?? 5, viewing: [...windows], listening: [...(opts.listening ?? [])] });
   const client: Partial<Client> = {
     sandboxForwards: async () => view(),
     sandboxForwardOpen: async (taskId, port) => {
@@ -88,6 +88,17 @@ describe("A task's sandbox app (P134)", () => {
     await r.act(() => chip.click());
     await waitFor(() => expect(calls).toEqual(['show 3000']), r);
     await waitFor(() => expect(r.$('[data-testid="sandbox-forward-3000"]')).not.toBe(null), r);
+  });
+
+  it('a port something starts listening on later gets its button with no sandbox event (X31)', async () => {
+    const listening: { port: number; name?: string }[] = [];
+    const { client } = double({ listening });
+    const r = mount(<SandboxApp taskId="t1" pollMs={50} />, testServices(client));
+    await waitFor(() => expect(r.$('[data-testid="sandbox-app"]')).not.toBe(null), r);
+    expect(r.$('[data-testid="sandbox-listening-5173"]')).toBe(null);
+    // the dev server binds its port after sandbox_start returned: no event arrives, the next read finds it
+    listening.push({ port: 5173, name: 'dev' });
+    await waitFor(() => expect((r.$('[data-testid="sandbox-listening-5173"]') as HTMLButtonElement | null)?.textContent).toBe('5173 · dev'), r);
   });
 
   it('without listening ports the port field is not folded', async () => {

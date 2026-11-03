@@ -116,6 +116,10 @@ func TestASandboxedWorkerTurnHasNoShellAndGetsTheSandbox(t *testing.T) {
 	if err != nil || q == nil || q.Request == nil || !q.Request.Retry || !strings.Contains(q.Request.Title, "engine is not running") || cfg.Spec.Sandboxed {
 		t.Fatalf("broken sandbox: %+v %v", q, err)
 	}
+	// the card's buttons try again: the heading does not ask for a typed answer
+	if !strings.HasSuffix(q.Request.Title, ", then try again.") || strings.Contains(q.Request.Title, "answer") {
+		t.Fatalf("title %q", q.Request.Title)
+	}
 	// and a human who rejects it stops the run
 	answer, _ := json.Marshal(map[string]any{"decision": "rejected", "by": "human:kyle"})
 	_, err = d.prepareWorker(ctx, workflow.NodeInput{Inbox: []workflow.Message{{Value: answer}}}, task, &cfg)

@@ -31,7 +31,11 @@ const boxCss = css({
 const sameTask = (taskId: string) => (e: { type: string; taskId?: string }) =>
   e.taskId === taskId && (e.type.startsWith('sandbox.') || e.type === 'task.completed' || e.type === 'task.failed' || e.type === 'task.cancelled');
 
-export function SandboxApp(handle: Handle<{ taskId: string }>) {
+/** How often the list is read again while the sandbox runs: a process sandbox_start began says no event, and binds its port
+ * seconds later (X31). The core reads the sandbox's ports at most every few seconds, whatever the number of reads. */
+export const LISTENING_POLL_MS = 4000;
+
+export function SandboxApp(handle: Handle<{ taskId: string; pollMs?: number }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -40,6 +44,11 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
     key: () => handle.props.taskId,
     when: sameTask(handle.props.taskId),
   });
+  // while the sandbox runs, read again now and then so a port something starts listening on gets its button without an event
+  const poll = setInterval(() => {
+    if (q.data?.running && !q.loading && !act.busy && document.visibilityState !== 'hidden') q.reload();
+  }, handle.props.pollMs ?? LISTENING_POLL_MS);
+  handle.signal.addEventListener('abort', () => clearInterval(poll));
   let port = '';
   /** Whether the person typed in the port field: until then it holds the port forwarded last, so opening it again is one click. */
   let typed = false;

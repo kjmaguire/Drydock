@@ -72,7 +72,7 @@ func (e *sandboxGateError) Unwrap() error                           { return e.e
 func (e *sandboxGateError) SandboxGate() (string, string, []string) { return e.reason, "", nil }
 
 func (e *SandboxUnconfirmedError) Error() string {
-	return fmt.Sprintf("the sandbox definition on %s (%s) is not the one you confirmed: %s. Confirm it in the project's sandbox settings (or switch the sandbox off and on again), then answer to try again",
+	return fmt.Sprintf("the sandbox definition on %s (%s) is not the one you confirmed: %s. Confirming it, here or in the project's sandbox settings (or switching the sandbox off and on again), lets every task of the project that waits for it go on",
 		e.Branch, sandbox.ConfigPath, strings.Join(e.Changes, "; "))
 }
 
@@ -327,13 +327,22 @@ func (s *sandboxStarts) step(taskID, step string) {
 	s.m[taskID] = cur
 }
 
-// finish ends a start that is going on; it reports whether there was one.
+// finish ends a start that is going on; it reports whether the record changed. A failure before any step (no engine, a network
+// that could not be created) also ends a start recorded earlier as ready, so the page does not say "started" above a sandbox that
+// could not start.
 func (s *sandboxStarts) finish(taskID string, ok bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cur, has := s.m[taskID]
-	if !has || cur.Ready || cur.Failed {
+	if !has || cur.Failed {
 		return false
+	}
+	if cur.Ready {
+		if ok {
+			return false
+		}
+		s.m[taskID] = SandboxStart{Failed: true}
+		return true
 	}
 	cur.Ready, cur.Failed = ok, !ok
 	s.m[taskID] = cur

@@ -171,7 +171,7 @@ func sandboxTrouble(in workflow.NodeInput, t tasks.Task, err error) (workflow.No
 	}
 	p, _ := json.Marshal(payload)
 	return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "question", Retry: true, DeliverAnswer: true, Payload: p,
-		Title: "The task's sandbox could not start: " + msg + ". Fix it (is the container engine running? is " + ".drydock/sandbox.json right?), then answer to try again."}}, nil
+		Title: "The task's sandbox could not start: " + msg + ". Fix it (is the container engine running? is " + ".drydock/sandbox.json right?), then try again."}}, nil
 }
 
 // sandboxAgentError is a turn whose agent cannot run in the sandbox.

@@ -65,26 +65,38 @@ func devcontainerImage(text string) string {
 
 // jsonc turns JSON with comments (// and /* */) and trailing commas into JSON. Text inside strings is kept as it is.
 func jsonc(text string) string {
+	// comments first, then trailing commas over the text without them: a comma followed by a comment and then a closing bracket
+	// (a commented-out last property) is a trailing comma too
+	return dropTrailingCommas(dropComments(text))
+}
+
+// skipString copies the JSON string that starts at text[i] (a quote) to b and returns the index of its closing quote.
+func skipString(b *strings.Builder, text string, i int) int {
+	b.WriteByte(text[i])
+	for i++; i < len(text); i++ {
+		ch := text[i]
+		b.WriteByte(ch)
+		switch ch {
+		case '\\':
+			if i+1 < len(text) {
+				i++
+				b.WriteByte(text[i])
+			}
+		case '"':
+			return i
+		}
+	}
+	return i
+}
+
+// dropComments removes // and /* */ comments outside strings; a line comment leaves its line's end.
+func dropComments(text string) string {
 	var b strings.Builder
-	inStr, esc := false, false
 	for i := 0; i < len(text); i++ {
 		ch := text[i]
-		if inStr {
-			b.WriteByte(ch)
-			switch {
-			case esc:
-				esc = false
-			case ch == '\\':
-				esc = true
-			case ch == '"':
-				inStr = false
-			}
-			continue
-		}
 		switch {
 		case ch == '"':
-			inStr = true
-			b.WriteByte(ch)
+			i = skipString(&b, text, i)
 		case ch == '/' && i+1 < len(text) && text[i+1] == '/':
 			for i < len(text) && text[i] != '\n' {
 				i++
@@ -96,8 +108,22 @@ func jsonc(text string) string {
 				return b.String()
 			}
 			i += end + 3
-		case ch == ',':
-			// a comma followed only by space before a closing bracket is a trailing comma
+		default:
+			b.WriteByte(ch)
+		}
+	}
+	return b.String()
+}
+
+// dropTrailingCommas removes, outside strings, a comma followed only by space before a closing bracket.
+func dropTrailingCommas(text string) string {
+	var b strings.Builder
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+		switch ch {
+		case '"':
+			i = skipString(&b, text, i)
+		case ',':
 			j := i + 1
 			for j < len(text) && strings.ContainsRune(" \t\r\n", rune(text[j])) {
 				j++
