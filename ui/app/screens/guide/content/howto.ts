@@ -35,8 +35,8 @@ export const HOWTO: readonly Topic[] = [
       {
         ol: [
           'Install `gh` from [cli.github.com](https://cli.github.com).',
-          'Run `gh auth login` in a terminal and sign in.',
-          'Open [GitHub](/github) and press **Check again**.',
+          'Open [GitHub](/github) and press **Sign in**. `gh auth login` runs in a terminal there; answer it and choose GitHub.com.',
+          'When it ends, the page checks `gh` again by itself. **Check again** asks once more.',
         ],
       },
       { p: 'The sign-in is checked by asking GitHub who it is (`gh api /user`). Scopes are not checked: `gh` asks for `repo` and `read:org` when you sign in, and that is what Drydock needs. Until `gh` is signed in a project can still work on a local folder; pull requests and GitHub repositories need it.' },

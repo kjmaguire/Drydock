@@ -123,6 +123,63 @@ func TestGitHubCloneCancel(t *testing.T) {
 	}
 }
 
+// B12: a second clone of the same repository (or of another into the same folder) while one runs is refused before anything
+// is touched: the folder the first clone is writing stays, and the answer is the refusal alone, not "cloning failed".
+func TestGitHubCloneRefusedSecondCloneLeavesTheFirstsFolder(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	if _, err := exec.LookPath("sleep"); err != nil {
+		t.Skip("no sleep")
+	}
+	bin := t.TempDir()
+	// TEST DOUBLE of git for the clone: it makes the (still empty) folder, prints a progress line, then waits as a slow
+	// network would; any other git command runs the real git
+	script := "#!/bin/sh\nif [ \"$1\" != clone ]; then exec '" + realGit + "' \"$@\"; fi\nmkdir -p \"$4\"\nprintf 'Receiving objects:  3%% (1/50)\\r' >&2\nexec sleep 60\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		GitHubCloneURL: func(string) string { return "https://example.invalid/slow.git" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	parent := t.TempDir()
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Call(context.Background(), "github.clone", mustJSON(map[string]any{"repo": "acme/slow", "dir": parent}))
+		done <- err
+	}()
+	a.waitFor("the first clone's progress", func() bool { return len(a.eventsOf("github.clone_progress")) > 0 })
+	dest := filepath.Join(parent, "slow")
+	for _, repo := range []string{"acme/slow", "otherorg/slow"} {
+		err := a.callErr("github.clone", map[string]any{"repo": repo, "dir": parent})
+		if err == nil || !strings.Contains(err.Error(), "being cloned already") || strings.Contains(err.Error(), "failed") {
+			t.Fatalf("a second clone (%s) answered %v", repo, err)
+		}
+		if st, err := os.Stat(dest); err != nil || !st.IsDir() {
+			t.Fatalf("the second clone (%s) removed the folder the first is writing: %v", repo, err)
+		}
+	}
+	var got map[string]bool
+	a.call("github.cloneCancel", map[string]string{"repo": "acme/slow"}, &got)
+	if !got["cancelled"] {
+		t.Fatal("the first clone was not running any more")
+	}
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "was cancelled") {
+			t.Fatalf("the first clone answered %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the first clone did not end after Cancel")
+	}
+}
+
 // F4: Sign in runs the person's own `gh auth login` in a terminal; when it ends the core asks gh again (past the kept
 // github.status answer) and github.sign_in_finished says the new state. A gh that is not there is refused with what to do.
 func TestGitHubSignInRunsGhAuthLogin(t *testing.T) {

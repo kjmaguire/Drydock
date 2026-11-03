@@ -450,14 +450,21 @@ read as owner/name, by the core too; once the field is cleared or edited so that
 it, and starts in the folder the person last cloned into (`github.cloneDir` returns it once a clone has worked; `~/source/repos`
 before). A repository that is already a project's origin says "Already a project: acme" in its row, and choosing it shows **Open**,
 which opens that project instead of a second clone (B7: `github.repos` rows carry `projectId` and `project`). The folder the clone
-would make is checked as it is typed (`repo.check`, 300 ms after the typing stops): a repository already there says "Already cloned
-here" with **Use this folder** (New project and the start box switch to Open a folder, Attach a repository to Local folder), a
-folder with files in it says the clone would be refused, before anything starts. While gh is not signed in the picker's notice has
-**Sign in** (`gh auth login` in a terminal here, F4, below), and "How to install gh" while gh is missing. **A clone in progress**
+would make is checked as it is typed (`repo.check`, 300 ms after the typing stops): a clone of the same repository already there
+(`repo.check` returns its github.com origin as `origin`, compared with the picked owner/name, letter case ignored) says "Already
+cloned here" with **Use this folder** (New project and the start box switch to Open a folder, Attach a repository to Local folder);
+another Git repository there (another origin, or none on github.com) says "Another Git repository is in this folder, so the clone
+would be refused", and a folder with files in it says the clone would be refused, before anything starts. While gh is not signed in the picker's notice has
+**Sign in** (`gh auth login` in a terminal here, F4, below), and "How to install gh" while gh is missing; the Integrations GitHub
+connect form's not-signed-in notice has the same **Sign in**. When gh exits 0 but `github.sign_in_finished` says it is still not
+signed in to github.com (another host was chosen), the box says so and offers **Try again**. **A clone in progress**
 (B12, `screens/project/clone-progress.tsx`): Create, the start box's Enter with a repository and Clone and attach show "Cloning
-gocalc… 42%" from `github.clone_progress` (the repository, git's phase and the percent only) with **Cancel**
-(`github.cloneCancel`): the core kills gh and the git it started, removes the half-made folder and the request answers that the
-clone was cancelled. The project is still made only after the clone lands. **Recommendations:** while the latest recommendation turn has open items, Work's list ends with "<advisor> recommends 3 changes · Review" (`screens/work/recommend-line.tsx`), Review going to the project's Skills page; there **Apply all N** applies every open item that can be applied there, one after the other from that one click, an integration item links to Integrations, and each item can still be applied or dismissed alone; the advisor asked by default is the team lead under any of its role names (`pipeline.IsLeadRole`, the same list the UI's `leadOf` uses). **Sync:** for a project whose repository has an `origin` remote, Work's list ends with one line (under the list, so a narrow window keeps it) (`repo-sync`,
+gocalc… receiving 42%" from `github.clone_progress` (the repository, git's phase and the percent only; a percent only for the
+phases on this PC, receiving, resolving deltas and writing files, since the remote's counting and compressing reach 100% first)
+with **Cancel** (`github.cloneCancel`): the core kills gh and the git it started, removes the half-made folder and the request
+answers that the clone was cancelled. When Cancel finds nothing running the line says "The clone has finished, so it can no longer
+be cancelled." and Cancel goes (or, before git has said anything, that the clone has not started yet). A second clone of the same
+repository, or into the same folder, is refused before its folder is touched. The project is still made only after the clone lands. **Recommendations:** while the latest recommendation turn has open items, Work's list ends with "<advisor> recommends 3 changes · Review" (`screens/work/recommend-line.tsx`), Review going to the project's Skills page; there **Apply all N** applies every open item that can be applied there, one after the other from that one click, an integration item links to Integrations, and each item can still be applied or dismissed alone; the advisor asked by default is the team lead under any of its role names (`pipeline.IsLeadRole`, the same list the UI's `leadOf` uses). **Sync:** for a project whose repository has an `origin` remote, Work's list ends with one line (under the list, so a narrow window keeps it) (`repo-sync`,
 `screens/work/repo-sync-line.tsx`, words in `repo-sync.ts`): "Up to date with GitHub", "3 behind · 1 ahead", "Not checked yet",
 "Checking GitHub…" or "Could not reach GitHub" (a remote elsewhere is named "origin"), with **Sync now** (a refresh icon). Sync now
 is `repo.sync`: a fetch, then a fast-forward of the checked-out default branch only when the folder has no local changes, that

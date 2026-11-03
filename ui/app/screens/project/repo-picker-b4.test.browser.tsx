@@ -110,11 +110,13 @@ describe('the clone picker', () => {
     expect(opened).toEqual(['p1']);
   });
 
-  it('checks the folder a clone would make: a repository there offers Use this folder, a folder with files says the clone would be refused (B7)', async () => {
+  it('checks the folder a clone would make: the same repository there offers Use this folder, another repository or a folder with files says the clone would be refused (B7)', async () => {
     const used: string[] = [];
     const checked: string[] = [];
     const answers: Record<string, unknown> = {
-      'D:\\src\\pay': { path: 'D:\\src\\pay', state: 'repository', root: 'D:\\src\\pay', branch: 'main', entries: 3, canInit: false, message: '' },
+      'D:\\src\\pay': { path: 'D:\\src\\pay', state: 'repository', root: 'D:\\src\\pay', branch: 'main', origin: 'Kyle/Pay', entries: 3, canInit: false, message: '' },
+      'F:\\src\\pay': { path: 'F:\\src\\pay', state: 'repository', root: 'F:\\src\\pay', branch: 'main', origin: 'otherorg/pay', entries: 3, canInit: false, message: '' },
+      'G:\\src\\pay': { path: 'G:\\src\\pay', state: 'repository', root: 'G:\\src\\pay', branch: 'main', entries: 3, canInit: false, message: '' },
       'E:\\src\\pay': { path: 'E:\\src\\pay', state: 'folder', entries: 2, canInit: true, message: '' },
     };
     const { r } = setup(
@@ -141,5 +143,15 @@ describe('the clone picker', () => {
     await waitFor(() => expect(r.$('[data-testid="clone-target-busy"]')!.textContent).toContain('the clone would be refused'), r);
     expect(r.$('[data-testid="clone-target-repo"]')).toBeNull();
     expect(checked).toContain('E:\\src\\pay');
+    // another repository's clone in that folder (its origin is otherorg/pay, not kyle/pay): never "Already cloned here"
+    type(byLabel<HTMLInputElement>(r.container, 'Clone into'), 'F:\\src');
+    await waitFor(() => expect(r.$('[data-testid="clone-target-busy"]')!.textContent).toContain('Another Git repository (otherorg/pay) is in this folder, so the clone would be refused.'), r);
+    expect(r.$('[data-testid="clone-target-repo"]')).toBeNull();
+    expect(r.$('[data-testid="clone-use-folder"]')).toBeNull();
+    // a repository with no origin on github.com cannot be shown to be the one picked either
+    type(byLabel<HTMLInputElement>(r.container, 'Clone into'), 'G:\\src');
+    await waitFor(() => expect(r.$('[data-testid="clone-target-busy"]')!.textContent).toContain('Another Git repository is in this folder'), r);
+    expect(r.$('[data-testid="clone-use-folder"]')).toBeNull();
+    expect(used).toEqual(['D:\\src\\pay']);
   });
 });

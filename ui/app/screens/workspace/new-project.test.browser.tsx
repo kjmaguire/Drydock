@@ -164,7 +164,7 @@ describe('New project on Home (P143)', () => {
     await r.act(() => create(r).click());
     await waitFor(() => expect(r.$('[data-testid="clone-progress"]')!.textContent).toBe('Cloning gocalc…'), r);
     s.emit({ type: 'github.clone_progress', data: { repo: 'acme/gocalc', phase: 'Receiving objects', percent: 42 } });
-    await waitFor(() => expect(r.$('[data-testid="clone-progress"]')!.textContent).toBe('Cloning gocalc… 42%'), r);
+    await waitFor(() => expect(r.$('[data-testid="clone-progress"]')!.textContent).toBe('Cloning gocalc… receiving 42%'), r);
     await r.act(() => (r.$('[data-testid="clone-cancel"]') as HTMLButtonElement).click());
     await waitFor(() => expect(r.$('[data-testid="new-project-dialog"]')!.textContent).toContain('was cancelled'), r);
     expect(cancels).toEqual(['acme/gocalc']);

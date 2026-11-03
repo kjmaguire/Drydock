@@ -267,6 +267,15 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 		return CloneResult{}, fmt.Errorf("cannot create %s: %w", parentDir, err)
 	}
 	dest := filepath.Join(parentDir, fullName[strings.IndexByte(fullName, '/')+1:])
+	// the run is registered before the folder is looked at: a second clone of the same repository, or into the same folder,
+	// is refused here and never reaches the clean-up below, which would remove the folder the first clone is writing
+	ctx, cancelRun := context.WithCancelCause(ctx)
+	defer cancelRun(nil)
+	remove, busy := c.clones.add(normalizeRepo(fullName), cleanCloneDest(dest), cancelRun)
+	if busy != nil {
+		return CloneResult{}, busy
+	}
+	defer remove()
 	if ents, err := os.ReadDir(dest); err == nil && len(ents) > 0 {
 		return CloneResult{}, fmt.Errorf("%s already exists and is not empty: attach it as a local repository instead, or choose another folder", dest)
 	}
@@ -311,35 +320,50 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 // asks with refresh.
 const ghStatusTTL = 10 * time.Second
 
-// ghStatusCache is the last github.status answer and when it was read.
+// ghStatusCache is the last github.status answer and when it was read. drop() moves gen on: a read that started before it
+// (a page's read while gh auth login was finishing) may answer its own caller, but its answer is not kept over the newer one.
 type ghStatusCache struct {
-	mu sync.Mutex
-	st GitHubStatus
-	at time.Time
+	mu   sync.Mutex
+	st   GitHubStatus
+	at   time.Time // when the kept answer was stored; zero: none
+	from time.Time // when the read that gave the kept answer started
+	gen  uint64
 }
 
 func (k *ghStatusCache) drop() {
 	k.mu.Lock()
 	k.at = time.Time{}
+	k.gen++
 	k.mu.Unlock()
 }
 
-// CachedGitHubStatus is GitHubAccountStatus, reused for ghStatusTTL unless refresh asks gh again. An answer GitHub did not give
-// in time (unreachable) is not kept.
-func (c *Core) CachedGitHubStatus(ctx context.Context, refresh bool) GitHubStatus {
-	k := &c.ghStatus
+// get answers from the kept answer while it is fresh (unless refresh), else from read, keeping read's answer when keep says
+// so, no drop() happened since the read started, and no read that started later has been kept.
+func (k *ghStatusCache) get(refresh bool, read func() (st GitHubStatus, keep bool)) GitHubStatus {
 	k.mu.Lock()
 	if !refresh && !k.at.IsZero() && time.Since(k.at) < ghStatusTTL {
 		st := k.st
 		k.mu.Unlock()
 		return st
 	}
+	gen, start := k.gen, time.Now()
 	k.mu.Unlock()
-	st := c.GitHubAccountStatus(ctx)
-	if !st.Unreachable && ctx.Err() == nil {
+	st, keep := read()
+	if keep {
 		k.mu.Lock()
-		k.st, k.at = st, time.Now()
+		if k.gen == gen && (k.at.IsZero() || !start.Before(k.from)) {
+			k.st, k.at, k.from = st, time.Now(), start
+		}
 		k.mu.Unlock()
 	}
 	return st
+}
+
+// CachedGitHubStatus is GitHubAccountStatus, reused for ghStatusTTL unless refresh asks gh again. An answer GitHub did not give
+// in time (unreachable) is not kept.
+func (c *Core) CachedGitHubStatus(ctx context.Context, refresh bool) GitHubStatus {
+	return c.ghStatus.get(refresh, func() (GitHubStatus, bool) {
+		st := c.GitHubAccountStatus(ctx)
+		return st, !st.Unreachable && ctx.Err() == nil
+	})
 }

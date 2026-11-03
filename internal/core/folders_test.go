@@ -83,6 +83,17 @@ func TestRepoInitMakesARepositoryAndNeverTouchesOne(t *testing.T) {
 	if f.State != core.FolderRepository || f.Branch != "main" || f.CanInit {
 		t.Fatalf("an existing repository: %+v", f)
 	}
+	if f.Origin != "" {
+		t.Fatalf("a repository without an origin named one: %+v", f)
+	}
+	// B7: the origin on github.com is read back as owner/name, so the clone picker can tell acme/api from otherorg/api
+	if out, err := exec.Command("git", "-C", repo, "remote", "add", "origin", "https://github.com/acme/api.git").CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	a.call("repo.check", map[string]string{"path": repo}, &f)
+	if f.State != core.FolderRepository || f.Origin != "acme/api" {
+		t.Fatalf("the origin was not read: %+v", f)
+	}
 	if err := a.callErr("repo.init", map[string]string{"path": repo}); err == nil || !strings.Contains(err.Error(), "already a Git repository") {
 		t.Fatalf("an existing repository was initialised again: %v", err)
 	}

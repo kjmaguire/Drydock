@@ -16,25 +16,43 @@ const boxCss = css({ display: 'grid', gap: t.s2, minWidth: '0', '& p': { margin:
 const rowCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2 });
 const termCss = css({ display: 'grid', gap: t.s2, '& > div:last-child': { height: '220px', minHeight: '0' } });
 
-/** What the sign-in line says once the terminal is open. */
-export function ghSignInLine(ended: number | undefined): string {
+/** What the sign-in line says once the terminal is open. signedIn is github.sign_in_finished's answer, once it has come. */
+export function ghSignInLine(ended: number | undefined, signedIn?: boolean): string {
   if (ended === undefined) return 'gh auth login is running: answer it here.';
-  if (ended === 0) return 'The sign-in finished. Checking gh again...';
-  return `The sign-in ended with code ${ended}. Read what it printed above, then try again.`;
+  if (ended !== 0) return `The sign-in ended with code ${ended}. Read what it printed above, then try again.`;
+  if (signedIn === false) return 'gh finished, but it is still not signed in to github.com. Try again and choose GitHub.com.';
+  if (signedIn === true) return 'Signed in to GitHub.';
+  return 'The sign-in finished. Checking gh again...';
+}
+
+/** Try again is offered once the sign-in has ended without signing gh in to github.com. */
+export function ghSignInRetry(ended: number | undefined, signedIn?: boolean): boolean {
+  return ended !== undefined && (ended !== 0 || signedIn === false);
 }
 
 export function GitHubSignIn(handle: Handle<{ onDone?: () => void }>) {
   const s = services(handle);
   let term: string | undefined;
   let ended: number | undefined;
+  let signedIn: boolean | undefined; // github.sign_in_finished's answer for this sign-in
   let starting = false;
   let error: Error | undefined;
+  const off = s.store.onEvent((e) => {
+    if (e.type !== 'github.sign_in_finished' || !term) return;
+    const d = (e.data ?? {}) as { signedIn?: unknown };
+    signedIn = d.signedIn === true;
+    void handle.update();
+  });
+  handle.signal.addEventListener('abort', () => void off());
   const upd = (f: () => void) => (f(), void handle.update());
   const start = async () => {
     upd(() => ((starting = true), (error = undefined)));
     try {
       const info = await s.client.githubSignIn();
-      if (info.id !== term) ended = undefined;
+      if (info.id !== term) {
+        ended = undefined;
+        signedIn = undefined;
+      }
       term = info.id;
     } catch (e) {
       error = e as Error;
@@ -50,9 +68,9 @@ export function GitHubSignIn(handle: Handle<{ onDone?: () => void }>) {
       {term ? (
         <div mix={termCss} data-testid="gh-sign-in-terminal">
           <p class="quiet" data-testid="gh-sign-in-state">
-            {ghSignInLine(ended)}
+            {ghSignInLine(ended, signedIn)}
           </p>
-          {ended !== undefined && ended !== 0 ? (
+          {ghSignInRetry(ended, signedIn) ? (
             <div mix={rowCss}>
               <Button size="sm" variant="secondary" disabled={starting} data-testid="gh-sign-in-again" mix={on('click', () => void start())}>
                 Try again

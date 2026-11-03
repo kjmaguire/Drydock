@@ -35,6 +35,8 @@ export interface RepoFolder {
   root?: string;
   /** repository: the checked-out branch. */
   branch?: string;
+  /** repository: owner/name of its origin when that is on github.com. */
+  origin?: string;
   /** folder: the files and folders at its top. */
   entries: number;
   /** Drydock may make a repository here (folder, missing). */

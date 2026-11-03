@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,28 +32,48 @@ var errCloneCancelled = errors.New("cancelled")
 // cloneProgressEvery is the least time between two progress events of one phase.
 var cloneProgressEvery = time.Second
 
-// cloneRuns is the clones running now, by repository (owner/name, lower case), each with the function that cancels it.
+// errCloneBusy is a clone refused because the same repository, or a clone into the same folder, is running already.
+var errCloneBusy = errors.New("this repository is being cloned already: wait for that clone or cancel it")
+
+// cloneRuns is the clones running now, by repository (owner/name, lower case), each with the function that cancels it, and
+// the folders they clone into.
 type cloneRuns struct {
 	mu   sync.Mutex
 	runs map[string]context.CancelCauseFunc
+	dirs map[string]bool
 }
 
-func (r *cloneRuns) add(repo string, cancel context.CancelCauseFunc) (remove func(), ok bool) {
+// cleanCloneDest is the key a clone's folder is held by (letter case ignored, as Windows does).
+func cleanCloneDest(dest string) string {
+	return strings.ToLower(filepath.Clean(dest))
+}
+
+// add holds repo and its folder for one clone; busy (errCloneBusy, or a folder being cloned into) when either is held.
+func (r *cloneRuns) add(repo, dest string, cancel context.CancelCauseFunc) (remove func(), busy error) {
 	k := strings.ToLower(repo)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.runs == nil {
-		r.runs = map[string]context.CancelCauseFunc{}
+		r.runs, r.dirs = map[string]context.CancelCauseFunc{}, map[string]bool{}
 	}
-	if _, busy := r.runs[k]; busy {
-		return nil, false
+	if _, held := r.runs[k]; held {
+		return nil, errCloneBusy
+	}
+	if dest != "" && r.dirs[dest] {
+		return nil, fmt.Errorf("%w: another clone is writing that folder", errCloneBusy)
 	}
 	r.runs[k] = cancel
+	if dest != "" {
+		r.dirs[dest] = true
+	}
 	return func() {
 		r.mu.Lock()
 		delete(r.runs, k)
+		if dest != "" {
+			delete(r.dirs, dest)
+		}
 		r.mu.Unlock()
-	}, true
+	}, nil
 }
 
 // cancel ends the running clone of repo; false when none runs.
@@ -101,16 +123,10 @@ func splitProgress(data []byte, atEOF bool) (int, []byte, error) {
 	return 0, nil, nil
 }
 
-// runClone runs one clone (gh repo clone, or git clone for tests) through the process manager, publishing its progress and
-// letting github.cloneCancel end it. It returns what the program printed on stderr, for the error when it fails.
+// runClone runs one clone (gh repo clone, or git clone for tests) through the process manager, publishing its progress. ctx
+// is the run GitHubClone registered in c.clones, so github.cloneCancel ends it. It returns what the program printed on
+// stderr, for the error when it fails.
 func (c *Core) runClone(ctx context.Context, fullName, exe string, args []string) (string, error) {
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-	remove, ok := c.clones.add(normalizeRepo(fullName), cancel)
-	if !ok {
-		return "", errors.New("this repository is being cloned already: wait for that clone or cancel it")
-	}
-	defer remove()
 	env := append(os.Environ(), "GH_PROMPT_DISABLED=1", "GIT_TERMINAL_PROMPT=0", "NO_COLOR=1")
 	p, err := c.cfg.Procs.Start(ctx, proc.Spec{Path: exe, Args: args, Env: env, Label: "clone:" + fullName})
 	if err != nil {

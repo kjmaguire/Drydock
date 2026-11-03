@@ -34,7 +34,7 @@ type ghFixture struct {
 	Login string `json:"login"`
 	// AuthLogin is the account `gh auth login` signs in (written into Login), for the sign-in's tests (F4).
 	AuthLogin string                   `json:"authLogin,omitempty"`
-	Repos map[string]ghFixtureRepo `json:"repos"`
+	Repos     map[string]ghFixtureRepo `json:"repos"`
 }
 
 type ghFixtureRepo struct {

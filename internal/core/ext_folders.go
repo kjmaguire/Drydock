@@ -295,6 +295,7 @@ type RepoFolder struct {
 	State   string `json:"state"`
 	Root    string `json:"root,omitempty"`   // repository, no_branch, inside: the work tree's top folder
 	Branch  string `json:"branch,omitempty"` // repository: the checked-out branch
+	Origin  string `json:"origin,omitempty"` // repository: owner/name of its origin when that is on github.com (B7: the clone picker compares it)
 	Entries int    `json:"entries"`          // folder: the files and folders at its top
 	CanInit bool   `json:"canInit"`          // Drydock may make a repository here (folder, missing)
 	Message string `json:"message"`
@@ -410,6 +411,11 @@ func (c *Core) CheckRepoFolder(ctx context.Context, path string) RepoFolder {
 		return f
 	}
 	f.State, f.Branch, f.Root = FolderRepository, branch, repo.Root
+	if url, err := repo.RemoteURL(ctx, "origin"); err == nil {
+		if owner, name, ok := parseGitHubRemote(url); ok {
+			f.Origin = owner + "/" + name
+		}
+	}
 	f.Message = fmt.Sprintf("A Git repository on the branch %s.", branch)
 	return f
 }

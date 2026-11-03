@@ -5,8 +5,8 @@
 // not give (an organization that refuses the listing) is no dead end, and a list that failed has Try again. When gh is missing
 // it links to how to install it; when gh is not signed in, Sign in runs gh auth login in a terminal here (F4) and the list
 // follows. A repository that is already a project's origin says "Already a project: acme" with Open (B7), and the folder the
-// clone would make is checked as it is typed (repo.check): a repository already there offers "Use this folder", a folder with
-// files in it says the clone would be refused, before anything is started. Used by Home's
+// clone would make is checked as it is typed (repo.check): a clone of the same repository already there (its origin is the
+// one picked) offers "Use this folder"; another repository, or a folder with files in it, says the clone would be refused, before anything is started. Used by Home's
 // New project dialog and the start box's Clone from GitHub, and by Project settings (attach a repository).
 
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
@@ -63,6 +63,9 @@ const itemCss = css({
   '& .when': { color: t.textFaint, fontSize: t.textXs },
 });
 const targetCss = css({ fontFamily: t.mono, fontSize: t.textSm, color: t.text, overflowWrap: 'anywhere' });
+
+/** The folder's origin is the repository the person picked (owner/name, letter case ignored as GitHub does). */
+const sameRepo = (origin: string | undefined, fullName: string | undefined) => !!origin && !!fullName && origin.toLowerCase() === fullName.toLowerCase();
 
 export function RepoPicker(
   handle: Handle<{
@@ -271,7 +274,11 @@ export function RepoPicker(
             </div>
           )}
         </Field>
-        {there?.state === 'repository' ? (
+        {there?.state === 'repository' && !sameRepo(there.origin, selected?.fullName) ? (
+          <Notice tone="warn" testId="clone-target-busy">
+            Another Git repository{there.origin ? ` (${there.origin})` : ''} is in this folder, so the clone would be refused. Choose another folder to clone into.
+          </Notice>
+        ) : there?.state === 'repository' ? (
           <Notice tone="info" testId="clone-target-repo">
             Already cloned here{there.branch ? ` (branch ${there.branch})` : ''}.{' '}
             {handle.props.onUseFolder ? (
