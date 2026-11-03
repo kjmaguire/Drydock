@@ -78,6 +78,8 @@ test("your servers: connect an MCP server once; a project adds it and grants it 
   await workspaceNav(page, 'nav-library');
   await expect(page.getByRole('heading', { level: 1, name: 'My agents' })).toBeVisible();
   await page.getByTestId('library-new-agent').click();
+  // New agent opens on Describe (E12); the full form is Configure
+  await page.getByTestId('library-new-configure').click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('Payments dev');
   await tf.getByLabel('Role').fill('backend');
