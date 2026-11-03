@@ -205,7 +205,7 @@ provider_config: {writer: opencode_inline_json, env: OPENCODE_CONFIG_CONTENT, te
 ---
 meta: {id: goose, license: Apache-2.0, tier: cheap}   # aaif-goose/goose (the agent, not the migrations tool)
 binaries: {native: [goose.exe]}
-install: [{shell: powershell, command: 'download_cli.ps1 from the aaif-goose/goose repository (exact URL not recorded)'}, {shell: cmd, command: 'npm install -g @aaif/goose-acp', requires: [{tool: node, min: "22"}]}]
+install: [{shell: powershell, command: 'Invoke-WebRequest -Uri "https://raw.githubusercontent.com/aaif-goose/goose/main/download_cli.ps1" -OutFile "download_cli.ps1"; .\download_cli.ps1'}, {shell: cmd, command: 'npm install -g @aaif/goose-acp', requires: [{tool: node, min: "22"}]}]
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
 versions: {min: "1.53.0", recommended: "1.53.0"}
 auth: {login: {argv: [configure], terminal: true}, probe: none}
@@ -217,7 +217,7 @@ provider_config: {writer: goose_env, env: [GOOSE_PROVIDER, GOOSE_MODEL, OPENAI_H
 ---
 meta: {id: antigravity, license: proprietary, tier: premium}   # D2: official `agy` only, behind an acknowledgement gate
 binaries: {native: [agy.exe]}
-install: [{shell: powershell, command: 'irm https://antigravity.google/cli/install.ps1 | iex'}, {shell: cmd, command: 'curl ... install.cmd (see antigravity.google/cli)'}]
+install: [{shell: powershell, command: 'irm https://antigravity.google/cli/install.ps1 | iex'}, {shell: cmd, command: 'curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd'}]
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}                 # flag unverified
 versions: {min: "1.3.0", recommended: "1.3.1"}
 auth: {login: {argv: [], terminal: true, note: "interactive agy; Google Sign-In if no keyring session"}, probe: {argv: [-p, /usage], unverified: true}}

@@ -402,6 +402,8 @@ func (m *Manifest) Validate() error {
 	for i, in := range m.Install {
 		if strings.TrimSpace(in.Command) == "" {
 			add("install[%d].command is required", i)
+		} else if mk := installPlaceholder(in.Command); mk != "" {
+			add("install[%d].command is a placeholder (%q), not a command the user can paste", i, mk)
 		}
 		if in.Shell != "powershell" && in.Shell != "cmd" && in.Shell != "sh" {
 			add("install[%d].shell must be powershell, cmd or sh, got %q", i, in.Shell)
@@ -907,4 +909,18 @@ func (m *Manifest) HeadlessArgs(vars map[string]string) []string {
 		}
 	}
 	return out
+}
+
+// installPlaceholderMarkers are what an unconfirmed install line was written with ("curl ... install.cmd", "(see the vendor
+// page)", "exact URL not recorded"). Install lines are shown with a Copy button, so each must be the vendor's real command.
+var installPlaceholderMarkers = []string{"...", "\u2026", "(see ", "not recorded", "TODO", "TBD"}
+
+// installPlaceholder returns the placeholder marker the command carries, or "".
+func installPlaceholder(cmd string) string {
+	for _, mk := range installPlaceholderMarkers {
+		if strings.Contains(cmd, mk) {
+			return mk
+		}
+	}
+	return ""
 }
