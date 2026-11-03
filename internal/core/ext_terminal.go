@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
+	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/terminal"
 )
@@ -168,7 +169,14 @@ func init() {
 				if err != nil {
 					return nil, err
 				}
-				line := typedLine(conn.InstallHint)
+				// the manifest's own command, not the Connection's InstallHint: that is a display label ("powershell: ...",
+				// "inside the distro: ...") which no shell runs as typed
+				var installs []manifests.Install
+				if man, ok := c.Connections.Registry.Set.Get(conn.Adapter); ok {
+					installs = man.Install
+				}
+				shell, _ := terminal.DefaultShell()
+				line := installLine(installs, p.Distro != "", shell)
 				if line == "" {
 					return nil, errors.New("this CLI names no install command")
 				}
@@ -202,6 +210,51 @@ func init() {
 			}),
 		}, m.CloseAll, nil
 	}})
+}
+
+// installLine is the install command typed in the shell Drydock opens for it (A5): inside a distro, the manifest's first wsl
+// line; on Windows, a line for that shell (powershell when the shell is PowerShell, cmd when it is cmd.exe), else a cmd line
+// run through cmd from PowerShell, so neither PowerShell's syntax nor its script policy (npm.ps1) gets in the way. On a
+// development host (sh) the first Windows line as written. Never a display label such as "powershell: ...".
+func installLine(installs []manifests.Install, inWSL bool, shell string) string {
+	if inWSL {
+		for _, in := range installs {
+			if in.RunMode == agents.RunModeWSL {
+				return typedLine(in.Command)
+			}
+		}
+		return ""
+	}
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(shell, `\`, "/")))
+	kind := "sh"
+	switch {
+	case strings.Contains(base, "pwsh") || strings.Contains(base, "powershell"):
+		kind = "powershell"
+	case strings.HasPrefix(base, "cmd"):
+		kind = "cmd"
+	}
+	var native []manifests.Install
+	for _, in := range installs {
+		if in.RunMode == "" && typedLine(in.Command) != "" {
+			native = append(native, in)
+		}
+	}
+	for _, in := range native {
+		if in.Shell == kind {
+			return typedLine(in.Command)
+		}
+	}
+	if kind == "powershell" {
+		for _, in := range native {
+			if in.Shell == "cmd" {
+				return "cmd /c '" + strings.ReplaceAll(typedLine(in.Command), "'", "''") + "'"
+			}
+		}
+	}
+	if len(native) > 0 {
+		return typedLine(native[0].Command)
+	}
+	return ""
 }
 
 // typedLine is an install command as it is typed at a prompt for the person to run: its first line only, with no line break, so

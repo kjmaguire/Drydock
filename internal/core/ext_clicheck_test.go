@@ -73,3 +73,25 @@ func TestCLICheckCoversTheCLIsInUse(t *testing.T) {
 		t.Fatalf("in use: %+v", used)
 	}
 }
+
+// An agent that runs its CLI inside a WSL distro (P58) has that install checked in the background too: the Inbox reads the
+// distro's Connection (claude@wsl:Ubuntu), so checking only the Windows claude would leave it unseen.
+func TestCLICheckCoversWSLInstallsInUse(t *testing.T) {
+	a := openWith(t, nil)
+	p, _ := a.setup("wslinuse")
+	ag := a.agent(p.ID, "Wren", "backend")
+	if _, err := a.c.DB.Writer().Exec(`UPDATE agents SET run_mode='wsl', wsl_distro='Ubuntu' WHERE id=?`, ag.ID); err != nil {
+		t.Fatal(err)
+	}
+	used := a.c.CheckCLIs(t.Context(), "test")
+	keys := map[string]bool{}
+	for _, c := range used {
+		keys[c.Key] = true
+	}
+	if !keys[connections.WSLKey("claude", "Ubuntu")] || keys["claude"] || len(used) != 1 {
+		t.Fatalf("checked %v, want only the install inside Ubuntu", keys)
+	}
+	if _, ok := a.c.Connections.Last()[connections.WSLKey("claude", "Ubuntu")]; !ok {
+		t.Fatal("the WSL check was not kept for the Inbox")
+	}
+}

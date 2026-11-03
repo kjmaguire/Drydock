@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Connection } from '../../api/types.ts';
 import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
-import { CliFix, distroOfKey, fixKind } from './cli-fix.tsx';
+import { CliFix, distroOfKey, fixKind, withCached } from './cli-fix.tsx';
 
 afterEach(cleanup);
 
@@ -53,5 +53,32 @@ describe('the agent CLI fix (A9)', () => {
     await waitFor(() => expect(r.$('[data-testid="cli-fix-install"] code')?.textContent).toBe('npm install -g @anthropic-ai/claude-code'), r);
     expect(r.$('[data-testid="cli-fix-install"] button')).not.toBeNull();
     expect(r.$('[data-testid="cli-fix-page"]')!.textContent).toBe('How to install');
+  });
+});
+
+describe("the agent CLI fix and Drydock's own check (A2)", () => {
+  it('reads the kept answers after a background check instead of starting every CLI again', async () => {
+    const calls: boolean[] = [];
+    let now = signedOut;
+    const s = testServices({
+      connectionList: async (cached) => (calls.push(!!cached), [now]),
+    });
+    const r = mount(<CliFix adapter="claude" />, s);
+    await waitFor(() => expect(r.$('[data-testid="cli-fix"]')?.getAttribute('data-kind')).toBe('sign-in'), r);
+    expect(calls).toEqual([false]);
+    now = { ...signedOut, status: 'ready', authenticated: true, usable: true } as Connection;
+    s.emit({ type: 'connection.checked' });
+    await waitFor(() => expect(r.$('[data-testid="cli-fix"]')?.getAttribute('data-kind')).toBe('ready'), r);
+    expect(calls).toEqual([false, true]);
+    // anything else about a Connection (a sign-in that ended) still reads it afresh
+    s.emit({ type: 'connection.sign_in_finished' });
+    await waitFor(() => expect(calls).toEqual([false, true, false]), r);
+  });
+
+  it('puts the kept checks in place of the rows they check again, by key', () => {
+    const wsl = { ...signedOut, key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu' } as Connection;
+    const native = { ...signedOut, key: 'claude' } as Connection;
+    const fresh = { ...native, status: 'ready', usable: true } as Connection;
+    expect(withCached([native, wsl], [fresh]).map((c) => c.status)).toEqual(['ready', 'unauthenticated']);
   });
 });

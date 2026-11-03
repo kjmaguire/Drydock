@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { Task } from '../../api/types.ts';
+import type { Connection, Task } from '../../api/types.ts';
 import { budgetStatus } from '../../test/fixtures.ts';
 import { cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { SETUP_NOTES_KEY } from '../../lib/setup-notes.ts';
@@ -209,8 +209,16 @@ describe('Work (decision P141)', () => {
         ],
       }),
     );
+    // TEST DOUBLE of the kept checks (connection.list {cached}): the CLI line reads these, which start no CLI
     let ready = false;
-    const s = svc({ adapterList: async () => [ready ? adapterInfo('claude') : { ...adapterInfo('claude'), detection: { adapter: 'claude', installed: true, status: 'unauthenticated' } }] });
+    let cachedReads = 0;
+    const s = svc({
+      connectionList: async (cached) => {
+        if (cached) cachedReads++;
+        const c = { adapter: 'claude', key: 'claude', runMode: 'native', installed: true, platform: 'windows' };
+        return [(ready ? { ...c, status: 'ready', usable: true } : { ...c, status: 'unauthenticated', usable: false }) as Connection];
+      },
+    });
     const r = mount(<WorkScreen />, s);
     const lines = () => Array.from(r.$$('[data-testid="setup-note"]')) as HTMLElement[];
     await waitFor(() => expect(lines()).toHaveLength(3), r);
@@ -226,6 +234,20 @@ describe('Work (decision P141)', () => {
     ready = true;
     s.emit({ type: 'connection.sign_in_finished' });
     await waitFor(() => expect(lines().map((l) => l.dataset.kind)).toEqual(['decision']), r);
+    expect(JSON.parse(localStorage.getItem(SETUP_NOTES_KEY)!).prj_1).toHaveLength(1);
+    expect(cachedReads).toBeGreaterThan(0);
+  });
+
+  it('keeps a CLI line while the CLI is ready but its notice is not accepted (B2)', async () => {
+    localStorage.setItem(SETUP_NOTES_KEY, JSON.stringify({ prj_1: [{ kind: 'cli', text: 'Ada cannot work yet: accept the notice of mycli', adapter: 'mycli', status: 'ready' }] }));
+    const gated = { adapter: 'mycli', key: 'mycli', runMode: 'native', installed: true, platform: 'windows', status: 'ready', usable: false, gates: [{ id: 'g', text: 'Terms', acked: false }] } as Connection;
+    const s = svc({ connectionList: async () => [gated], adapterList: async () => [adapterInfo('mycli')] });
+    const r = mount(<WorkScreen />, s);
+    await waitFor(() => expect(r.$$('[data-testid="setup-note"]')).toHaveLength(1), r);
+    s.emit({ type: 'connection.checked' });
+    await new Promise((res) => setTimeout(res, 50));
+    await r.act(() => {});
+    expect(r.$$('[data-testid="setup-note"]')).toHaveLength(1);
     expect(JSON.parse(localStorage.getItem(SETUP_NOTES_KEY)!).prj_1).toHaveLength(1);
   });
 

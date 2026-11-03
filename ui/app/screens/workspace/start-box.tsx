@@ -7,7 +7,7 @@ import { css, navigate, on, ref, type Handle, type MixInput, type RemixNode } fr
 import { ArrowDownToLine, Check, ChevronDown, CornerDownLeft, FolderOpen, FolderPlus, MessagesSquare, Plus, TriangleAlert, Users } from 'lucide';
 import type { RepoFolder } from '../../api/folderClient.ts';
 import type { AgentDraft } from '../../api/libraryClient.ts';
-import type { GitHubRepo } from '../../api/types.ts';
+import type { Connection, GitHubRepo } from '../../api/types.ts';
 import { projectWorkHref } from '../../lib/project-work.ts';
 import { keepSetupNotes } from '../../lib/setup-notes.ts';
 import { routes } from '../../routes.ts';
@@ -33,26 +33,27 @@ import { effortList, modelList, PERMISSION_SEGMENTS } from '../team/agent-edit.t
 import {
   browserStore,
   builderAdapter,
-  cliReadiness,
   crewFor,
   crewKinds,
   crewLabel,
   defaultTuning,
+  insteadTuning,
   keepDraft,
   newFolderPath,
   permissionLabel,
   planStart,
-  readyAlternative,
   recall,
   recallDraft,
   remember,
   runJustChat,
   runStart,
+  startCli,
   StartError,
   tuningApplies,
   tuningLabel,
   whereKey,
   whereLabel,
+  withChecked,
   type Crew,
   type CrewKind,
   type DraftedMember,
@@ -217,7 +218,24 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
   let box: HTMLTextAreaElement | undefined;
 
   const catalog = query(handle, { load: () => s.client.agentCatalogList() });
-  const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // adapter.list starts every CLI: Drydock's own background check (connection.checked, A2) is read from its kept answers
+  // instead (connection.list {cached}), which start nothing
+  let adaptersAt = 0;
+  const adapterRows = query(handle, {
+    load: async () => {
+      const at = Date.now();
+      const r = await s.client.adapterList();
+      adaptersAt = at;
+      return r;
+    },
+    when: (e) => (e.type.startsWith('connection.') && e.type !== 'connection.checked' && e.type !== 'connection.sign_in_started') || e.type.startsWith('adapter.'),
+  });
+  const checkedRows = query(handle, { load: () => s.client.connectionList(true).catch(() => [] as Connection[]), when: (e) => e.type === 'connection.checked' });
+  const adapters = {
+    get data() {
+      return withChecked(adapterRows.data, checkedRows.data, adaptersAt);
+    },
+  };
   const baseDir = query(handle, { load: () => s.client.githubCloneDir(true).catch(() => '') });
   const templates = query(handle, { enabled: () => dialog === 'mine' || crew.kind === 'mine', load: () => s.client.agentTemplateList(), when: (e) => e.type.startsWith('agenttemplate.') });
   const projectId = () => (where.kind === 'project' ? where.projectId : '');
@@ -251,7 +269,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
   const effectiveWhere = (): Where => (where.kind === 'new' ? { kind: 'new', path: newPath ?? (baseDir.data ? newFolderPath(baseDir.data, text) : '') } : where);
   const adapterId = () => tuning?.adapter || builderAdapter(catalog.data ?? [], adapters.data?.find((a) => a.detection.installed)?.id ?? 'claude');
   /** "Use Codex instead" (A1): the builder on another CLI that is ready, with that CLI's own model and effort. */
-  const useAdapter = (id: string) => set(() => ((tuning = { ...tuned(), model: '', effort: '', adapter: id }), (error = '')));
+  const useAdapter = (from: string, id: string) => set(() => ((tuning = insteadTuning(tuned(), from, id)), (error = '')));
   // nothing chosen or remembered for this place: the model, effort and mode the person last chose in a chat of the same place
   // and CLI (chat.lastChoice, D2), the same source a new chat starts from
   const lastChat = query(handle, {
@@ -520,9 +538,11 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
     const projects = s.workspace.projectList;
     const cl = crewLabel(crew, { adapter: adapterId(), catalog: catalog.data ?? [], projectAgents: crewOf.data?.length });
     const fp = folderProblem(currentCheck({ localPath: folder.path, localCheck: folder.check }), folder.init);
-    // the builder's CLI, when the start runs on it (not the project's own crew, whose agents have their own)
-    const cli = where.kind !== 'project' || tuningApplies(crew) ? cliReadiness(adapterId(), adapters.data) : undefined;
-    const alt = cli && cli.state !== 'ready' && cli.state !== 'unknown' ? readyAlternative(cli.adapter, adapters.data) : undefined;
+    // the CLIs the start runs on, as Enter checks them (every agent of a new place's crew; the builder's for Solo in a
+    // project, not the project's own crew, whose agents have their own), with another CLI only when it moves the whole crew
+    const line = startCli({ where: w, crew, tuning: tu, catalog: catalog.data ?? [], templates: templates.data ?? [], fallbackAdapter: adapterId(), adapters: adapters.data });
+    const cli = line?.cli;
+    const alt = line?.alt;
     return (
       <div style={{ display: 'grid', gap: 'var(--space-3)' }} data-testid="start">
         <form
@@ -590,11 +610,11 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
                 adapter={cli.adapter}
                 label={cli.state === 'sign-in' ? 'Sign in' : cli.state === 'install' ? 'How to install' : 'How to update'}
                 testId="start-cli-fix"
-                onOther={alt ? () => useAdapter(alt) : undefined}
+                onOther={alt ? () => useAdapter(cli.adapter, alt) : undefined}
                 otherLabel={alt ? `Use ${adapterLabel(alt)} instead` : undefined}
               />
               {alt ? (
-                <Button size="sm" variant="ghost" data-testid="start-cli-other" mix={on('click', () => useAdapter(alt))}>
+                <Button size="sm" variant="ghost" data-testid="start-cli-other" mix={on('click', () => useAdapter(cli.adapter, alt))}>
                   Use {adapterLabel(alt)} instead
                 </Button>
               ) : null}

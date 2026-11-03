@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/safe"
@@ -89,11 +90,12 @@ func (c *Core) cliCheckLoop(ctx context.Context, kick <-chan string) {
 	}
 }
 
-// CheckCLIs checks the CLIs in use (the adapters of the crews' agents and of the chats) or, before anything uses one (a first
-// run, where Home needs to know whether the builder's CLI is ready), every CLI Drydock knows, each on Windows. Every answer
-// becomes the newest check of its Connection, and connection.checked says what was checked (keys and counts only).
+// CheckCLIs checks the CLIs in use (the installs the crews' agents and the chats run: on Windows, or inside the WSL distro an
+// agent or a chat runs in, decision P58) or, before anything uses one (a first run, where Home needs to know whether the
+// builder's CLI is ready), every CLI Drydock knows on Windows. Every answer becomes the newest check of its Connection, and
+// connection.checked says what was checked (keys and counts only).
 func (c *Core) CheckCLIs(ctx context.Context, why string) []connections.Connection {
-	ids := c.adaptersInUse(ctx)
+	ids := c.connectionsInUse(ctx)
 	if len(ids) == 0 {
 		ids = c.Connections.Registry.Set.IDs()
 	}
@@ -107,7 +109,7 @@ func (c *Core) CheckCLIs(ctx context.Context, why string) []connections.Connecti
 		wg.Add(1)
 		safe.Go("core.CheckCLIs", func() {
 			defer wg.Done()
-			conn, err := c.Connections.Check(cctx, id)
+			conn, err := c.Connections.CheckKey(cctx, id)
 			out[i], ok[i] = conn, err == nil
 		})
 	}
@@ -131,21 +133,33 @@ func (c *Core) CheckCLIs(ctx context.Context, why string) []connections.Connecti
 	return checked
 }
 
-// adaptersInUse are the adapters of the agents not archived and of the chats not archived that Drydock has a manifest for.
-func (c *Core) adaptersInUse(ctx context.Context) []string {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT adapter FROM agents WHERE archived_at=0 UNION SELECT adapter FROM chats WHERE archived_at=0`)
+// connectionsInUse are the Connection keys of the agents not archived and of the chats not archived that Drydock has a manifest
+// for: the adapter id for a Windows install, connections.WSLKey for an install inside a distro.
+func (c *Core) connectionsInUse(ctx context.Context) []string {
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT adapter, run_mode, wsl_distro FROM agents WHERE archived_at=0
+		UNION SELECT adapter, CASE WHEN wsl_distro<>'' THEN 'wsl' ELSE '' END, wsl_distro FROM chats WHERE archived_at=0`)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
-	var ids []string
+	var keys []string
+	seen := map[string]bool{}
 	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil {
-			if _, known := c.Connections.Registry.Set.Get(id); known {
-				ids = append(ids, id)
-			}
+		var id, mode, distro string
+		if rows.Scan(&id, &mode, &distro) != nil {
+			continue
+		}
+		if _, known := c.Connections.Registry.Set.Get(id); !known {
+			continue
+		}
+		key := id
+		if mode == agents.RunModeWSL && distro != "" {
+			key = connections.WSLKey(id, distro)
+		}
+		if !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
 		}
 	}
-	return ids
+	return keys
 }

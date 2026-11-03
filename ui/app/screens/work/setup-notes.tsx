@@ -1,11 +1,12 @@
 // What failed after the project was made (B2), one line each on the project's Work page with the action that fixes it: a CLI not
 // usable gets its fix in place (Sign in, or Set up <CLI>: the shared CliFixButton), a decision waiting goes to the Inbox, a
 // connector to the project's Integrations. Each line stays (lib/setup-notes.ts, this browser) until the person dismisses it; a CLI
-// line goes by itself once adapter.list finds the CLI ready.
+// line goes by itself once a check finds the CLI usable (connection.list {cached}: ready and its notice accepted, which is what
+// project.setup asked; adapter.list knows nothing of notices). Reading the kept checks starts no CLI.
 
 import { css, on, type Handle } from 'remix/component';
 import { TriangleAlert, X } from 'lucide';
-import type { SetupWarning } from '../../api/types.ts';
+import type { Connection, SetupWarning } from '../../api/types.ts';
 import { dropSetupNote, setupNotes } from '../../lib/setup-notes.ts';
 import { routes } from '../../routes.ts';
 import { query, services } from '../../state/services.tsx';
@@ -14,7 +15,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { CliFixButton } from '../shared/cli-fix.tsx';
 import { adapterLabel } from '../shared/cli-name.ts';
-import { browserStore, cliReadiness } from '../workspace/start.ts';
+import { browserStore } from '../workspace/start.ts';
 
 const listCss = css({ display: 'grid', gap: '2px', margin: '0', padding: `0 ${t.s3} ${t.s2}`, listStyle: 'none' });
 const lineCss = css({
@@ -38,14 +39,21 @@ export function noteAction(w: SetupWarning): { kind: 'cli'; label: string } | { 
   return undefined;
 }
 
+/** Whether a CLI line is resolved: the newest check of that CLI on Windows (the install project.setup checked) finds it usable. */
+export function cliNoteResolved(w: SetupWarning, checked: readonly Connection[] | undefined): boolean {
+  if (w.kind !== 'cli' || !w.adapter) return false;
+  const c = checked?.find((x) => x.adapter === w.adapter && x.runMode !== 'wsl');
+  return !!c && c.usable;
+}
+
 export function SetupNotes(handle: Handle<{ projectId: string }>) {
   const s = services(handle);
   const store = browserStore();
   let lines = setupNotes(store, handle.props.projectId);
-  const adapters = query(handle, {
+  const conns = query(handle, {
     enabled: () => lines.some((w) => w.kind === 'cli'),
-    load: () => s.client.adapterList(),
-    when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.'),
+    load: () => s.client.connectionList(true),
+    when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started',
   });
   const drop = (w: SetupWarning) => {
     lines = dropSetupNote(store, handle.props.projectId, w);
@@ -55,9 +63,9 @@ export function SetupNotes(handle: Handle<{ projectId: string }>) {
   return () => {
     // a CLI line is resolved once its CLI is ready: it goes, and is not kept
     for (const w of lines) {
-      if (w.kind === 'cli' && w.adapter && cliReadiness(w.adapter, adapters.data).state === 'ready') handle.queueTask(() => drop(w));
+      if (cliNoteResolved(w, conns.data)) handle.queueTask(() => drop(w));
     }
-    const shown = lines.filter((w) => !(w.kind === 'cli' && w.adapter && cliReadiness(w.adapter, adapters.data).state === 'ready'));
+    const shown = lines.filter((w) => !cliNoteResolved(w, conns.data));
     if (shown.length === 0) return null;
     return (
       <ul mix={listCss} aria-label="What did not work when the project was made" data-testid="setup-notes">

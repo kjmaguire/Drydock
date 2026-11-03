@@ -148,10 +148,15 @@ func TestInstallTerminalTypesTheCommandWithoutRunningIt(t *testing.T) {
 			}
 		}
 	}
-	typed := strings.TrimSpace(conn.InstallHint)[:12]
+	// the manifest's command itself (on this development host, sh, its first Windows line as written), never the display
+	// label "powershell: ..." the card shows
+	typed := "powershell -ExecutionPolicy ByPass -c"
 	read(typed)
 	if !strings.Contains(all, typed) {
 		t.Fatalf("the command was not typed: %q", all)
+	}
+	if strings.Contains(all, "powershell: ") || strings.Contains(all, "cmd: ") {
+		t.Fatalf("the display label was typed: %q", all)
 	}
 	time.Sleep(500 * time.Millisecond)
 	var more terminal.Chunk // whatever else came

@@ -3,7 +3,7 @@
 // Enter does: make the project when the place is new, then the first piece of work, a task when the crew has a worker and a
 // different reviewer and the project has a repository, else a chat in the project.
 
-import { PROJECT_BRIEF_MAX, projectHasRepo, type AdapterInfo, type Agent, type PrebuiltAgent, type Project, type SetupRequest, type SetupResult, type SetupWarning, type Task } from '../../api/types.ts';
+import { PROJECT_BRIEF_MAX, projectHasRepo, type AdapterInfo, type Agent, type Connection, type PrebuiltAgent, type Project, type SetupRequest, type SetupResult, type SetupWarning, type Task } from '../../api/types.ts';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import type { Chat, ChatCreate } from '../../api/chatClient.ts';
 import type { WorkItem } from '../../lib/project-work.ts';
@@ -52,6 +52,8 @@ export interface Tuning {
   permission: string;
   /** The builder's CLI when the person chose another than the catalog's ("Use Codex instead", A1); absent: the catalog's. */
   adapter?: string;
+  /** The CLIs "Use Codex instead" moved off: every suggested agent on one of them (a Small team's lead and reviewer) runs on `adapter` too. */
+  moved?: string[];
 }
 
 /** The catalog's builder: Solo is this agent, and the suggested team's worker. */
@@ -157,7 +159,9 @@ export function crewMembers(crew: Crew, catalog: readonly PrebuiltAgent[], templ
   if (crew.kind === 'solo' || crew.kind === 'team') {
     const e = builderEntry(catalog);
     if (crew.kind === 'team' && catalog.length) {
-      team = suggestTeam(catalog).map((m) => (m.ref === BUILDER ? tune(m) : m));
+      // the lead and the reviewer keep their own CLI, unless "Use Codex instead" moved off it: then they run on that one too,
+      // with its own model and effort
+      team = suggestTeam(catalog).map((m) => (m.ref === BUILDER ? tune(m) : tuning.adapter && tuning.moved?.includes(m.adapter) ? { ...m, adapter: tuning.adapter, model: '', effort: '' } : m));
     } else if (e) {
       team = [tune(memberFromPrebuilt(e, []))];
     } else {
@@ -358,6 +362,44 @@ export function readyAlternative(adapter: string, adapters: readonly AdapterInfo
     .filter((a) => a.id !== adapter && cliReadiness(a.id, adapters).state === 'ready')
     .map((a) => a.id)
     .sort((x, y) => rank(x) - rank(y) || x.localeCompare(y))[0];
+}
+
+/** "Use Codex instead" (A1): the builder, and every suggested agent on the CLI moved off, on another CLI with its own model and effort. */
+export function insteadTuning(t: Tuning, from: string, to: string): Tuning {
+  return { ...t, model: '', effort: '', adapter: to, moved: [...new Set([...(t.moved ?? []), from])].filter((x) => x !== to) };
+}
+
+/** The CLIs a start needs, as planStart checks them: the builder's for Solo in a project, every agent's for a new place. */
+export function startNeeds(o: { where: Where; crew: Crew; tuning: Tuning; catalog: readonly PrebuiltAgent[]; templates: readonly AgentTemplate[]; fallbackAdapter?: string }): string[] {
+  const adapter = o.tuning.adapter || builderAdapter(o.catalog, o.fallbackAdapter);
+  if (o.where.kind === 'project') return tuningApplies(o.crew) ? [adapter] : [];
+  return [...new Set(crewMembers(o.crew, o.catalog, o.templates, o.tuning, adapter).map((m) => m.adapter))];
+}
+
+/**
+ * The line under the chips (A1): the first CLI the start needs that is not usable, and another ready CLI to use instead when
+ * moving to it clears that CLI from the whole crew (Solo, or a Small team whose lead and reviewer move with the builder); a
+ * crew of the person's own agents keeps their CLIs, so it gets only the fix.
+ */
+export function startCli(o: { where: Where; crew: Crew; tuning: Tuning; catalog: readonly PrebuiltAgent[]; templates: readonly AgentTemplate[]; fallbackAdapter?: string; adapters?: readonly AdapterInfo[] }): { cli: CliReadiness; alt?: string } | undefined {
+  const cli = cliProblem(startNeeds(o), o.adapters);
+  if (!cli) return undefined;
+  const alt = tuningApplies(o.crew) ? readyAlternative(cli.adapter, o.adapters) : undefined;
+  if (!alt) return { cli };
+  const after = startNeeds({ ...o, tuning: insteadTuning(o.tuning, cli.adapter, alt) });
+  return { cli, alt: after.includes(cli.adapter) ? undefined : alt };
+}
+
+/**
+ * adapter.list with what Drydock's own checks found since it was read (A2): a Windows install's newest check (connection.list
+ * {cached}) made after `since` replaces its status, so the line follows a background check without starting every CLI again.
+ */
+export function withChecked(adapters: readonly AdapterInfo[] | undefined, checked: readonly Connection[] | undefined, since: number): AdapterInfo[] | undefined {
+  if (!adapters || !checked?.length) return adapters as AdapterInfo[] | undefined;
+  return adapters.map((a) => {
+    const c = checked.find((x) => x.adapter === a.id && x.runMode !== 'wsl' && (x.at ? Date.parse(x.at) : 0) > since);
+    return c ? { ...a, detection: { ...a.detection, status: c.status, installed: c.installed, authenticated: c.authenticated } } : a;
+  });
 }
 
 /** What Enter does, worked out before anything is sent. */

@@ -30,6 +30,13 @@ export function connectionFor(list: readonly Connection[], adapter: string, dist
   return list.find((c) => c.adapter === adapter && (distro ? isWSL(c) && c.distro === distro : !isWSL(c)));
 }
 
+/** A list of Connections with the newer kept checks (connection.list {cached}) in place of the rows they check again. */
+export function withCached(list: readonly Connection[], cached: readonly Connection[]): Connection[] {
+  const keyOf = (c: Connection) => c.key || c.adapter;
+  const by = new Map(cached.map((c) => [keyOf(c), c] as const));
+  return list.map((c) => by.get(keyOf(c)) ?? c);
+}
+
 /** The distro of a Connection key ("claude@wsl:Ubuntu"), '' for the Windows install. */
 export const distroOfKey = (key: string | undefined): string => (key && key.includes('@wsl:') ? key.slice(key.indexOf('@wsl:') + 5) : '');
 
@@ -80,9 +87,21 @@ function GateAccept(handle: Handle<{ g: GateStatus; onAck: (id: string) => Promi
 
 export function CliFix(handle: Handle<{ adapter: string; distro?: string; onOther?: () => void; otherLabel?: string; onFixed?: () => void }>) {
   const s = services(handle);
+  // Drydock's own background check (connection.checked, A2) has just probed: its kept answers (connection.list {cached}) are
+  // read then, which start nothing, instead of starting every CLI and distro again
+  let fromCache = false;
+  let last: Connection[] | undefined;
   const conns = query(handle, {
-    load: () => s.client.connectionList(),
-    when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started',
+    load: async (): Promise<Connection[]> => {
+      const cached = fromCache;
+      fromCache = false;
+      last = cached && last ? withCached(last, await s.client.connectionList(true)) : await s.client.connectionList();
+      return last;
+    },
+    when: (e) => {
+      if (e.type === 'connection.checked') return (fromCache = true);
+      return e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started';
+    },
     key: () => `${handle.props.adapter}@${handle.props.distro ?? ''}`,
   });
   let error: Error | undefined;

@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
-import type { Agent, Project, SetupRequest } from '../../api/types.ts';
+import type { Agent, Connection, Project, SetupRequest } from '../../api/types.ts';
 import { projectWorkHref } from '../../lib/project-work.ts';
 import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
 import {
@@ -16,6 +16,7 @@ import {
   defaultTuning,
   DRAFT_KEY,
   firstWork,
+  insteadTuning,
   keepDraft,
   folderName,
   nameSlug,
@@ -32,15 +33,18 @@ import {
   runJustChat,
   runStart,
   slugify,
+  startCli,
   START_KEY,
   StartError,
   taskTitle,
   TASK_TITLE_MAX,
   whereKey,
+  withChecked,
   type Crew,
   type StartClient,
   type StartPlan,
   type Tuning,
+  type Where,
 } from './start.ts';
 
 const solo: Crew = { kind: 'solo', templates: [], drafted: [] };
@@ -413,6 +417,40 @@ describe("whether the builder's CLI is ready, before Enter (A1)", () => {
     expect(inProject).toEqual({ problem: 'Claude Code is not installed on this PC. Install it first, or choose another CLI.' });
     // the project's own crew runs on its agents' CLIs: not refused here
     expect('problem' in planStart({ where: { kind: 'project', projectId: 'p1' }, text: 'Build it', crew: { ...solo, kind: 'project' }, tuning, catalog: CATALOG, templates: [], projects: [project('p1')], adapters: [missing] })).toBe(false);
+  });
+
+  it('with a Small team, the line looks at every agent, and Use Codex instead moves the lead and reviewer too (A1)', () => {
+    const where: Where = { kind: 'new', path: '/c/x' };
+    const o = { where, crew: team, tuning, catalog: CATALOG, templates: [], adapters: [signedOut, codex] };
+    // the builder alone on Codex would leave the lead and the reviewer on Claude: the line still names Claude
+    const builderOnly = { ...tuning, adapter: 'codex' };
+    expect(startCli({ ...o, tuning: builderOnly })?.cli.adapter).toBe('claude');
+    const line = startCli(o)!;
+    expect(line).toEqual({ cli: { adapter: 'claude', state: 'sign-in', text: 'Claude Code is not signed in.' }, alt: 'codex' });
+    const moved = insteadTuning(tuning, 'claude', 'codex');
+    expect(startCli({ ...o, tuning: moved })).toBe(undefined);
+    const p = planStart({ where, text: 'Build it', crew: team, tuning: moved, catalog: CATALOG, templates: [], projects: [], adapters: [signedOut, codex] });
+    if ('problem' in p) throw new Error(p.problem);
+    expect(p.setup!.agents.map((a) => a.adapter)).toEqual(['codex', 'codex', 'codex']);
+    expect(p.setup!.agents.map((a) => a.model)).toEqual(['', '', '']); // the moved agents take Codex's own model
+    // nothing moved: the lead and reviewer keep their own CLI and model
+    const kept = planStart({ where, text: 'Build it', crew: team, tuning: builderOnly, catalog: CATALOG, templates: [], projects: [], adapters: [adapterInfo('claude'), codex] });
+    if ('problem' in kept) throw new Error(kept.problem);
+    expect(kept.setup!.agents.map((a) => a.adapter)).toEqual(['claude', 'codex', 'claude']);
+  });
+
+  it('a crew of your own agents gets the fix only: Use Codex instead would not move them', () => {
+    const mine: Crew = { kind: 'mine', templates: ['t1'], drafted: [] };
+    const tpl = { ...template('t1', 'Ada', 'backend'), adapter: 'claude' } as AgentTemplate;
+    expect(startCli({ where: { kind: 'new', path: '/c/x' }, crew: mine, tuning, catalog: CATALOG, templates: [tpl], adapters: [signedOut, codex] })).toEqual({ cli: { adapter: 'claude', state: 'sign-in', text: 'Claude Code is not signed in.' } });
+  });
+
+  it("follows Drydock's own checks made after adapter.list was read, not older ones (A2)", () => {
+    const at = (ms: number) => new Date(ms).toISOString();
+    const checked = [{ adapter: 'claude', key: 'claude', runMode: 'native', status: 'ready', installed: true, usable: true, at: at(2000) } as Connection];
+    expect(withChecked([signedOut], checked, 1000)![0]!.detection.status).toBe('ready');
+    expect(withChecked([signedOut], checked, 3000)![0]!.detection.status).toBe('unauthenticated');
+    expect(withChecked([signedOut], [{ ...checked[0]!, runMode: 'wsl', key: 'claude@wsl:Ubuntu' }], 1000)![0]!.detection.status).toBe('unauthenticated');
   });
 
   it('Use Codex instead puts the builder on that CLI, with its own defaults', () => {

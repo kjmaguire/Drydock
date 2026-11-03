@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ChatCreate } from '../../api/chatClient.ts';
 import type { AgentDraft } from '../../api/libraryClient.ts';
-import type { Project, SetupRequest, TaskSummary } from '../../api/types.ts';
+import type { Connection, Project, SetupRequest, TaskSummary } from '../../api/types.ts';
 import { byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
 import { SETUP_NOTES_KEY } from '../../lib/setup-notes.ts';
@@ -171,6 +171,51 @@ describe('Home is the start screen (P142)', () => {
     await r.act(() => enter(box(r)));
     await waitFor(() => expect(setups).toHaveLength(1), r);
     expect(setups[0]!.agents.map((a) => a.adapter)).toEqual(['codex']);
+  });
+
+  it('with a Small team the line covers the lead and reviewer, and Use Codex instead moves all three (A1)', async () => {
+    const setups: SetupRequest[] = [];
+    const { r } = show({
+      adapterList: async () => [{ ...adapterInfo('claude', true, ['sonnet']), detection: { adapter: 'claude', installed: true, status: 'unauthenticated' } }, adapterInfo('codex', true, ['gpt-5'])],
+      projectSetup: async (req) => (setups.push(req), { project: project('p9', req.name), agents: [], warnings: [] }),
+      taskCreate: async () => ({ id: 't1' }) as never,
+      taskAssign: async () => ({}) as never,
+      taskStart: async () => 'run',
+      chatCreate: async () => ({ id: 'c9' }) as never,
+      chatSend: async () => ({ turnId: 't', version: 1 }),
+    });
+    await waitFor(() => expect(r.$('[data-testid="start-cli"]')).not.toBeNull(), r);
+    await r.act(() => click(r, '[data-testid="start-who"]'));
+    await waitFor(() => expect(r.$('[data-testid="who-team"]')).not.toBeNull(), r);
+    await r.act(() => click(r, '[data-testid="who-team"]'));
+    expect((r.$('[data-testid="start-cli"]') as HTMLElement).dataset.adapter).toBe('claude');
+    await r.act(() => click(r, '[data-testid="start-cli-other"]'));
+    expect(r.$('[data-testid="start-cli"]')).toBeNull();
+    await r.act(() => type(box(r), 'A small Go CLI'));
+    await r.act(() => enter(box(r)));
+    expect(r.$('[data-testid="start-error"]')).toBeNull();
+    await waitFor(() => expect(setups).toHaveLength(1), r);
+    expect(setups[0]!.agents.map((a) => a.adapter)).toEqual(['codex', 'codex', 'codex']);
+  });
+
+  it("follows Drydock's own CLI check from its kept answers, without starting the CLIs again (A2)", async () => {
+    let listed = 0;
+    let full = 0;
+    let signedIn = false; // signed in elsewhere: the background check finds it
+    const { r, s } = show({
+      adapterList: async () => (listed++, [{ ...adapterInfo('claude', true, ['sonnet']), detection: { adapter: 'claude', installed: true, status: 'unauthenticated' } }]),
+      connectionList: async (c) => {
+        if (!c) full++;
+        return signedIn ? [{ adapter: 'claude', key: 'claude', runMode: 'native', installed: true, status: 'ready', usable: true, platform: 'windows', at: new Date().toISOString() } as Connection] : [];
+      },
+    });
+    await waitFor(() => expect(r.$('[data-testid="start-cli"]')).not.toBeNull(), r);
+    expect(listed).toBe(1);
+    await new Promise((res) => setTimeout(res, 5));
+    signedIn = true;
+    s.emit({ type: 'connection.checked' });
+    await waitFor(() => expect(r.$('[data-testid="start-cli"]')).toBeNull(), r);
+    expect([listed, full]).toEqual([1, 0]);
   });
 
   it('keeps what failed after the project was made as lines for its Work page, not one flash (B2)', async () => {
