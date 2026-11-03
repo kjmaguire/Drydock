@@ -133,8 +133,10 @@ taskbar button of its own. **Windows notifications (G1, `app/notify_windows.go`)
 registers it per user (HKCU, no administrator rights) as `Software\Classes\AppUserModelId\Drydock` (DisplayName "Drydock",
 IconUri, the app's icon written to `%TEMP%\Drydock{GUID}.png`, and CustomActivator, a GUID made once) with the activation class
 `Software\Classes\CLSID\{GUID}\LocalServer32` = drydock.exe, so a click on a notification left in the notification centre
-starts Drydock. The uninstaller removes these (`TOAST_KEY` in `drydock.nsi`; a test keeps it equal to the Name and to Wails's
-own constants). A jump list is not built. **Not verified:** the notification showing with Drydock's name and icon, and its
+starts Drydock. go-toast v2.0.3 (under the service) also writes drydock.exe to go-toast's built-in class,
+`Software\Classes\CLSID\{0F82E845-CB89-4039-BDBF-67CA33254C76}\LocalServer32`, when that has no value yet. The uninstaller
+removes these (`TOAST_KEY` in `drydock.nsi`; a test keeps it equal to the Name and to Wails's own constants), go-toast's class
+only while it names this install's drydock.exe (`TOAST_DEFAULT_CLSID`; a test keeps it equal to go-toast's). A jump list is not built. **Not verified:** the notification showing with Drydock's name and icon, and its
 entry in Windows Settings > Notifications being named Drydock. **Not
 verified:** a pinned shortcut grouping with the running window on a real taskbar (the CI checks read the IDs, not the
 taskbar); a shortcut a person pinned from an older install, before the ID, may show as its own button until it is pinned again.

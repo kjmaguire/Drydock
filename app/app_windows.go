@@ -118,8 +118,7 @@ func Run(assets fs.FS) error {
 			UniqueID: "com.drydock.app",
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
 				if window != nil {
-					window.Restore()
-					window.Focus()
+					windowToFront(frontOf{window}) // never Restore: it would un-maximise a maximised window
 				}
 			},
 		},

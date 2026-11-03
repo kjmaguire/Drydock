@@ -116,6 +116,16 @@ func Copyright(text string) string {
 	return ""
 }
 
+// firstCopyright is the first copyright line in texts, "" when there is none.
+func firstCopyright(texts []string) string {
+	for _, t := range texts {
+		if c := Copyright(t); c != "" {
+			return c
+		}
+	}
+	return ""
+}
+
 // licenseFileRe names the files of a module that hold its license: LICENSE, LICENSE.md, LICENSE.txt, LICENCE, COPYING, UNLICENSE
 // and their LICENSE-MIT style variants. A folder (REUSE's LICENSES/) is not one.
 var licenseFileRe = regexp.MustCompile(`(?i)^(?:licen[sc]e|copying|unlicense)(?:[-_.].*)?$`)
@@ -191,10 +201,18 @@ var overrides = map[string]string{
 	"gopkg.in/yaml.v3":                       "MIT and Apache-2.0 (the library is MIT; its libyaml port is under the MIT-style license in LICENSE, and NOTICE names the Apache-2.0 files)",
 	"go.yaml.in/yaml/v3":                     "MIT and Apache-2.0 (the library is MIT; its libyaml port is under the MIT-style license in LICENSE, and NOTICE names the Apache-2.0 files)",
 	"github.com/sorairolake/lzip-go":         "Apache-2.0 OR MIT (the author's choice: LICENSE-APACHE and LICENSE-MIT)",
+	"git.sr.ht/~jackmordaunt/go-toast/v2":    "Unlicense OR MIT (the author's choice; LICENSE holds both)",
 	// SQLite itself is in the public domain; the module bundles code under other licenses
 	"modernc.org/sqlite": "BSD-3-Clause (SQLite itself is in the public domain; code the module bundles is under the licenses listed in its LICENSE-3RD-PARTY.md)",
 	// a module whose source is not in the module cache here (only its go.mod is needed); the license is its repository's
 	"google.golang.org/genproto": "Apache-2.0 (the repository's LICENSE; this module's source is not needed to build)",
+}
+
+// keepCopyright are overridden modules whose license files hold one copyright line, the whole project's, checked by hand: the
+// row gives it although Describe leaves it out for a module under several licenses.
+var keepCopyright = map[string]bool{
+	// "Copyright (c) 2023 Jack Mordaunt" in LICENSE, above the MIT text; the Unlicense one has none
+	"git.sr.ht/~jackmordaunt/go-toast/v2": true,
 }
 
 // Source is what the rows are made from.
@@ -243,11 +261,15 @@ func GoRows(src Source) ([]Row, error) {
 		}
 		row := Row{Name: it.Name, Version: "v" + it.Used, Direct: it.Kind == "direct", Role: firstSentence(it.Role)}
 		dir := filepath.Join(src.ModCache, escapePath(it.Name)+"@v"+it.Used)
-		if texts, err := ReadLicenses(dir); err == nil {
+		texts, err := ReadLicenses(dir)
+		if err == nil {
 			row.License, row.Copyright = Describe(texts)
 		}
 		if o, ok := overrides[it.Name]; ok {
 			row.License = o
+			if keepCopyright[it.Name] && row.Copyright == "" {
+				row.Copyright = firstCopyright(texts)
+			}
 		}
 		if row.License == "" {
 			problems = append(problems, fmt.Sprintf("%s v%s: no license found in %s", it.Name, it.Used, dir))

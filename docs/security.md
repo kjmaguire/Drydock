@@ -332,8 +332,11 @@ Every release states which phase is active. The UI shows the isolation level in 
 features entry and the Start menu shortcut), the running app's Windows notifications (Wails's notifications service,
 `app/notify_windows.go`) register, per user and without administrator rights, `HKCU\Software\Classes\AppUserModelId\Drydock`
 (DisplayName, IconUri, CustomActivator) and `HKCU\Software\Classes\CLSID\{GUID}\LocalServer32` (drydock.exe, so a click on a
-notification can start it), and write the icon to `%TEMP%\Drydock{GUID}.png`. Nothing under HKLM. The uninstaller removes them
-(`packaging/windows/drydock.nsi`). A notification carries only the Inbox item's kind, project and task key, never a request's
+notification can start it), and write the icon to `%TEMP%\Drydock{GUID}.png`. go-toast v2.0.3, which the service uses, also
+writes drydock.exe to `HKCU\Software\Classes\CLSID\{0F82E845-CB89-4039-BDBF-67CA33254C76}\LocalServer32`, its built-in
+activation class (the path is made before Wails gives it its own GUID), unless a value is there already; that class is shared by
+every go-toast app. Nothing under HKLM. The uninstaller removes them (`packaging/windows/drydock.nsi`); go-toast's built-in class
+only while it still names this install's drydock.exe, so another app's registration there is left alone. A notification carries only the Inbox item's kind, project and task key, never a request's
 text, code, a prompt or a secret; the route a click opens comes back from Windows and is checked (the Inbox or one task's page).
 
 ## 15. Tests that prove it (written with each slice, run on the Windows runner)

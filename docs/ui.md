@@ -551,7 +551,7 @@ is the composer with the cursor in it; the empty Chats page is one line and New 
 cursor (`chat.markRead`): the open chat moves it to its newest message only while the window is visible and focused and the
 conversation is at the bottom (`lib/attended.ts`, the rooms' rule), so a chat that answered while the person was elsewhere lists
 with a dot and ", N unread" in its name (`chat-unread`), the Chats link counts such chats and Work's chat rows show the dot (D8;
-since the lanes' merge G2's toast host also shows one "A chat answered" toast per `chat.turn` that ended done or failed, never on
+since the lanes' merge G2's toast host also shows one toast per `chat.turn` that ended done or failed ("A chat answered", or "A chat turn failed"; a stopped turn shows none), never on
 the chat itself or on Work with that chat open; the dot and the toast come from the same event and do not repeat each other, and
 a chat answer raises no Windows notification). A new chat (New chat, Work's New chat, the dialog) starts with the model,
 effort and mode the person last chose with the chips for the same place (a project, or none) and CLI; a mode that skips

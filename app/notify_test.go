@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -125,5 +126,92 @@ func TestTheUninstallerRemovesTheNotificationRegistration(t *testing.T) {
 		if !strings.Contains(un, want) {
 			t.Errorf("the uninstaller does not %s", want)
 		}
+	}
+}
+
+// frontDouble is a labelled test double of the app's window: it records what windowToFront asked of it.
+type frontDouble struct {
+	minimised bool
+	calls     []string
+}
+
+func (w *frontDouble) IsMinimised() bool { return w.minimised }
+func (w *frontDouble) UnMinimise()       { w.calls = append(w.calls, "unminimise"); w.minimised = false }
+func (w *frontDouble) Show()             { w.calls = append(w.calls, "show") }
+func (w *frontDouble) Focus()            { w.calls = append(w.calls, "focus") }
+
+// A click on a notification (or a second launch) brings the window in front without changing its layout: a minimised window is
+// un-minimised, a maximised or fullscreen one is only shown and focused, never restored to its normal size.
+func TestWindowToFrontKeepsAMaximisedWindowMaximised(t *testing.T) {
+	for _, c := range []struct {
+		minimised bool
+		want      string
+	}{
+		{true, "unminimise show focus"},
+		{false, "show focus"},
+	} {
+		w := &frontDouble{minimised: c.minimised}
+		windowToFront(w)
+		if got := strings.Join(w.calls, " "); got != c.want {
+			t.Errorf("minimised %v: %q, want %q", c.minimised, got, c.want)
+		}
+	}
+}
+
+// goToastDefaultCLSID is go-toast's built-in activation class (wintoast.GUID_ImplNotificationActivationCallback, impl.go). go-toast
+// v2.0.3 makes the LocalServer32 path it writes drydock.exe to from it when the package loads, before Wails gives it its own GUID,
+// so the running app registers drydock.exe under this class too; the uninstaller removes it when it is still this install's.
+const goToastDefaultCLSID = "{0F82E845-CB89-4039-BDBF-67CA33254C76}"
+
+func TestTheUninstallerRemovesGoToastsBuiltInClassOnlyWhenItIsDrydocks(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "packaging", "windows", "drydock.nsi"))
+	if errors.Is(err, fs.ErrNotExist) {
+		if _, gerr := os.Stat(filepath.Join("..", "go.mod")); gerr != nil {
+			t.Skip("not in the repository: packaging/windows/drydock.nsi is not here")
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	nsi := string(b)
+	m := regexp.MustCompile(`(?m)^!define TOAST_DEFAULT_CLSID "([^"]*)"`).FindStringSubmatch(nsi)
+	if m == nil || m[1] != goToastDefaultCLSID {
+		t.Fatalf("drydock.nsi defines TOAST_DEFAULT_CLSID %v, want go-toast's %s", m, goToastDefaultCLSID)
+	}
+	un := nsi[strings.Index(nsi, `Section "Uninstall"`):]
+	// read, compared with this install's drydock.exe, and only then deleted: the class is shared by every go-toast app
+	want := regexp.MustCompile(`ReadRegStr \$0 HKCU "Software\\Classes\\CLSID\\\$\{TOAST_DEFAULT_CLSID\}\\LocalServer32" ""\s+` +
+		`\$\{If\} \$0 == "\$INSTDIR\\\$\{EXE\}"\s+` +
+		`DeleteRegKey HKCU "Software\\Classes\\CLSID\\\$\{TOAST_DEFAULT_CLSID\}"\s+` +
+		`\$\{EndIf\}`)
+	if !want.MatchString(un) {
+		t.Error("the uninstaller does not delete go-toast's built-in class only when it names $INSTDIR\\${EXE}")
+	}
+	if strings.Count(un, "${TOAST_DEFAULT_CLSID}") != 2 {
+		t.Error("the uninstaller touches go-toast's built-in class somewhere other than the checked delete")
+	}
+
+	// the GUID is go-toast's own, at the version go.mod selects (read from the module cache when it is there)
+	mod, err := os.ReadFile(filepath.Join("..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := regexp.MustCompile(`git\.sr\.ht/~jackmordaunt/go-toast/v2 (v\S+)`).FindSubmatch(mod)
+	if v == nil {
+		t.Fatal("go.mod does not name go-toast")
+	}
+	cache, err := exec.Command("go", "env", "GOMODCACHE").Output()
+	if err != nil {
+		t.Skipf("go env GOMODCACHE: %v", err)
+	}
+	src, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(cache)), "git.sr.ht", "~jackmordaunt", "go-toast", "v2@"+string(v[1]), "wintoast", "impl.go"))
+	if errors.Is(err, fs.ErrNotExist) {
+		t.Skip("go-toast is not in the module cache (go mod download)")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), `GUID_ImplNotificationActivationCallback = ole.NewGUID("`+goToastDefaultCLSID+`")`) {
+		t.Errorf("go-toast %s's built-in activation class is not %s: update TOAST_DEFAULT_CLSID, docs/security.md and release.yml", v[1], goToastDefaultCLSID)
 	}
 }

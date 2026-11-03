@@ -395,6 +395,12 @@ jobs:
           $guid = (Get-ItemProperty $toastKey -ErrorAction SilentlyContinue).CustomActivator
           if ($guid) { "notifications registered: $toastKey, CustomActivator $guid" | Tee-Object -Append "$env:OUT/install.txt" }
           else { "notifications: the app registered no toast identity ($toastKey missing)" | Tee-Object -Append "$env:OUT/install.txt" }
+          # go-toast also writes drydock.exe under its built-in activation class (TOAST_DEFAULT_CLSID in drydock.nsi); the uninstaller
+          # removes it only while it names this install's drydock.exe
+          $defaultClass = 'HKCU:\Software\Classes\CLSID\{0F82E845-CB89-4039-BDBF-67CA33254C76}'
+          $defaultExe = (Get-ItemProperty "$defaultClass\LocalServer32" -ErrorAction SilentlyContinue).'(default)'
+          $defaultOurs = $defaultExe -and ($defaultExe -ieq "$env:INSTDIR\drydock.exe")
+          "go-toast's built-in activation class: $(if ($defaultExe) { $defaultExe } else { 'not registered' })" | Tee-Object -Append "$env:OUT/install.txt"
           # the uninstaller copies itself to TEMP and returns at once; _?= runs it in place so the exit code is its own
           $u = Start-Process -FilePath "$env:INSTDIR\uninstall.exe" -ArgumentList '/S', "_?=$env:INSTDIR" -Wait -PassThru
           if ($u.ExitCode -ne 0) { throw "the uninstaller exited $($u.ExitCode)" }
@@ -404,6 +410,7 @@ jobs:
           if (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Drydock.lnk") { throw "the Start menu shortcut is still there" }
           if (Test-Path $toastKey) { throw "the notifications' identity is still there ($toastKey)" }
           if ($guid -and (Test-Path "HKCU:\Software\Classes\CLSID\$guid")) { throw "the notifications' activation class is still there (CLSID $guid)" }
+          if ($defaultOurs -and (Test-Path $defaultClass)) { throw "go-toast's built-in activation class still names drydock.exe ($defaultClass)" }
           $db = Get-ChildItem "$env:LOCALAPPDATA\Drydock" -Filter *.db -ErrorAction SilentlyContinue
           if (-not $db) { throw "the uninstaller deleted the data (no database left in $env:LOCALAPPDATA\Drydock)" }
           "uninstalled: program, shortcut, Apps & features entry and notification registration gone; data kept ($($db.Name -join ', '))" | Tee-Object -Append "$env:OUT/install.txt"

@@ -85,3 +85,23 @@ func safeRoute(r string) string {
 	}
 	return r
 }
+
+// frontWindow is what windowToFront needs of the app's window (a *application.WebviewWindow through frontOf, notify_windows.go;
+// a labelled test double in notify_test.go).
+type frontWindow interface {
+	IsMinimised() bool
+	UnMinimise()
+	Show()
+	Focus()
+}
+
+// windowToFront brings the app's window in front and keeps how it was laid out: a minimised window is un-minimised, a maximised or
+// fullscreen one stays so. Wails's Restore is not that (it also un-maximises and leaves fullscreen), so a click on a notification
+// or a second launch never calls it; the placement keeper (window_windows.go) would save the shrunken window for the next start.
+func windowToFront(w frontWindow) {
+	if w.IsMinimised() {
+		w.UnMinimise()
+	}
+	w.Show()
+	w.Focus()
+}

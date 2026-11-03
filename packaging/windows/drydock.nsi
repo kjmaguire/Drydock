@@ -39,6 +39,9 @@ SetCompressor /SOLID lzma
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Drydock"
 ; the toast identity Wails's notifications service registers under the app's Name (app/notify_windows.go; a test keeps them equal)
 !define TOAST_KEY "Software\Classes\AppUserModelId\Drydock"
+; go-toast's built-in activation class (wintoast.GUID_ImplNotificationActivationCallback before Wails sets its own, shared by every
+; go-toast app): go-toast v2.0.3 also writes drydock.exe under it (app/notify_test.go keeps this equal to go-toast's)
+!define TOAST_DEFAULT_CLSID "{0F82E845-CB89-4039-BDBF-67CA33254C76}"
 ; the Evergreen WebView2 runtime's client id (Microsoft Learn, "Detect if a WebView2 Runtime is already installed")
 !define WEBVIEW2_GUID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
@@ -244,8 +247,8 @@ Section "Uninstall"
   DeleteRegKey HKCU "${UNINST_KEY}"
   ; Windows notifications (G1, app/notify_windows.go): Wails's notifications service registers, per user, the app's toast identity
   ; (Software\Classes\AppUserModelId\Drydock, whose CustomActivator names the activation class), that class
-  ; (Software\Classes\CLSID\{GUID}) and the icon it shows (%TEMP%\Drydock{GUID}.png). A CustomActivator that is not a {GUID}
-  ; is left alone rather than used in a path.
+  ; (Software\Classes\CLSID\{GUID}; go-toast writes drydock.exe under its built-in class too, below) and the icon it shows
+  ; (%TEMP%\Drydock{GUID}.png). A CustomActivator that is not a {GUID} is left alone rather than used in a path.
   ReadRegStr $0 HKCU "${TOAST_KEY}" "CustomActivator"
   StrCpy $1 $0 1
   StrCpy $2 $0 1 -1
@@ -253,6 +256,12 @@ Section "Uninstall"
   ${AndIf} $2 == "}"
     DeleteRegKey HKCU "Software\Classes\CLSID\$0"
     Delete "$TEMP\${APP}$0.png"
+  ${EndIf}
+  ; go-toast also registers drydock.exe under its own built-in class (TOAST_DEFAULT_CLSID): removed only when it is still this
+  ; install's drydock.exe, so another go-toast app's registration there is left alone
+  ReadRegStr $0 HKCU "Software\Classes\CLSID\${TOAST_DEFAULT_CLSID}\LocalServer32" ""
+  ${If} $0 == "$INSTDIR\${EXE}"
+    DeleteRegKey HKCU "Software\Classes\CLSID\${TOAST_DEFAULT_CLSID}"
   ${EndIf}
   DeleteRegKey HKCU "${TOAST_KEY}"
   DeleteRegKey HKCU "Software\${APP}\NotificationCategories"

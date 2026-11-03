@@ -105,15 +105,18 @@ func watchNeedsYou(ctx context.Context, c *core.Core, window *application.Webvie
 	})
 }
 
+// frontOf is the window as windowToFront sees it (Wails's Show returns the window, which windowToFront does not need).
+type frontOf struct{ *application.WebviewWindow }
+
+func (w frontOf) Show() { w.WebviewWindow.Show() }
+
 // openFromNotification brings the window to the front and opens route: a running page is told on OpenEventName (the router
 // opens it without a reload); a page that is not running yet (Drydock was started by the click) is given the address instead.
 func openFromNotification(wa *application.App, window *application.WebviewWindow, bridge *Bridge, route string) {
 	if window == nil {
 		return
 	}
-	window.Restore()
-	window.Show()
-	window.Focus()
+	windowToFront(frontOf{window})
 	if bridge != nil && bridge.subscribed() {
 		wa.Event.Emit(OpenEventName, route)
 		return

@@ -56,7 +56,7 @@ Pulled in by those, and compiled in:
 |---|---|---|---|---|
 | cel.dev/expr | v0.25.3 | Apache-2.0 | - | - |
 | dario.cat/mergo | v1.0.2 | BSD-3-Clause | Copyright (c) 2013 Dario Castañé. All rights reserved. | - |
-| git.sr.ht/~jackmordaunt/go-toast/v2 | v2.0.3 | MIT, with code under Unlicense | - | Windows toast notifications for Wails's notifications service: the WinRT toast call, the per-user AppUserModelId registry entry and the COM activation class tha... |
+| git.sr.ht/~jackmordaunt/go-toast/v2 | v2.0.3 | Unlicense OR MIT (the author's choice; LICENSE holds both) | Copyright (c) 2023 Jack Mordaunt | Windows toast notifications for Wails's notifications service: the WinRT toast call, the per-user AppUserModelId registry entry and the COM activation class tha... |
 | github.com/BobuSumisu/aho-corasick | v1.0.3 | MIT | Copyright (c) 2019 Øyvind Ingvaldsen | - |
 | github.com/Masterminds/goutils | v1.1.1 | Apache-2.0 | - | - |
 | github.com/Masterminds/semver/v3 | v3.5.0 | MIT | Copyright (C) 2014-2019, Matt Butcher and Matt Farina | - |
