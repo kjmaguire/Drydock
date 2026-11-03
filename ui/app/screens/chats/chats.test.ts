@@ -45,6 +45,7 @@ import {
   toolInputText,
   wslUnavailable,
   chatToReopen,
+  cliRefusal,
   isFolderRefusal,
   readChatFilter,
   readLastChat,
@@ -753,5 +754,18 @@ describe('Tool cards', () => {
     ]);
     expect(editLines({ command: 'ls' })).toBeUndefined();
     expect(editLines(undefined)).toBeUndefined();
+  });
+});
+
+describe('cliRefusal (A9)', () => {
+  it("offers the CLI's fix only for the core's own CLI refusals", () => {
+    expect(cliRefusal(new Error('claude needs your acknowledgement first (notice): read the terms'))).toBe(true);
+    expect(cliRefusal(new Error('Claude Code is not signed in'))).toBe(true);
+    expect(cliRefusal(new Error('Claude Code is not installed'))).toBe(true);
+    // a project or folder refusal: the CLI's fix would not help
+    expect(cliRefusal(new Error('project not found'))).toBe(false);
+    expect(cliRefusal(new Error('the folder C:\\work was not found'))).toBe(false);
+    expect(cliRefusal(new Error('sign in to GitHub first'))).toBe(false);
+    expect(cliRefusal(undefined)).toBe(false);
   });
 });

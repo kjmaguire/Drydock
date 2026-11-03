@@ -465,6 +465,28 @@ describe('New chat dialog (Home\'s Options)', () => {
     await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
   });
 
+  it('shows the last choice for the project and CLI, and creates what it shows (D2)', async () => {
+    const created: unknown[] = [];
+    const asked: unknown[][] = [];
+    const { r } = dialogSetup({
+      chatLastChoice: async (...a: unknown[]) => (asked.push(a), { model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits' }),
+      chatCreate: async (p) => (created.push(p), chat({ id: 'c_new' })),
+    });
+    const dlg = await waitFor(newChatDialog, r);
+    await waitFor(() => expect(valueOf(byLabel<HTMLElement>(dlg, 'Permission mode'))).toBe('acceptEdits'), r);
+    expect(asked.at(-1)).toEqual(['prj_1', 'claude']);
+    expect(valueOf(byLabel<HTMLElement>(dlg, 'Model'))).toBe('sonnet');
+    expect(valueOf(byLabel<HTMLElement>(dlg, 'Effort'))).toBe('high');
+    // said where it comes from, and no "CLI default" offered that the core would not keep
+    expect(dlg.textContent).toContain('From your last chat.');
+    expect(dlg.textContent).not.toContain('Tools outside the mode are refused');
+    expect(optionsOf(byLabel<HTMLElement>(dlg, 'Effort')).map((o) => o.value)).not.toContain('');
+    // another model picked: the effort shown goes with it as it is
+    type(byLabel(dlg, 'Model'), 'opus');
+    await r.act(() => byText(dlg, 'button', 'Start chat').click());
+    await waitFor(() => expect(created).toEqual([{ projectId: 'prj_1', cwd: undefined, adapter: 'claude', model: 'opus', effort: 'high', permissionMode: undefined, readHistory: true }]), r);
+  });
+
   it('a chosen CLI that is not signed in offers its fix in the dialog (A9)', async () => {
     const out: AdapterInfo = { ...claude, detection: { ...claude.detection, status: 'unauthenticated' } };
     const { r } = dialogSetup({ adapterList: async () => [out, cline], connectionList: async () => [] });
@@ -550,6 +572,8 @@ describe('New chat dialog (Home\'s Options)', () => {
     expect(byLabel<HTMLInputElement>(dlg, 'Folder').placeholder).toBe('/home/you/notes');
     // the WSL install has Claude Code's models and modes
     expect(optionsOf(byLabel<HTMLElement>(dlg, 'Model')).map((o) => o.value)).toEqual(['', 'opus', 'sonnet', 'haiku', OTHER_MODEL]);
+    // Start waits for the last choice of the place and CLI picked, so it creates what the form shows (D2)
+    await waitFor(() => expect(byText<HTMLButtonElement>(dlg, 'button', 'Start chat').disabled).toBe(false), r);
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
     await waitFor(() => expect(navigated).toEqual(['/chats/c_wsl']), r);
     expect(created).toEqual([{ projectId: undefined, cwd: undefined, adapter: 'claude', wslDistro: 'Ubuntu', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true }]);
@@ -2141,6 +2165,30 @@ describe('unread chats (D8)', () => {
       focused = true;
       await r.act(() => window.dispatchEvent(new Event('focus')));
       await waitFor(() => expect(reads).toEqual([['chat_a', 2]]), r);
+    } finally {
+      delete (document as unknown as { hasFocus?: unknown }).hasFocus;
+    }
+  });
+  it('after a resend the new answer, which takes the same seq again, is marked read too', async () => {
+    const reads: unknown[][] = [];
+    Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
+    try {
+      const { s, r } = setup(
+        {
+          chatList: async () => [item({ unread: 0 })],
+          chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'where?'), msg(2, 'assistant', 'in calc.go')], hasMore: false }),
+          chatMarkRead: async (...a: unknown[]) => (reads.push(a), { chatId: 'chat_a', lastReadSeq: 2 }),
+        },
+        { id: 'chat_a' },
+      );
+      await waitFor(() => expect(reads).toEqual([['chat_a', 2]]), r);
+      // Regenerate: the core drops seq 1 on, moves the cursor back, and stores the new messages at seq 1 and 2 again
+      s.emit({ type: 'chat.rewound', data: { chatId: 'chat_a', fromSeq: 1 } });
+      s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(1, 'user', 'where?', { id: 'm_u2' }) } });
+      s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(2, 'assistant', 'in main.go', { id: 'm_a2' }) } });
+      await waitFor(() => expect(messages(r).map((m) => m.textContent!.includes('in main.go'))).toEqual([false, true]), r);
+      await waitFor(() => expect(reads.at(-1)).toEqual(['chat_a', 2]), r);
+      expect(reads.length).toBeGreaterThan(1);
     } finally {
       delete (document as unknown as { hasFocus?: unknown }).hasFocus;
     }

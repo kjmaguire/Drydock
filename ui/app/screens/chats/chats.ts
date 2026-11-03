@@ -494,7 +494,8 @@ export function writeChatFilter(f: ChatFilter, store: Pick<Storage, 'setItem'> |
 }
 
 /**
- * Whether chat.create was refused because of the agent CLI itself (A9): a notice not accepted ("needs your acknowledgement"),
- * not signed in, or not installed. A licence or folder refusal is not one: the CLI's fix would not help.
+ * Whether chat.create was refused because of the agent CLI itself (A9): only the core's own CLI refusals, a notice not accepted
+ * ("needs your acknowledgement", internal/core/ext_chats.go), "is not signed in" or "is not installed". A licence, project or
+ * folder refusal ("not found", "not available") is not one: the CLI's fix would not help.
  */
-export const cliRefusal = (e: Error | undefined): boolean => !!e && /acknowledg|not signed in|sign in|not installed|not found/i.test(e.message);
+export const cliRefusal = (e: Error | undefined): boolean => !!e && /needs your acknowledgement|is not signed in|is not installed/i.test(e.message);

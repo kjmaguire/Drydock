@@ -38,8 +38,10 @@ final answer, when its last sentence is an offer ("Want me to ...?") or a questi
 the offer, Not now, Explain more; Yes, No, Explain more; You decide, Explain more), worked out on the page from the words, never
 by a model; a click sends the reply. Ctrl+O opens every line (verbose), kept per viewer in the browser's storage. The header is
 the title, the folder (or the project) and ⋯ (the CLI with its state, where the chat runs, its skills and MCP servers, Allowed
-tools, Properties, Fork, Move to a project); a CLI that is missing, not signed in or whose last turn failed is one warning chip
-there, which opens Properties to pick another. The composer's chips are the agent CLI, the model and effort, the permission
+tools, Properties, Fork, Move to a project); a CLI that is missing, not signed in, has a notice to accept or whose last turn
+failed is one warning chip there. For the CLI's state the chip opens its fix in place (`screens/shared/cli-fix.tsx`, A9: Sign
+in, else the install command, else the notice with a tick and Accept), with "Use another CLI" (Properties) last; a last turn
+that failed keeps Try again. The composer's chips are the agent CLI, the model and effort, the permission
 mode, then attach, Stop and Send. A new chat is the composer with the cursor in it. `ChatConversation`
 (`ui/app/screens/chats/chat-conversation.tsx`, `<ChatConversation chatId=... onNavigate?=... />`) is one chat without the
 list, for a page that embeds a chat. New chat no longer waits on the CLI: `chat.create` and `chat.update` check only whether the

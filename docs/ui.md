@@ -497,6 +497,8 @@ with a dot and ", N unread" in its name (`chat-unread`), the Chats link counts s
 no toast: G2's toast surface is not on this branch). A new chat (New chat, Work's New chat, the dialog) starts with the model,
 effort and mode the person last chose with the chips for the same place (a project, or none) and CLI; a mode that skips
 approvals is never carried, and the chip's popover says "From your last chat" the first time it is opened (`from-last.ts`);
+the dialog reads that choice (`chat.lastChoice`) for the project and CLI picked and shows it in its Model, Effort and Permission
+mode fields with "From your last chat.", so what it shows is what is created (Start chat waits until it is read);
 Home's chips start from the same choice when nothing is remembered for the place (D2). A refusal's callout and Allowed tools
 offer "…and in every new chat": the rule, checked by the core as a chat's own, is copied into every new Claude Code chat (listed
 there and removable, with a note in the chat), and the list is on Settings > Agent CLIs, Claude Code's Overview, under Chats

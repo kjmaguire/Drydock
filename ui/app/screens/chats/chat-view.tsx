@@ -249,6 +249,9 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
       /* an older core: nothing to mark */
     }
   };
+  // a resend (Edit, Regenerate) deletes from its seq on and the core moves the cursor back before it; the new messages take
+  // the same seqs again, so what this view marked comes down with it, or the new answer would never be marked read
+  feed.addEventListener('rewound', (e) => (marked = Math.min(marked, e.detail - 1)), { signal: handle.signal });
   window.addEventListener('focus', markRead, { signal: handle.signal });
   document.addEventListener('visibilitychange', markRead, { signal: handle.signal });
   window.addEventListener(
@@ -433,7 +436,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     const lastRow = msgs.at(-1);
     const canRetry = !locked && !running && lastUserSeq > 0;
     const tryAgain = canRetry && chat.status === 'error' ? () => void resend(lastUserSeq) : undefined;
-    // the header's "Last turn failed" chip is Try again; a CLI that is missing or signed out still opens Properties
+    // the header's "Last turn failed" chip is Try again; a CLI that is missing or signed out opens its fix in place (A9)
     const chipRetry = warning === 'Last turn failed' ? tryAgain : undefined;
     const goOn = canRetry && lastRow?.role === 'system' && lastRow.body === STOPPED_NOTE ? () => void send(CONTINUE_TEXT) : undefined;
     const row = (m: ChatMessage, i: number, extra: { toolOpen?: boolean } = {}) => {

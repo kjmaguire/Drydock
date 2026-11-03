@@ -39,7 +39,7 @@ export const OLDER_PAGE = 100;
 
 type FeedClient = Pick<ChatClient, 'chatGet' | 'chatMessages'>;
 
-export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }> {
+export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event; rewound: CustomEvent<number> }> {
   chat: Chat | undefined;
   messages: ChatMessage[] = [];
   hasMore = false;
@@ -269,6 +269,8 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
         const from = Number(d.fromSeq);
         if (!Number.isInteger(from) || from < 1) return this.#ignore(e, 'rewound');
         this.messages = this.messages.filter((m) => m.seq < from);
+        // the seqs from `from` on are used again by the new messages: a reader that remembers what it marked lowers it (D8)
+        this.dispatchEvent(new CustomEvent('rewound', { detail: from }));
         break;
       }
       case 'chat.tool_result': {
