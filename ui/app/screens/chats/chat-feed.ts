@@ -151,6 +151,9 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event; r
     this.#emit();
   };
 
+  /** A failed read's Retry (ErrorNote retry={retryFor(feed)} looks for `reload`): reads the chat and its latest messages again. */
+  reload = (): Promise<void> => this.load();
+
   /** Read the page before the oldest message shown; returns how many were added. */
   loadOlder = async (): Promise<number> => {
     if (this.loadingOlder || !this.hasMore || this.#stopped) return 0;

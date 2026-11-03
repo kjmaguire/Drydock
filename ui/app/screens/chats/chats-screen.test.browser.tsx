@@ -1523,6 +1523,24 @@ describe('Conversation', () => {
     await waitFor(() => expect(r.container.textContent).toContain('This chat is archived.'), r);
     expect(byLabel<HTMLTextAreaElement>(r.container, 'Message').disabled).toBe(true);
   });
+
+  it('a failed read of the chat offers Retry, which reads it again and shows the messages', async () => {
+    let reads = 0;
+    const { r } = conv(chat(), [], {
+      chatGet: async () => {
+        reads++;
+        if (reads === 1) throw new Error('the core is busy');
+        return { chat: chat(), messages: [msg(1, 'user', 'hello'), msg(2, 'assistant', 'hi there')], hasMore: false };
+      },
+    });
+    const retry = await waitFor(() => byText(r.container, 'button', 'Retry'), r);
+    expect(r.container.textContent).toContain('the core is busy');
+    expect(messages(r)).toHaveLength(0);
+    await r.act(() => retry.click());
+    await waitFor(() => expect(messages(r)).toHaveLength(2), r);
+    expect(reads).toBe(2);
+    expect(r.container.textContent).not.toContain('the core is busy');
+  });
 });
 
 describe("The palette's New chat", () => {

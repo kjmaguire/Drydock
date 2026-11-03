@@ -109,7 +109,7 @@ export function ImportClaudeDialog(handle: Handle<{ open: boolean; onClose: () =
           <p style={{ margin: '0' }}>
             Copies the chats Claude Code keeps on this PC into Chats. Each one continues its Claude Code session in the folder it ran in. Claude Code's files are only read, and its sign-in is never opened.
           </p>
-          <ErrorNote error={load.error} what="Could not read Claude Code's chats" />
+          <ErrorNote error={load.error} retry={() => read(!list)} what="Could not read Claude Code's chats" />
           {broken.map((x) => (
             <Notice key={`${x.wslDistro}:${x.folder}`} tone="warn">
               {x.wslDistro ? `WSL: ${x.wslDistro}. ` : ''}

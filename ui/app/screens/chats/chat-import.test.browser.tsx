@@ -138,6 +138,25 @@ describe('Import from Claude Code', () => {
     expect(goButton().disabled).toBe(true);
   });
 
+  it('a failed read of the list offers Retry, which reads it again and lists the sessions', async () => {
+    let reads = 0;
+    const { r } = setup({
+      chatImportList: async () => {
+        reads++;
+        if (reads === 1) throw new Error('the core is busy');
+        return fourSessions();
+      },
+    });
+    await r.act(async () => (await waitFor(() => must(r.container, '[data-testid="chat-import-open-dialog"]'), r)).click());
+    const retry = await waitFor(() => byText(dialog(), 'button', 'Retry'), r);
+    expect(dialog().textContent).toContain('the core is busy');
+    await r.act(() => retry.click());
+    await waitFor(() => expect(rows().length).toBe(4), r);
+    expect(reads).toBe(2);
+    expect(dialog().textContent).not.toContain('the core is busy');
+    expect(goButton().textContent).toBe('Import 2 chats');
+  });
+
   it('shows a refused import and keeps the choice', async () => {
     const { r } = setup({ chatImportList: async () => fourSessions(), chatImport: async () => Promise.reject(new Error('Drydock is read-only: no valid license')) });
     await r.act(async () => (await waitFor(() => must(r.container, '[data-testid="chat-import-open-dialog"]'), r)).click());
