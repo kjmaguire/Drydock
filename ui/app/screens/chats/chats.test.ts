@@ -271,6 +271,8 @@ describe('chats routes and palette', () => {
     expect(routes.chat.href({ id: 'chat_1' })).toBe('/chats/chat_1');
     expect(parseRoute('/chats')).toEqual({ name: 'chats' });
     expect(parseRoute('/chats/chat_1')).toEqual({ name: 'chat', id: 'chat_1' });
+    // the reopen guard (D7) asks the router, so an address with a trailing slash is Chats too
+    expect(parseRoute('/chats/')).toEqual({ name: 'chats' });
     expect(parseRoute('/chats/a/b')).toEqual({ name: 'not-found' });
     expect(isWorkspaceRoute({ name: 'chats' })).toBe(true);
     expect(isWorkspaceRoute({ name: 'chat', id: 'x' })).toBe(true);

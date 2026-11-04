@@ -941,14 +941,14 @@ describe('Crew (graphite): the header, Today and the cards', () => {
 
   it("Drydock's own background check (connection.checked) updates the CLI name from its kept answer, without reading the agents or probing every CLI again", async () => {
     const wsl = agent({ id: 'agt_w', name: 'Linux', runMode: 'wsl', wslDistro: 'Ubuntu', model: '' });
-    const install = (key: string, at?: string) => ({ adapter: 'claude', key, runMode: key.includes('@wsl:') ? 'wsl' : 'native', distro: key.split('@wsl:')[1], installed: true, status: 'ready', usable: true, platform: 'windows', at }) as Connection;
+    const install = (key: string, checkSeq: number) => ({ adapter: 'claude', key, runMode: key.includes('@wsl:') ? 'wsl' : 'native', distro: key.split('@wsl:')[1], installed: true, status: 'ready', usable: true, platform: 'windows', checkSeq }) as Connection;
     const calls = { fresh: 0, cached: 0, adapters: 0, extras: 0 };
     let kept: Connection[] = [];
     const { r, s, listed } = showCrew(
       {
         agentTimeline: async (since) => ({ since, until: NOW, agents: [lane(wsl)] }),
         taskSummaries: async () => ({ summaries: [], total: 0, partial: false }),
-        connectionList: async (cached) => (cached ? (calls.cached++, kept) : (calls.fresh++, [install('claude'), install('claude@wsl:Ubuntu')])),
+        connectionList: async (cached) => (cached ? (calls.cached++, kept) : (calls.fresh++, [install('claude', 1), install('claude@wsl:Ubuntu', 2)])),
         adapterList: async () => (calls.adapters++, [{ ...claude, capabilities: { ...claude.capabilities, runModes: ['native', 'wsl'] } }]),
         crewExtras: async () => (calls.extras++, { skills: [], rooms: [] }),
       },
@@ -959,7 +959,7 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · backend');
     const agents = listed();
     // the check found Claude Code in a second distro too: the card names the distro it runs in
-    kept = [install('claude@wsl:Debian', new Date(Date.now() + 1000).toISOString())];
+    kept = [install('claude@wsl:Debian', 5)];
     await r.act(() => s.emit({ type: 'connection.checked' }));
     await waitFor(() => expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL (Ubuntu) · backend'), r);
     expect(calls).toEqual({ fresh: 1, cached: 2, adapters: 1, extras: 1 });

@@ -716,21 +716,23 @@ describe('Agents page', () => {
       connectionList: async (cached) => {
         if (cached) return (calls.cached++, kept);
         calls.fresh++;
-        return [conn({ key: 'claude', usable: false, status: 'unauthenticated', authenticated: false, gates: [], prereqs: [], warnings: [] }), ready({ adapter: 'codex', key: 'codex' })];
+        return [conn({ key: 'claude', usable: false, status: 'unauthenticated', authenticated: false, gates: [], prereqs: [], warnings: [], checkSeq: 3 }), ready({ adapter: 'codex', key: 'codex', checkSeq: 4 })];
       },
       agentListAll: async () => (calls.agents++, [agent('a1')]),
       adapterList: async () => (calls.adapters++, [adapterWith('claude', ['native', 'wsl'])]),
     });
     await waitFor(() => expect(row(r, 'claude').dataset.state).not.toBe('ready'), r);
     await waitFor(() => expect(calls).toEqual({ fresh: 1, cached: 1, agents: 1, adapters: 1 }), r);
-    // the check signed Claude Code in after the page read the list: its kept answer is newer than that read
-    kept = [ready({ key: 'claude', at: new Date(Date.now() + 1000).toISOString() })];
+    // the check signed Claude Code in after the page read the list: its kept answer is a newer check than that read, and the
+    // header says when that check was made, not when the page's own read answered
+    kept = [ready({ key: 'claude', checkSeq: 7, at: new Date(Date.now() - 10.5 * 60_000).toISOString() })];
     await r.act(() => r.s.emit({ type: 'connection.checked' }));
     await waitFor(() => expect(row(r, 'claude').dataset.state).toBe('ready'), r);
+    expect(r.$('[data-testid="agent-header"]')!.textContent).toContain('checked 10 min ago');
     expect(row(r, 'codex').dataset.state).toBe('ready');
     expect(calls).toEqual({ fresh: 1, cached: 2, agents: 1, adapters: 1 });
-    // a kept answer older than the page's own read changes nothing
-    kept = [conn({ key: 'codex', adapter: 'codex', usable: false, status: 'unauthenticated', at: new Date(0).toISOString() })];
+    // a kept answer from a check older than the page's own read changes nothing
+    kept = [conn({ key: 'codex', adapter: 'codex', usable: false, status: 'unauthenticated', checkSeq: 2, at: new Date().toISOString() })];
     await r.act(() => r.s.emit({ type: 'connection.checked' }));
     await waitFor(() => expect(calls.cached).toBe(3), r);
     expect(row(r, 'codex').dataset.state).toBe('ready');

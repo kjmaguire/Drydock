@@ -402,7 +402,8 @@ func (m *Manifest) Validate() error {
 	for i, in := range m.Install {
 		if strings.TrimSpace(in.Command) == "" {
 			add("install[%d].command is required", i)
-		} else if mk := installPlaceholder(in.Command); mk != "" {
+		} else if mk := installPlaceholder(in.Command); mk != "" && !m.Meta.Custom {
+			// Drydock's own manifests only: a person's CLI file (P115) loads whatever its display-only install line says
 			add("install[%d].command is a placeholder (%q), not a command the user can paste", i, mk)
 		}
 		if in.Shell != "powershell" && in.Shell != "cmd" && in.Shell != "sh" {

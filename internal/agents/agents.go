@@ -57,6 +57,9 @@ type Detection struct {
 	Status        ConnectionStatus `json:"status"`
 	Problems      []string         `json:"problems,omitempty"`
 	InstallHint   string           `json:"installHint,omitempty"` // the vendor's official command; never executed by Drydock
+	// CheckSeq orders Drydock's checks (connections.Service numbers each one it records, from 1): of two answers about one
+	// install, the larger number is the newer check. 0: not from a recorded check.
+	CheckSeq uint64 `json:"checkSeq,omitempty"`
 }
 
 // ToolAsk is a CLI's request to use one tool call its own rules do not allow.

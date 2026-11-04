@@ -925,15 +925,9 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // connection.list probes every CLI and distro afresh ("Check all again" reads it again); a started sign-in changes nothing
   // yet, its end (connection.sign_in_finished) does
   // connection.checked is Drydock's own background check (A2): it changes the cached read below, not this one
-  // when the read now on the page was asked for: a background check made after it overrides its install (withCheckedConnections)
-  let freshAt = 0;
+  // a background check newer than a row of this read overrides it (withCheckedConnections, by the core's check numbers)
   const q = query(handle, {
-    load: async () => {
-      const at = Date.now();
-      const r = await s.client.connectionList();
-      freshAt = at;
-      return r;
-    },
+    load: () => s.client.connectionList(),
     when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started' && e.type !== 'connection.checked',
   });
   // the last check of each CLI (Drydock's own, every half hour and after a sign-in or a failed start), answered at once: the page
@@ -1049,7 +1043,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     }
     // until the fresh probe answers, the last check (A2), with when it was made
     const fromCache = !q.data && (cached.data?.length ?? 0) > 0;
-    const list = q.data ? withCheckedConnections(q.data, cached.data, freshAt)! : fromCache ? cached.data! : [];
+    const list = q.data ? withCheckedConnections(q.data, cached.data)! : fromCache ? cached.data! : [];
     const cachedAt = fromCache ? Math.min(...list.map((c) => (c.at ? Date.parse(c.at) : Date.now()))) : 0;
     const { installed, missing } = agentGroups(list);
     // the chosen row; until one is chosen (or when the chosen one is gone) the first that needs attention, else the first. It
@@ -1091,7 +1085,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
           key={key}
           c={open}
           name={cliName(open, list)}
-          checkedAt={fromCache ? (open.at ? Date.parse(open.at) : cachedAt) : checkedAt}
+          checkedAt={open.at ? Date.parse(open.at) : fromCache ? cachedAt : checkedAt}
           now={now}
           gateway={gwRows.find((r) => r.adapter === open.adapter)}
           gatewayError={gateway.error ?? gwAct.error}

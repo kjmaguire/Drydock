@@ -3,7 +3,7 @@
 // Enter does: make the project when the place is new, then the first piece of work, a task when the crew has a worker and a
 // different reviewer and the project has a repository, else a chat in the project.
 
-import { PROJECT_BRIEF_MAX, projectHasRepo, type AdapterInfo, type Agent, type Connection, type PrebuiltAgent, type Project, type SetupRequest, type SetupResult, type SetupWarning, type Task } from '../../api/types.ts';
+import { PROJECT_BRIEF_MAX, projectHasRepo, type AdapterInfo, type Agent, type PrebuiltAgent, type Project, type SetupRequest, type SetupResult, type SetupWarning, type Task } from '../../api/types.ts';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import type { Chat, ChatCreate } from '../../api/chatClient.ts';
 import type { WorkItem } from '../../lib/project-work.ts';
@@ -388,18 +388,6 @@ export function startCli(o: { where: Where; crew: Crew; tuning: Tuning; catalog:
   if (!alt) return { cli };
   const after = startNeeds({ ...o, tuning: insteadTuning(o.tuning, cli.adapter, alt) });
   return { cli, alt: after.includes(cli.adapter) ? undefined : alt };
-}
-
-/**
- * adapter.list with what Drydock's own checks found since it was read (A2): a Windows install's newest check (connection.list
- * {cached}) made after `since` replaces its status, so the line follows a background check without starting every CLI again.
- */
-export function withChecked(adapters: readonly AdapterInfo[] | undefined, checked: readonly Connection[] | undefined, since: number): AdapterInfo[] | undefined {
-  if (!adapters || !checked?.length) return adapters as AdapterInfo[] | undefined;
-  return adapters.map((a) => {
-    const c = checked.find((x) => x.adapter === a.id && x.runMode !== 'wsl' && (x.at ? Date.parse(x.at) : 0) > since);
-    return c ? { ...a, detection: { ...a.detection, status: c.status, installed: c.installed, authenticated: c.authenticated } } : a;
-  });
 }
 
 /** What Enter does, worked out before anything is sent. */

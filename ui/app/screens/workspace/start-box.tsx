@@ -30,6 +30,7 @@ import { CliFixButton } from '../shared/cli-fix.tsx';
 import { adapterLabel } from '../shared/cli-name.ts';
 import { pickPill, pickUp } from './workspace.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
+import { memoLast, withCheckedAdapters } from '../agents/agents.ts';
 import { effortList, modelList, PERMISSION_SEGMENTS } from '../team/agent-edit.ts';
 import {
   browserStore,
@@ -54,7 +55,6 @@ import {
   tuningLabel,
   whereKey,
   whereLabel,
-  withChecked,
   type Crew,
   type CrewKind,
   type DraftedMember,
@@ -221,20 +221,15 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
   const catalog = query(handle, { load: () => s.client.agentCatalogList() });
   // adapter.list starts every CLI: Drydock's own background check (connection.checked, A2) is read from its kept answers
   // instead (connection.list {cached}), which start nothing
-  let adaptersAt = 0;
   const adapterRows = query(handle, {
-    load: async () => {
-      const at = Date.now();
-      const r = await s.client.adapterList();
-      adaptersAt = at;
-      return r;
-    },
+    load: () => s.client.adapterList(),
     when: (e) => (e.type.startsWith('connection.') && e.type !== 'connection.checked' && e.type !== 'connection.sign_in_started') || e.type.startsWith('adapter.'),
   });
   const checkedRows = query(handle, { load: () => s.client.connectionList(true).catch(() => [] as Connection[]), when: (e) => e.type === 'connection.checked' });
+  const merged = memoLast(withCheckedAdapters);
   const adapters = {
     get data() {
-      return withChecked(adapterRows.data, checkedRows.data, adaptersAt);
+      return merged(adapterRows.data, checkedRows.data);
     },
   };
   const baseDir = query(handle, { load: () => s.client.githubCloneDir(true).catch(() => '') });

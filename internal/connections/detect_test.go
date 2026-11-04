@@ -531,3 +531,25 @@ func TestGatesStartNoCLI(t *testing.T) {
 		t.Fatal("an unknown adapter must be an error")
 	}
 }
+
+// Each recorded check is numbered (CheckSeq), so a page holding an earlier answer and the kept ones tells which is newer without
+// comparing clocks: the answer Check returns is the one kept, and a later check of any install has a larger number.
+func TestRecordedChecksAreNumberedInOrder(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // no CLI on PATH: every check answers at once
+	svc, err := connections.NewService(connections.Config{Detection: connections.Options{Timeout: 3 * time.Second}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.Check(context.Background(), "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _ := svc.Check(context.Background(), "codex")
+	again, _ := svc.Check(context.Background(), "claude")
+	if first.CheckSeq == 0 || other.CheckSeq <= first.CheckSeq || again.CheckSeq <= other.CheckSeq {
+		t.Fatalf("check numbers %d, %d, %d: want increasing from 1", first.CheckSeq, other.CheckSeq, again.CheckSeq)
+	}
+	if kept := svc.Last()["claude"]; kept.CheckSeq != again.CheckSeq {
+		t.Fatalf("kept check %d, returned %d", kept.CheckSeq, again.CheckSeq)
+	}
+}

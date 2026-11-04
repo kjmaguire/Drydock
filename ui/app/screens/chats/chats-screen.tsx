@@ -7,6 +7,7 @@
 import { css, navigate, on, type Handle } from 'remix/component';
 import { Plus } from 'lucide';
 import { routes } from '../../routes.ts';
+import { parseRoute } from '../../lib/route.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -105,7 +106,7 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
       handle.queueTask(() => {
         if (handle.signal.aborted) return;
         if (onNavigate) onNavigate(href);
-        else if (window.location.pathname === routes.chats.href()) void navigate(href, { history: 'replace' }).catch(() => {});
+        else if (parseRoute(window.location.pathname).name === 'chats') void navigate(href, { history: 'replace' }).catch(() => {});
       });
     }
     // while /chats works out which chat to open, the centre stays blank rather than flash the empty state

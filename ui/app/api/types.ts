@@ -536,6 +536,8 @@ export interface Detection {
   status: ConnectionStatus | string;
   problems?: string[];
   installHint?: string;
+  /** Which of Drydock's checks this answer came from: of two answers about one install, the larger is the newer (A2). */
+  checkSeq?: number;
 }
 
 export interface AdapterInfo {

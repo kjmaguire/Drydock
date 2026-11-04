@@ -203,10 +203,10 @@ describe('Home is the start screen (P142)', () => {
     let full = 0;
     let signedIn = false; // signed in elsewhere: the background check finds it
     const { r, s } = show({
-      adapterList: async () => (listed++, [{ ...adapterInfo('claude', true, ['sonnet']), detection: { adapter: 'claude', installed: true, status: 'unauthenticated' } }]),
+      adapterList: async () => (listed++, [{ ...adapterInfo('claude', true, ['sonnet']), detection: { adapter: 'claude', installed: true, status: 'unauthenticated', checkSeq: 1 } }]),
       connectionList: async (c) => {
         if (!c) full++;
-        return signedIn ? [{ adapter: 'claude', key: 'claude', runMode: 'native', installed: true, status: 'ready', usable: true, platform: 'windows', at: new Date().toISOString() } as Connection] : [];
+        return signedIn ? [{ adapter: 'claude', key: 'claude', runMode: 'native', installed: true, status: 'ready', usable: true, platform: 'windows', checkSeq: 2 } as Connection] : [];
       },
     });
     await waitFor(() => expect(r.$('[data-testid="start-cli"]')).not.toBeNull(), r);

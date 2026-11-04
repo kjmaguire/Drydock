@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
-import type { Agent, Connection, Project, SetupRequest } from '../../api/types.ts';
+import type { Agent, Project, SetupRequest } from '../../api/types.ts';
 import { projectWorkHref } from '../../lib/project-work.ts';
 import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
 import {
@@ -39,7 +39,6 @@ import {
   taskTitle,
   TASK_TITLE_MAX,
   whereKey,
-  withChecked,
   type Crew,
   type StartClient,
   type StartPlan,
@@ -443,14 +442,6 @@ describe("whether the builder's CLI is ready, before Enter (A1)", () => {
     const mine: Crew = { kind: 'mine', templates: ['t1'], drafted: [] };
     const tpl = { ...template('t1', 'Ada', 'backend'), adapter: 'claude' } as AgentTemplate;
     expect(startCli({ where: { kind: 'new', path: '/c/x' }, crew: mine, tuning, catalog: CATALOG, templates: [tpl], adapters: [signedOut, codex] })).toEqual({ cli: { adapter: 'claude', state: 'sign-in', text: 'Claude Code is not signed in.' } });
-  });
-
-  it("follows Drydock's own checks made after adapter.list was read, not older ones (A2)", () => {
-    const at = (ms: number) => new Date(ms).toISOString();
-    const checked = [{ adapter: 'claude', key: 'claude', runMode: 'native', status: 'ready', installed: true, usable: true, at: at(2000) } as Connection];
-    expect(withChecked([signedOut], checked, 1000)![0]!.detection.status).toBe('ready');
-    expect(withChecked([signedOut], checked, 3000)![0]!.detection.status).toBe('unauthenticated');
-    expect(withChecked([signedOut], [{ ...checked[0]!, runMode: 'wsl', key: 'claude@wsl:Ubuntu' }], 1000)![0]!.detection.status).toBe('unauthenticated');
   });
 
   it('Use Codex instead puts the builder on that CLI, with its own defaults', () => {
