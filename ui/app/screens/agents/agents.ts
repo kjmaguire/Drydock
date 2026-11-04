@@ -73,6 +73,12 @@ export const connectionKey = (c: Pick<Connection, 'adapter' | 'key'>): string =>
 /** Which of Drydock's checks an answer came from (the core numbers each one, checkSeq): the larger is the newer. */
 const seqOf = (d: { checkSeq?: number }): number => d.checkSeq ?? 0;
 
+/**
+ * Whether a kept check is newer than an answer the page holds. An answer with no number did not come from Drydock's checks (an
+ * adapter that detects itself, an older core): no kept check is known to be newer than it, so it is left as it is.
+ */
+const newerCheck = (check: Connection | undefined, held: { checkSeq?: number }): check is Connection => !!check && seqOf(held) > 0 && seqOf(check) > seqOf(held);
+
 /** Drydock's kept checks (connection.list {cached}) by install key. */
 const checksByKey = (checked: readonly Connection[]): Map<string, Connection> => new Map(checked.map((c) => [connectionKey(c), c]));
 
@@ -88,11 +94,12 @@ export function withCheckedConnections(fresh: readonly Connection[] | undefined,
   let changed = false;
   const out = fresh.map((c) => {
     const k = byKey.get(connectionKey(c));
-    if (!k || seqOf(k) <= seqOf(c)) return c;
+    if (!newerCheck(k, c)) return c;
     changed = true;
     return k;
   });
   const read = Math.max(0, ...fresh.map(seqOf));
+  if (read === 0) return changed ? out : (fresh as Connection[]); // a read with no numbers: nothing is known to be newer
   const known = new Set(fresh.map(connectionKey));
   for (const c of checked) {
     if (!known.has(connectionKey(c)) && seqOf(c) > read) {
@@ -112,7 +119,7 @@ export function withCheckedAdapters(adapters: readonly AdapterInfo[] | undefined
   const byKey = checksByKey(checked);
   return adapters.map((a) => {
     const c = byKey.get(a.id); // the Windows install's key is the adapter id; one inside a distro has its own
-    return c && seqOf(c) > seqOf(a.detection) ? { ...a, detection: { ...a.detection, status: c.status, installed: c.installed, authenticated: c.authenticated, checkSeq: c.checkSeq } } : a;
+    return newerCheck(c, a.detection) ? { ...a, detection: { ...a.detection, status: c.status, installed: c.installed, authenticated: c.authenticated, checkSeq: c.checkSeq } } : a;
   });
 }
 

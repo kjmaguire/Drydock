@@ -268,6 +268,9 @@ describe('the card matrix and the history in words (decision P132)', () => {
     expect(withCheckedConnections(fresh, [c('claude', 'ready', 4)])).toBe(fresh);
     expect(withCheckedConnections(fresh, [c('claude@wsl:Ubuntu', 'ready', 7)])!.map(connectionKey)).toEqual(['claude', 'codex', 'claude@wsl:Ubuntu']);
     expect(withCheckedConnections(fresh, [c('claude@wsl:Ubuntu', 'ready', 3)])).toBe(fresh); // older than the read: it already left
+    // a read whose rows carry no check number (not from Drydock's checks) is left as it is
+    const unnumbered = [c('claude', 'unauthenticated', 0)];
+    expect(withCheckedConnections(unnumbered, [c('claude', 'ready', 7), c('codex', 'ready', 8)])).toBe(unnumbered);
     expect(withCheckedConnections(undefined, [c('claude', 'ready', 7)])).toBeUndefined();
     expect(withCheckedConnections(fresh, undefined)).toBe(fresh);
   });
@@ -278,6 +281,9 @@ describe('the card matrix and the history in words (decision P132)', () => {
     expect(withCheckedAdapters([signedOut], [check])![0]!.detection).toMatchObject({ status: 'ready', authenticated: true, checkSeq: 9 });
     expect(withCheckedAdapters([signedOut], [{ ...check, checkSeq: 3 }])![0]!.detection.status).toBe('unauthenticated');
     expect(withCheckedAdapters([signedOut], [{ ...check, runMode: 'wsl', key: 'claude@wsl:Ubuntu' }])![0]!.detection.status).toBe('unauthenticated');
+    // an adapter that detects itself (no check number) is not overridden by Drydock's kept checks
+    const selfDetected = { ...signedOut, detection: { ...signedOut.detection, status: 'ready', checkSeq: undefined } } as AdapterInfo;
+    expect(withCheckedAdapters([selfDetected], [{ ...check, status: 'unauthenticated' }])![0]!.detection.status).toBe('ready');
   });
 
   it('memoLast computes again only when an argument changes', () => {
