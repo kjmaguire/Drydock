@@ -186,6 +186,7 @@ type Core struct {
 	folderSync  sync.RWMutex
 	fwdCache    forwardCache  // what sandbox.forward.list last asked the engine, for a few seconds
 	clones      cloneRuns     // the clones running now, for github.cloneCancel (B12)
+	landing     landingClones // the clones a made project waits for (project.setup with repo.later, B12)
 	ghStatus    ghStatusCache // the last github.status answer, for a few seconds (F4)
 	written     writtenFiles  // the files this run wrote for the person, the only ones fs.reveal shows (A11)
 	sbStarts    sandboxStarts // how the last start of each task's sandbox went, step by step (X39)
@@ -246,6 +247,8 @@ type Core struct {
 	// onCall, when set, is told the name of every method Call dispatches (the usage counters, decision P121)
 	onCall atomic.Pointer[func(name string)]
 	cancel context.CancelFunc
+	// bg lives as long as the core: work that outlives the call that started it (a clone a made project waits for) runs in it
+	bg context.Context
 }
 
 // Open creates (or reopens) the application state in cfg.DataDir and resumes interrupted runs.
@@ -295,7 +298,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	bg, cancel := context.WithCancel(context.Background())
-	c := &Core{cfg: cfg, DB: db, cancel: cancel, adapters: map[string]agents.Adapter{}, repos: map[string]*git.Repo{}}
+	c := &Core{cfg: cfg, DB: db, cancel: cancel, bg: bg, adapters: map[string]agents.Adapter{}, repos: map[string]*git.Repo{}}
 	c.start.r = StartReport{StartedAt: storage.Now(), Unexpected: unclean, Resumed: []StartRun{}, NotResumed: []StartRun{}, Resuming: []StartRun{}}
 	acked, err := c.loadGateAcks(ctx)
 	if err != nil {
@@ -484,6 +487,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 // Close stops background work. Running agent processes are killed with their job objects.
 func (c *Core) Close() {
 	c.cancel()
+	c.landing.wg.Wait() // a clone still landing ends with bg: it removes its half-made folder before the database closes
 	for i := len(c.extClose) - 1; i >= 0; i-- {
 		c.extClose[i]()
 	}

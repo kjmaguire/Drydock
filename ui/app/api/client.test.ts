@@ -491,6 +491,8 @@ describe('project setup client methods', () => {
     await c.projectCreate('later');
     await c.projectAttachRepo('p1', '/r');
     await c.projectSetBrief('p1', 'b');
+    // the core answers null when no clone is landing (B12)
+    expect(await c.projectCloneState('p1')).toBe(null);
     await c.githubRepos('acme', 'pay');
     await c.githubClone('acme/pay', '/src');
     await c.mcpAddFromCatalog('cf');
@@ -500,6 +502,7 @@ describe('project setup client methods', () => {
     expect(all('project.create')).toEqual([{ name: 'later', repoPath: '' }]);
     expect(all('project.attachRepo')).toEqual([{ id: 'p1', repoPath: '/r' }]);
     expect(all('project.setBrief')).toEqual([{ id: 'p1', brief: 'b' }]);
+    expect(all('project.cloneState')).toEqual([{ id: 'p1' }]);
     expect(all('github.repos')).toEqual([{ owner: '', query: '' }, { owner: 'acme', query: 'pay' }]);
     expect(all('github.clone')).toEqual([{ repo: 'acme/pay', dir: '/src' }]);
     expect(all('agentcatalog.list')).toEqual([{ projectId: 'p1' }]);

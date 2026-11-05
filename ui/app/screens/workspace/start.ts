@@ -264,7 +264,9 @@ export function newProjectSetup(o: { where: Where; name: string; catalog: readon
   const st = { ...startWizard(o.where, '', team), name: o.name.trim() };
   const p = stepProblem(st, 'Team');
   if (p) return { problem: p };
-  return buildSetup(st);
+  const req = buildSetup(st);
+  // a clone is made after the project (B12): New project lands on Work at once, and the clone is attached when it lands
+  return req.repo.kind === 'github' ? { ...req, repo: { ...req.repo, later: true } } : req;
 }
 
 /** What keeps Enter from starting, in words; undefined when it can start. */

@@ -20,7 +20,6 @@ import { Field } from '../../ui/form.tsx';
 import { Segmented } from '../../ui/segmented.tsx';
 import { t } from '../../ui/tokens.ts';
 import { FolderField } from '../project/folder-field.tsx';
-import { CloneProgress } from '../project/clone-progress.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
 import { currentCheck, folderProblem, initChosen } from '../project/wizard.ts';
 import { browserStore, defaultProjectName, newProjectFolder, newProjectSetup, type Where } from './start.ts';
@@ -86,7 +85,7 @@ export function NewProjectDialog(handle: Handle<{ open: boolean; where?: NewProj
     const fp = kind === 'folder' ? folderProblem(currentCheck({ localPath: folder.path, localCheck: folder.check }), folder.init) : undefined;
     const req = newProjectSetup({ where: w, name: shownName(), catalog: catalog.data ?? [], fallbackAdapter: adapters.data?.find((a) => a.detection.installed)?.id ?? 'claude' });
     if (fp || 'problem' in req) return;
-    progress = kind === 'clone' ? 'Cloning…' : 'Creating project…';
+    progress = 'Creating project…'; // a clone runs after the project is made, on its Work page (B12)
     // a first run shows Home in place of the project's pages: the new project must not replace it before the page moves on
     s.workspace.setSetupOpen(true);
     const r = await act.run('create', () => s.client.projectSetup(req));
@@ -192,11 +191,7 @@ export function NewProjectDialog(handle: Handle<{ open: boolean; where?: NewProj
             )}
             <ErrorNote error={act.error} what="Could not create the project" />
             <div class="acts">
-              {progress && kind === 'clone' && clone.repo ? (
-                <span class="progress" data-testid="new-project-progress">
-                  <CloneProgress repo={clone.repo.fullName} />
-                </span>
-              ) : progress ? (
+              {progress ? (
                 <span class="progress" role="status" data-testid="new-project-progress">
                   {progress}
                 </span>

@@ -105,6 +105,8 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.AttachRepository(ctx, p.ID, p.RepoPath)
 		}),
+		// project.cloneState is the clone a project made before its clone lands waits for, or why it was not attached (B12)
+		"project.cloneState": bind(func(_ context.Context, p idParam) (any, error) { return c.CloneState(p.ID), nil }),
 		"project.setBrief": bind(func(ctx context.Context, p struct {
 			ID    string `json:"id"`
 			Brief string `json:"brief"`

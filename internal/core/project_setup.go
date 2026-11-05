@@ -34,6 +34,9 @@ type SetupRepo struct {
 	Init     bool   `json:"init"`
 	GitHub   string `json:"github"`   // github: owner/name
 	CloneDir string `json:"cloneDir"` // github: parent folder (default DefaultCloneDir)
+	// Later makes the project at once and attaches the clone when it lands (github only, B12): the answer carries Landing
+	// instead of Clone, and the project has no repository until then (project_clone_landing.go).
+	Later bool `json:"later"`
 }
 
 // SetupAgent is one team member: a prebuilt agent, a saved template, or a custom agent.
@@ -57,10 +60,12 @@ type SetupAgent struct {
 
 // SetupResult is the new project and what happened.
 type SetupResult struct {
-	Project  Project      `json:"project"`
-	Agents   []Agent      `json:"agents"`
-	Clone    *CloneResult `json:"clone,omitempty"`
-	Warnings []string     `json:"warnings"`
+	Project Project      `json:"project"`
+	Agents  []Agent      `json:"agents"`
+	Clone   *CloneResult `json:"clone,omitempty"`
+	// Landing is the clone the project waits for (repo.later): it is attached when it lands.
+	Landing  *LandingClone `json:"landing,omitempty"`
+	Warnings []string      `json:"warnings"`
 	// Problems are the same warnings, one each, with what kind of thing failed, so the project's Work page can show each as
 	// its own line with the action that fixes it (B2). Warnings stays for older readers.
 	Problems []SetupWarning `json:"problems"`
@@ -103,6 +108,7 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 		}
 	}
 	repoPath := ""
+	var later struct{ repo, parent string }
 	switch r.Repo.Kind {
 	case "", "none":
 		if strings.TrimSpace(r.Name) == "" {
@@ -119,6 +125,17 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 			}
 		}
 	case "github":
+		if r.Repo.Later {
+			repo, parent, err := c.checkLaterClone(r.Repo.GitHub, r.Repo.CloneDir)
+			if err != nil {
+				return res, err
+			}
+			later.repo, later.parent = repo, parent
+			if strings.TrimSpace(r.Name) == "" {
+				r.Name = repo[strings.IndexByte(repo, '/')+1:]
+			}
+			break
+		}
 		cl, err := c.GitHubClone(ctx, r.Repo.GitHub, r.Repo.CloneDir)
 		if err != nil {
 			return res, err
@@ -286,6 +303,10 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 			why = conn.Problems[0]
 		}
 		warnAs(SetupWarning{Kind: "cli", Adapter: ad, Status: string(conn.Status)}, "%s cannot work yet: the %s CLI is not usable on this machine (%s). Set it up in Settings > Agent CLIs: install it, sign in and accept its notice", strings.Join(byAdapter[ad], ", "), ad, why)
+	}
+	if later.repo != "" {
+		l := c.landClone(p.ID, later.repo, later.parent)
+		res.Landing = &l
 	}
 	c.publish(ctx, "project.setup", p.ID, map[string]any{"agents": len(res.Agents), "warnings": len(res.Warnings), "repo": r.Repo.Kind})
 	return res, nil

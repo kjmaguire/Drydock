@@ -2731,3 +2731,10 @@ Open, owner action:
   window. Wails v3.1.0 needed no code change (icon resource 3 unchanged); go-toast is its one new module (Unlicense OR MIT).
   Tests: each item's Go or UI test next to the code it changed (named in the batch commits and their review fixes), the e2e
   specs whose strings or flows changed updated; the full Go, UI and e2e suites pass on the merged branch.
+  Afterwards, B12 in full: New project's Clone makes the project first and attaches the clone when it lands (`project.setup`
+  with `repo.later`, `internal/core/project_clone_landing.go`). The target folder and a clone already running are checked
+  before the project is made; the clone runs under the core's lifetime (Close waits for it); a clone that fails, is cancelled
+  or is cut short leaves the project without a repository, removes its half-made folder and says why on Work
+  (`project.cloneState`, kept in memory until the app restarts) with Clone and attach. The start box keeps waiting for its
+  clone: the task it starts needs the repository. Tests: `TestSetupLater*` (a clone that lands, one refused up front, one
+  cancelled) and `screens/work/landing-clone.test.browser.tsx`.

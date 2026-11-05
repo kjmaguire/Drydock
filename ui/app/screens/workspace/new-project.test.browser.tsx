@@ -142,33 +142,22 @@ describe('New project on Home (P143)', () => {
     expect(window.location.search).toBe('');
   });
 
-  it('Clone from GitHub: Create shows the clone as it goes with Cancel, which ends it; the core says it was cancelled (B12)', async () => {
+  it('Clone from GitHub: Create makes the project at once and lands on Work; the clone is attached when it lands (B12)', async () => {
     window.history.replaceState(window.history.state, '', '/home?new=project&where=clone');
-    let fail: (e: Error) => void = () => {};
-    const cancels: string[] = [];
-    const { r, s } = show({
+    const { r, navigated, chosen, started, setups } = show({
       githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }),
       githubOwners: async () => ['acme'],
       githubRepos: async () => [{ fullName: 'acme/gocalc', owner: 'acme', name: 'gocalc', description: '', private: false, archived: false, fork: false, defaultBranch: 'main', htmlUrl: '', pushedAt: '' }],
       repoCheck: async (p: string) => ({ path: p, state: 'missing', entries: 0, canInit: true, message: '' }) as never,
-      projectSetup: () => new Promise((_, reject) => (fail = reject)),
-      githubCloneCancel: async (repo: string) => {
-        cancels.push(repo);
-        fail(new Error('the clone of acme/gocalc was cancelled: nothing was kept'));
-        return true;
-      },
     });
     await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
     await r.act(() => (r.$('[data-testid="gh-repo"] input') as HTMLInputElement).click());
     await waitFor(() => expect(create(r).disabled).toBe(false), r);
     await r.act(() => create(r).click());
-    await waitFor(() => expect(r.$('[data-testid="clone-progress"]')!.textContent).toBe('Cloning gocalc…'), r);
-    s.emit({ type: 'github.clone_progress', data: { repo: 'acme/gocalc', phase: 'Receiving objects', percent: 42 } });
-    await waitFor(() => expect(r.$('[data-testid="clone-progress"]')!.textContent).toBe('Cloning gocalc… receiving 42%'), r);
-    await r.act(() => (r.$('[data-testid="clone-cancel"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(r.$('[data-testid="new-project-dialog"]')!.textContent).toContain('was cancelled'), r);
-    expect(cancels).toEqual(['acme/gocalc']);
-    expect(r.$('[data-testid="clone-progress"]')).toBeNull();
+    await waitFor(() => expect(navigated).toEqual(['/']), r);
+    expect(setups.map((x) => x.repo)).toEqual([{ kind: 'github', github: 'acme/gocalc', cloneDir: '/d/scratch', later: true }]);
+    expect(chosen).toEqual(['p9']);
+    expect(started).toEqual([]);
   });
 
   it('an error stays in the dialog; Cancel closes it; read-only turns Create off', async () => {

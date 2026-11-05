@@ -32,6 +32,7 @@ import { MemoryLine } from './memory-line.tsx';
 import { RecommendLine } from './recommend-line.tsx';
 import { RepoSyncLine } from './repo-sync-line.tsx';
 import { SetupNotes } from './setup-notes.tsx';
+import { LandingCloneLine } from './landing-clone.tsx';
 import { StartBox } from '../workspace/start-box.tsx';
 import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, roomsUnread, workRows, type WorkGroup, type WorkRow } from './work.ts';
 import { AddReviewerNote } from '../shared/add-reviewer.tsx';
@@ -263,6 +264,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
           </div>
           {/* what failed when the project was made, a line each with its fix, until dismissed or resolved (B2) */}
           {pid() ? <SetupNotes key={`notes:${pid()}`} projectId={pid()!} /> : null}
+          {/* the clone a project made before its clone landed waits for, or why it did not land (B12) */}
+          {pid() && s.workspace.project && !s.workspace.project.hasRepo ? <LandingCloneLine key={`landing:${pid()}`} projectId={pid()!} /> : null}
           <ErrorNote error={act.error ?? chats.error} retry={retryFor(act, chats)} what={act.error ? 'Could not start a chat' : 'Could not read the chats'} />
           <div mix={listCss} data-testid="work-list">
             {(['needs', 'running', 'earlier'] as WorkGroup[]).map((g) =>

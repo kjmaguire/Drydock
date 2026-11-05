@@ -239,6 +239,18 @@ export interface SetupRepo {
   github?: string;
   /** github: the parent folder (default github.cloneDir) */
   cloneDir?: string;
+  /** github: make the project at once and attach the clone when it lands (B12); the answer carries `landing`. */
+  later?: boolean;
+}
+
+/** core.LandingClone: the clone a project made before its clone landed waits for, or why it was not attached (B12). */
+export interface LandingClone {
+  projectId: string;
+  repo: string;
+  /** git runs, or the clone is being attached */
+  running: boolean;
+  /** why the clone was not attached (failed, cancelled, refused); empty while running */
+  error?: string;
 }
 
 /** One agent of the wizard: a prebuilt catalog entry, a saved template, or a custom agent (name, role, adapter). */
@@ -278,6 +290,8 @@ export interface SetupResult {
   project: Project;
   agents: Agent[];
   clone?: CloneResult;
+  /** repo.later: the clone the project waits for, attached when it lands (B12). */
+  landing?: LandingClone;
   /** What did not work after the project was created (the project exists). */
   warnings: string[];
   /** The same, one line each with what kind of thing failed (B2); an older core sends none. */

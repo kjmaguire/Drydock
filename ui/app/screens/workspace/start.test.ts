@@ -356,7 +356,8 @@ describe('New project (P143): a project with nothing started', () => {
     expect(req.agents.map((a) => a.prebuilt)).toEqual(['backend-engineer']);
     expect(req.agents[0]!.permissionMode).toBe('acceptEdits');
     const clone = newProjectSetup({ where: { kind: 'clone', repo: 'acme/pay', cloneDir: '/src' }, name: 'pay', catalog: CATALOG }) as SetupRequest;
-    expect(clone.repo).toEqual({ kind: 'github', github: 'acme/pay', cloneDir: '/src' });
+    // New project's Clone makes the project at once and the clone is attached when it lands (B12)
+    expect(clone.repo).toEqual({ kind: 'github', github: 'acme/pay', cloneDir: '/src', later: true });
     const folder = newProjectSetup({ where: { kind: 'folder', path: '/src/gocalc', init: false }, name: 'gocalc', catalog: CATALOG }) as SetupRequest;
     expect(folder.repo).toEqual({ kind: 'local', path: '/src/gocalc' });
   });

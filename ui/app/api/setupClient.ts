@@ -8,6 +8,7 @@ import type {
   CloneResult,
   GitHubRepo,
   GitHubStatus,
+  LandingClone,
   McpCatalogAdded,
   McpCatalogEntry,
   PrebuiltAgent,
@@ -32,6 +33,8 @@ export interface SetupClient {
   /** Once per project: a repository is never swapped. */
   projectAttachRepo(id: string, repoPath: string): Promise<Project>;
   projectSetBrief(id: string, brief: string): Promise<Project>;
+  /** The clone a project made with repo.later waits for, or why it was not attached; null when there is none (B12). */
+  projectCloneState(id: string): Promise<LandingClone | null>;
   /** Whether gh is installed and signed in; the core keeps an answer a few seconds unless `refresh` asks gh again (F4). */
   githubStatus(refresh?: boolean): Promise<GitHubStatus>;
   /** Runs the person's own `gh auth login` in a terminal (F4); github.sign_in_finished follows when it ends. */
@@ -91,6 +94,7 @@ export function createSetupClient(t: Transport): SetupClient {
     },
     projectAttachRepo: (id, repoPath) => t.call('project.attachRepo', { id, repoPath }),
     projectSetBrief: (id, brief) => t.call('project.setBrief', { id, brief }),
+    projectCloneState: async (id) => (await t.call<LandingClone | null>('project.cloneState', { id })) ?? null,
     githubStatus: (refresh) => t.call('github.status', refresh ? { refresh: true } : {}),
     githubSignIn: () => t.call<TerminalInfo>('github.signIn', {}),
     githubCloneCancel: async (repo) => (await t.call<{ cancelled?: boolean } | null>('github.cloneCancel', { repo }))?.cancelled === true,

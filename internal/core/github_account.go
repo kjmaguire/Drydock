@@ -246,27 +246,36 @@ func (c *Core) GitHubCloneDir(ctx context.Context) string {
 	return DefaultCloneDir()
 }
 
+// cloneTarget is the repository (owner/name), the folder to clone into (DefaultCloneDir when empty) and the clone's own
+// folder inside it, or why they are not usable. Nothing is made.
+func cloneTarget(fullName, parentDir string) (repo, parent, dest string, err error) {
+	repo = host.FullNameOf(fullName)
+	if !host.ValidFullName(repo) {
+		return "", "", "", fmt.Errorf("%q is not a GitHub repository name (owner/name)", repo)
+	}
+	if strings.TrimSpace(parentDir) == "" {
+		parentDir = DefaultCloneDir()
+	}
+	parent = filepath.Clean(strings.TrimSpace(parentDir))
+	if !filepath.IsAbs(parent) {
+		return "", "", "", fmt.Errorf("choose a full folder path to clone into, not %q", parent)
+	}
+	return repo, parent, filepath.Join(parent, repo[strings.IndexByte(repo, '/')+1:]), nil
+}
+
 // GitHubClone clones owner/name into parentDir/name with the user's own `gh` (their sign-in, nothing stored by Drydock) and
 // returns the new repository's path, ready for project.create or project.attachRepo.
 func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (CloneResult, error) {
 	if err := c.RequireLicensed(ctx, "create_project"); err != nil {
 		return CloneResult{}, err
 	}
-	fullName = host.FullNameOf(fullName)
-	if !host.ValidFullName(fullName) {
-		return CloneResult{}, fmt.Errorf("%q is not a GitHub repository name (owner/name)", fullName)
-	}
-	if strings.TrimSpace(parentDir) == "" {
-		parentDir = DefaultCloneDir()
-	}
-	parentDir = filepath.Clean(strings.TrimSpace(parentDir))
-	if !filepath.IsAbs(parentDir) {
-		return CloneResult{}, fmt.Errorf("choose a full folder path to clone into, not %q", parentDir)
+	fullName, parentDir, dest, err := cloneTarget(fullName, parentDir)
+	if err != nil {
+		return CloneResult{}, err
 	}
 	if err := os.MkdirAll(parentDir, 0o755); err != nil {
 		return CloneResult{}, fmt.Errorf("cannot create %s: %w", parentDir, err)
 	}
-	dest := filepath.Join(parentDir, fullName[strings.IndexByte(fullName, '/')+1:])
 	// the run is registered before the folder is looked at: a second clone of the same repository, or into the same folder,
 	// is refused here and never reaches the clean-up below, which would remove the folder the first clone is writing
 	ctx, cancelRun := context.WithCancelCause(ctx)
