@@ -5,7 +5,8 @@ import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
 import { cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
-import { NeedsYouScreen } from './needs-you-screen.tsx';
+import type { Handle } from 'remix/component';
+import { ACK_CHUNK, NeedsYouScreen } from './needs-you-screen.tsx';
 import { startOfToday } from './needs-you.ts';
 
 afterEach(cleanup);
@@ -104,7 +105,7 @@ describe('the Inbox', () => {
     expect(r.$('h1')!.textContent).toBe('Inbox');
     expect(r.$('[role="tablist"]')!.getAttribute('aria-label')).toBe('Filter');
     const tabs = Array.from(r.$$('[role="tab"]')).map((x) => x.textContent);
-    await waitFor(() => expect(Array.from(r.$$('[role="tab"]')).map((x) => x.textContent)).toEqual(['Needs you 3', 'Running 2', 'Done today 1']), r);
+    await waitFor(() => expect(Array.from(r.$$('[role="tab"]')).map((x) => x.textContent)).toEqual(['Needs you 3', 'Running 2', 'Done today 1', 'Mine']), r);
     expect(tabs[0]).toContain('Needs you');
     const rows = Array.from(r.$$('[data-testid="needs-item"]'));
     expect(rows.map((x) => x.getAttribute('data-look'))).toEqual(['approval', 'spec', 'failed_check']);
@@ -189,6 +190,25 @@ describe('the Inbox', () => {
     await r.act(() => press('a'));
     await waitFor(() => expect(calls.respond).toEqual([['run1', 'apr1', 'approved']]), r);
     expect(calls.forTask).toEqual([]);
+  });
+
+  it('a review a collaborator asked changes on while it waited is sent back with their words, and A does not merge it (H12)', async () => {
+    const item: NeedsYouItem = { key: 'approval:apr9', kind: 'pr_review', severity: 1, title: 'Review and merge: Add Divide', detail: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', projectId: 'p1', approvalId: 'apr9', taskId: 't9', phase: 'merge', createdAt: new Date(NOW - 60_000).toISOString() } as NeedsYouItem;
+    const prDetail: ApprovalDetail = {
+      id: 'apr9', kind: 'review', phase: 'merge', title: 'Review and merge: Add Divide', description: 'Merge it.', shell: false, targets: [], shortened: false, editable: false,
+      projectId: 'p1', runId: 'run9', createdAt: NOW, status: 'REQUESTED', approveForTask: false, rules: [],
+      prReview: { summary: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', author: 'kyle', feedback: '> from kyle:\n> Please handle negative numbers.' },
+    };
+    const { r, calls } = await open({ approvalGet: async () => prDetail }, [item]);
+    await waitFor(() => expect(r.$('[data-testid="detail-send-back"]')).not.toBeNull(), r);
+    expect(r.$('[data-testid="needs-item"]')!.getAttribute('data-look')).toBe('changes');
+    expect(r.$('[data-testid="detail-kind"]')!.textContent).toBe('Changes asked on GitHub · gocalc');
+    expect(r.$('[data-testid="detail-pr-review"]')!.textContent).toContain('Please handle negative numbers.');
+    expect(r.$('[data-testid="detail-approve"]')).toBeNull();
+    await r.act(() => press('a'));
+    expect(calls.respond).toEqual([]);
+    await r.act(() => (r.$('[data-testid="detail-send-back"]') as HTMLElement).click());
+    await waitFor(() => expect(calls.respond).toEqual([['run9', 'apr9', 'rejected', { feedback: '> from kyle:\n> Please handle negative numbers.' }]]), r);
   });
 
   it('J and K move the selection; the spec gate shows its criteria and A accepts the spec as written', async () => {
@@ -282,6 +302,42 @@ describe('the Inbox', () => {
     expect(calls.taskList[0]).toEqual(['', ['COMPLETED'], { completedSince: startOfToday() }]);
   });
 
+  it('a running task that already has an item is not listed again under it on Needs you; the Running tab keeps it (P144)', async () => {
+    // the rate limit task (t4) runs and waits for a review at once
+    const review: NeedsYouItem = { key: 'approval:apr9', kind: 'review', severity: 2, title: 'Review and merge: Rate limit the checkout API', projectId: 'p2', taskId: 't4', taskSeq: 12, approvalId: 'apr9', createdAt: iso(NOW) };
+    const { s } = servicesWith({}, [review]);
+    const r = mount(<NeedsYouScreen />, s);
+    await waitFor(() => expect(r.$$('[data-testid="needs-item"]').length).toBe(1), r);
+    await waitFor(() => expect(r.$('[data-testid="running-scan"]')).toBeTruthy(), r);
+    // the scan still runs under it; the task is its item only
+    expect(r.$$('[data-testid="running-item"]').length).toBe(0);
+    expect(Array.from(r.$$('[data-row-key]')).map((x) => x.getAttribute('data-row-key'))).toEqual(['needs:approval:apr9', 'scan:scan1']);
+    await r.act(() => (r.$('[data-testid="inbox-tab-running"]') as HTMLButtonElement).click());
+    expect(r.$$('[data-testid="running-item"]').length).toBe(1);
+    expect(r.$('[data-testid="inbox-tab-running"] [data-testid="tab-count"]')!.textContent).toBe('2');
+    cleanup();
+    // when every running thing has its item, the Needs you tab shows no Running group at all
+    const { s: s2 } = servicesWith({ securityScanRunning: async () => [] }, [review]);
+    const r2 = mount(<NeedsYouScreen />, s2);
+    await waitFor(() => expect(r2.$$('[data-testid="needs-item"]').length).toBe(1), r2);
+    await waitFor(() => expect(s2.workspace.runningCount).toBe(1), r2);
+    expect(r2.$('[data-testid="inbox-running"]')).toBeNull();
+  });
+
+  it('the Mine tab is My tasks (decision P140): the tasks assigned to the person in every project, each a link to its task', async () => {
+    const { s, calls } = servicesWith();
+    const r = mount(<NeedsYouScreen tab="mine" />, s);
+    await waitFor(() => expect(s.ui.inboxTab).toBe('mine'), r);
+    await waitFor(() => expect(r.$$('[data-testid="my-task"]').length).toBe(1), r);
+    expect(r.$('[data-testid="inbox-tab-mine"]')!.getAttribute('aria-selected')).toBe('true');
+    expect(r.$('#inbox-mine')!.textContent).toBe('My tasks');
+    expect(r.$('[data-testid="my-task"] a')!.getAttribute('href')).toBe('/task/t9');
+    expect(calls.taskList.some((a) => JSON.stringify(a) === JSON.stringify(['', [], { assignee: 'human:kyle' }]))).toBe(true);
+    // nothing of the other tabs, and the detail says what a row does
+    expect(r.$$('[data-testid="needs-item"]').length).toBe(0);
+    expect(r.$('[data-testid="inbox-detail"]')!.textContent).toBe('Open a task to see it.');
+  });
+
   it('opens on the tab its address names', async () => {
     const { s } = servicesWith();
     const r = mount(<NeedsYouScreen tab="running" />, s);
@@ -290,10 +346,108 @@ describe('the Inbox', () => {
     expect(r.$$('[data-testid="needs-item"]').length).toBe(0);
     expect(r.$('[data-testid="inbox-tab-running"]')!.getAttribute('aria-selected')).toBe('true');
     cleanup();
-    // the address without a tab is Needs you, whatever tab was open last
+    // the address without a tab opens where the Inbox was left (the tab is remembered)
     const again = mount(<NeedsYouScreen />, s);
-    await waitFor(() => expect(s.ui.inboxTab).toBe('needs'), again);
-    await waitFor(() => expect(again.$$('[data-testid="needs-item"]').length).toBe(3), again);
+    await waitFor(() => expect(again.$$('[data-testid="running-item"]').length).toBe(1), again);
+    expect(s.ui.inboxTab).toBe('running');
+    expect(again.$$('[data-testid="needs-item"]').length).toBe(0);
+  });
+
+  it("selects the row its address names (?item=), on that row's tab, so Reload and Back come back to it", async () => {
+    const { s } = servicesWith();
+    s.ui.setInboxTab('done');
+    const r = mount(<NeedsYouScreen item="needs:check:m1" />, s);
+    await waitFor(() => expect(s.ui.inboxTab).toBe('needs'), r);
+    await waitFor(() => expect(selectedKey(r)).toBe('needs:check:m1'), r);
+    expect(r.$('[data-testid="inbox-detail"]')!.textContent).toContain('Tests failed');
+    cleanup();
+    // an item no longer listed selects the first row, as the Inbox does without one
+    const { s: s2 } = servicesWith();
+    const gone = mount(<NeedsYouScreen item="needs:check:gone" />, s2);
+    await waitFor(() => expect(gone.$$('[data-testid="needs-item"]').length).toBe(3), gone);
+    await waitFor(() => expect(selectedKey(gone)).toBe('needs:approval:apr1'), gone);
+  });
+
+  it('marks several items done at once: Mark N done for those shown, Shift+J/K picks some, a request is never among them', async () => {
+    const check2: NeedsYouItem = { key: 'watchdog:9', kind: 'watchdog_pause', severity: 1, title: 'Paused: no progress', projectId: 'p1', taskId: 't1', taskSeq: 41, createdAt: iso(NOW - 30 * 60_000) };
+    const mention: NeedsYouItem = { key: 'mention:5', kind: 'mention', severity: 3, title: 'Dana mentioned you', projectId: 'p1', createdAt: iso(NOW - 40 * 60_000) };
+    const many: string[][] = [];
+    const items = [permission, failed, check2, mention];
+    const { r } = await open({ needsYouAckMany: async (keys) => (many.push(keys), keys.length) }, items);
+    // the request (permission) is answered, never marked done: three of four
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 3 done');
+    // Shift+J from the first row picks it and the next; only the one that can be marked done counts
+    expect(selectedKey(r)).toBe('needs:approval:apr1');
+    await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'J', shiftKey: true, bubbles: true, cancelable: true })));
+    await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'J', shiftKey: true, bubbles: true, cancelable: true })));
+    expect(Array.from(r.$$('[data-picked="true"]')).map((x) => x.getAttribute('data-row-key'))).toEqual(['needs:approval:apr1', 'needs:check:m1', 'needs:watchdog:9']);
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 2 done');
+    // Escape lets the picked rows go
+    await r.act(() => press('Escape'));
+    expect(r.$$('[data-picked="true"]').length).toBe(0);
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 3 done');
+    await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', shiftKey: true, bubbles: true, cancelable: true })));
+    await r.act(() => press('e'));
+    await waitFor(() => expect(many).toEqual([['check:m1', 'watchdog:9']]), r);
+    await waitFor(() => expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 3 done'), r);
+    await r.act(() => (r.$('[data-testid="mark-many"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(many[1]).toEqual(['check:m1', 'watchdog:9', 'mention:5']), r);
+  });
+
+  it('marks more than the core takes in one call in turns of at most ACK_CHUNK', async () => {
+    expect(ACK_CHUNK).toBe(200);
+    const items: NeedsYouItem[] = Array.from({ length: 230 }, (_, i) => ({ ...failed, key: `check:m${i}`, title: `Tests failed ${i}` }));
+    const many: string[][] = [];
+    const { s } = servicesWith({ needsYouAckMany: async (keys) => (many.push(keys), keys.length) }, items);
+    const r = mount(<NeedsYouScreen />, s);
+    await waitFor(() => expect(r.$('[data-testid="mark-many"]')?.textContent).toBe('Mark 230 done'), r);
+    await r.act(() => (r.$('[data-testid="mark-many"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(many.map((k) => k.length)).toEqual([200, 30]), r);
+    expect([...many[0]!, ...many[1]!]).toEqual(items.map((it) => it.key));
+  });
+
+  // the Inbox's keys ignore any press with Ctrl, Alt or the Windows key (lib/keys.ts typing): Ctrl+Shift+K only opens the Inbox
+  it('Ctrl+Shift+K (open the Inbox) neither moves the selection nor picks rows', async () => {
+    const check2: NeedsYouItem = { key: 'watchdog:9', kind: 'watchdog_pause', severity: 1, title: 'Paused: no progress', projectId: 'p1', taskId: 't1', taskSeq: 41, createdAt: iso(NOW - 30 * 60_000) };
+    const { r } = await open({}, [permission, failed, check2]);
+    await r.act(() => press('j'));
+    expect(selectedKey(r)).toBe('needs:check:m1');
+    for (const mods of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', shiftKey: true, ...mods, bubbles: true, cancelable: true })));
+      expect(selectedKey(r)).toBe('needs:check:m1');
+      expect(r.$$('[data-picked="true"]').length).toBe(0);
+    }
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 2 done');
+  });
+
+  it('a link back to the item it opened on selects it again after the selection moved', async () => {
+    const check2: NeedsYouItem = { key: 'watchdog:9', kind: 'watchdog_pause', severity: 1, title: 'Paused: no progress', projectId: 'p1', taskId: 't1', taskSeq: 41, createdAt: iso(NOW - 30 * 60_000) };
+    const { s } = servicesWith({}, [permission, failed, check2]);
+    const before = location.pathname + location.search;
+    let item = 'needs:check:m1';
+    let host!: Handle;
+    function Host(h: Handle) {
+      host = h;
+      return () => <NeedsYouScreen item={item} onNavigate={() => {}} />;
+    }
+    try {
+      window.history.replaceState(window.history.state, '', `/needs-you?item=${encodeURIComponent(item)}`);
+      const r = mount(<Host />, s);
+      await waitFor(() => expect(selectedKey(r)).toBe('needs:check:m1'), r);
+      await r.act(() => press('j'));
+      expect(selectedKey(r)).toBe('needs:watchdog:9');
+      await waitFor(() => expect(new URLSearchParams(location.search).get('item')).toBe('needs:watchdog:9'), r);
+      // other updates keep the selection where it moved (the prop still names the first item)
+      await r.act(() => host.update());
+      expect(selectedKey(r)).toBe('needs:watchdog:9');
+      // the sidebar's count links to needs:check:m1 again: the address and the prop name it
+      window.history.pushState(window.history.state, '', `/needs-you?item=${encodeURIComponent('needs:check:m1')}`);
+      item = 'needs:check:m1';
+      await r.act(() => host.update());
+      await waitFor(() => expect(selectedKey(r)).toBe('needs:check:m1'), r);
+    } finally {
+      window.history.replaceState(window.history.state, '', before);
+    }
   });
 
   it('says plainly when nothing waits and nothing runs, with or without a project', async () => {
@@ -334,5 +488,101 @@ describe('the Inbox', () => {
     expect(calls.ack).toEqual([]);
     await r.act(() => (r.$('[data-testid="detail-let-in"]') as HTMLButtonElement).click());
     await waitFor(() => expect(answers).toEqual([['jr1', true]]), r);
+  });
+
+  it("an agent CLI that is not signed in offers Sign in on the item itself (A9), for the distro it names", async () => {
+    const cli: NeedsYouItem = { key: 'connection:claude@wsl:Ubuntu', kind: 'connection', severity: 2, title: 'Claude Code WSL is not signed in', adapter: 'claude', connectionKey: 'claude@wsl:Ubuntu', createdAt: iso(NOW - 60_000) };
+    const signIns: unknown[][] = [];
+    const conn = { adapter: 'claude', key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', installed: true, status: 'unauthenticated', authenticated: false, usable: false, platform: 'linux', signIn: 'claude auth login' };
+    const { r } = await open(
+      { connectionList: async () => [conn] as never, connectionSignIn: async (...a: unknown[]) => (signIns.push(a), { id: 'term1' }) as never, terminalClose: async () => {} },
+      [cli],
+    );
+    await r.act(() => (r.$('[data-row-key="needs:connection:claude@wsl:Ubuntu"]') as HTMLButtonElement).click());
+    const btn = await waitFor(() => {
+      const b = r.$('[data-testid="cli-fix-sign-in"]');
+      if (!b) throw new Error('no Sign in yet');
+      return b as HTMLButtonElement;
+    }, r);
+    expect(btn.textContent).toBe('Sign in');
+    await r.act(() => btn.click());
+    await waitFor(() => expect(signIns).toEqual([['claude', 'Ubuntu']]), r);
+  });
+});
+
+describe('every gate answered from the Inbox (C3)', () => {
+  const ciItem: NeedsYouItem = {
+    key: 'approval:apr7', kind: 'question', severity: 2, title: 'CI did not report on the pull request', projectId: 'p1', taskId: 't2', taskSeq: 42, approvalId: 'apr7', createdAt: iso(NOW - 60_000),
+  };
+  const ciDetail: ApprovalDetail = {
+    id: 'apr7', kind: 'question', gate: 'ci', title: ciItem.title, description: 'CI did not report.', shell: false, targets: [], shortened: false, editable: false, projectId: 'p1',
+    runId: 'run7', createdAt: NOW, status: 'REQUESTED', approveForTask: false, rules: [], payload: { gate: 'ci', pr: 4, url: 'https://github.com/o/r/pull/4', reason: 'none', missing: [], running: [] },
+  };
+
+  it("a CI gate shows the task page's panel; its answer goes to the request's run, and A does not answer it", async () => {
+    const { r, calls } = await open({ approvalGet: async () => ciDetail }, [ciItem]);
+    await waitFor(() => expect(r.$('[data-testid="detail-gate"] [data-testid="ci-gate"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="needs-hint"]')).toBeNull();
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the task');
+    await r.act(() => press('a'));
+    await new Promise((res) => setTimeout(res, 30));
+    expect(calls.respond).toEqual([]);
+    const again = Array.from(r.$$('[data-testid="detail-gate"] button')).find((b) => b.textContent?.includes('Check CI again')) as HTMLButtonElement;
+    await r.act(() => again.click());
+    await waitFor(() => expect(calls.respond).toEqual([['run7', 'apr7', 'answered', {}]]), r);
+  });
+
+  it("a chat's waiting tool call is allowed once with A, or denied, from the detail", async () => {
+    const chatItem: NeedsYouItem = { key: 'chat-ask:ask1', kind: 'chat_permission', severity: 2, title: 'Asks to use Bash: go test ./...', detail: 'In the chat Tests', projectId: 'p1', chatId: 'c1', createdAt: iso(NOW - 60_000) };
+    const answers: unknown[][] = [];
+    const ask = { id: 'ask1', chatId: 'c1', turnId: 'u1', messageId: 'm1', tool: 'Bash', summary: 'Bash: go test ./...', input: { command: 'go test ./...' }, created: NOW, expiresAt: NOW + 1_800_000 };
+    const { r } = await open({ chatAsks: async () => [ask], chatAnswer: async (...a) => void answers.push(a) }, [chatItem]);
+    await waitFor(() => expect(r.$('[data-testid="detail-chat-ask"] [data-testid="chat-ask"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the chat');
+    await waitFor(() => expect(r.$('[data-row-key="needs:chat-ask:ask1"] kbd')?.textContent).toBe('A'), r);
+    await r.act(() => press('a'));
+    await waitFor(() => expect(answers).toEqual([['c1', 'ask1', true]]), r);
+  });
+});
+
+describe('an agent that failed its task (C6)', () => {
+  const agentFailed: NeedsYouItem = {
+    key: 'agent:a1:failed:1', kind: 'agent', severity: 1, title: 'Failed: the worker gave up', projectId: 'p1', agentId: 'a1', agentName: 'Free hand', taskId: 't5', taskSeq: 43, createdAt: iso(NOW - 60_000),
+  };
+  const withEnded = (status: string) => ({
+    taskSummaries: async () => {
+      const all = [...summaries, summary({ taskId: 't5', seq: 43, title: 'Fetch the feed', status })];
+      return { summaries: all, total: all.length, partial: false };
+    },
+  });
+
+  it('runs the task again as a new task from the item, after the confirmation', async () => {
+    const again: string[] = [];
+    const { r, navigated } = await open({ ...withEnded('FAILED'), taskRunAgain: async (id) => (again.push(id), { taskId: 't10', seq: 44, runId: 'run10', from: id }) }, [agentFailed]);
+    await waitFor(() => expect(r.$('[data-testid="run-again"]')).toBeTruthy(), r);
+    await r.act(() => (r.$('[data-testid="run-again"]') as HTMLButtonElement).click());
+    expect(again).toEqual([]);
+    expect(r.$('[data-testid="run-again-confirm"]')!.textContent).toContain('Task #43, which failed, stays as it is');
+    const yes = Array.from(r.$$('[data-testid="run-again-confirm"] button')).find((b) => b.textContent === 'Run it again') as HTMLButtonElement;
+    await r.act(() => yes.click());
+    await waitFor(() => expect(again).toEqual(['t5']), r);
+    await waitFor(() => expect(navigated).toEqual(['/task/t10']), r);
+  });
+
+  it('reports the run from the item: the Support page with its run picked (X56)', async () => {
+    const { r } = await open(withEnded('FAILED'), [{ ...agentFailed, runId: 'run_42' }]);
+    const link = await waitFor(() => {
+      const el = r.$('[data-testid="detail-report"]');
+      if (!el) throw new Error('no Report this yet');
+      return el;
+    }, r);
+    expect(link.textContent).toBe('Report this');
+    expect(link.getAttribute('href')).toBe('/support?run=run_42');
+  });
+
+  it('offers nothing to run again while the task has not ended', async () => {
+    const { r } = await open(withEnded('IN_PROGRESS'), [agentFailed]);
+    await waitFor(() => expect(r.$('[data-testid="detail-done"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="run-again"]')).toBeNull();
   });
 });

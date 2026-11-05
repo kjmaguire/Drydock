@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -155,5 +156,21 @@ func TestAcceptanceStateFollowsTheNewestTestRun(t *testing.T) {
 	}
 	if got := pipeline.AcceptanceState(nil, traced); got == nil || len(got) != 0 {
 		t.Fatalf("no criteria: %#v", got)
+	}
+}
+
+// X24: a check that wrote a log file names it as the Logs tab does ("ev:<evidence id>"), so the Checks grid opens that log.
+func TestLatestChecksNameTheirLog(t *testing.T) {
+	logged := evd(7, "test", no, "test failed", nil)
+	dir := t.TempDir()
+	logged.Ref = filepath.Join(dir, "test.log")
+	ci := evd(8, "ci", no, "CI failed", nil)
+	ci.Ref = filepath.Join(dir, "ci.log") // a CI result is never a log, whatever its reference
+	got := pipeline.LatestChecks([]tasks.Evidence{evd(6, "build", yes, "", nil), logged, ci}, nil)
+	if len(got) != 3 || got[0].LogID != "" || got[1].LogID != "ev:7" || got[2].LogID != "" {
+		t.Fatalf("log ids: %+v", got)
+	}
+	if p, ok := pipeline.EvidenceLogPath("lint", "relative.log"); ok || p != "relative.log" {
+		t.Fatalf("a relative reference is not a log: %q %v", p, ok)
 	}
 }

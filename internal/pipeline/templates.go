@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kjmaguire/drydock/internal/agents/responder"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
@@ -187,4 +188,10 @@ func graphName(name string, pr bool) string {
 		return name + PRSuffix
 	}
 	return name
+}
+
+// RunsPreview reports whether a task of the template gets the preview before approval when the project switches it on: only Full
+// Stack SaaS has that step (SaaSGraph). The project settings say so under the switch (effort review X311).
+func RunsPreview(template string) bool {
+	return strings.TrimSuffix(template, PRSuffix) == WorkflowSaaS
 }

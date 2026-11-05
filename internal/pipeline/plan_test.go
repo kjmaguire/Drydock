@@ -92,7 +92,7 @@ type planEnv struct {
 	pd pipeline.PlanDeps
 }
 
-func newPlanEnv(t *testing.T, planner fakeagent.Script) *planEnv {
+func newPlanEnv(t *testing.T, planner fakeagent.Script, opts ...func(*pipeline.PlanDeps)) *planEnv {
 	e := newTpl(t, map[string]fakeagent.Script{aPM: planner, aWork: {Default: []fakeagent.Step{say("x")}}, aReview: shipReviewer()}, tplOpts{title: "Harness task"})
 	pe := &planEnv{tpl: e}
 	pe.pd = pipeline.PlanDeps{
@@ -113,6 +113,9 @@ func newPlanEnv(t *testing.T, planner fakeagent.Script) *planEnv {
 			_, err := e.tasks.Patch(ctx, tk.ID, tasks.Update{Assignee: &w, Reviewer: &r})
 			return err
 		},
+	}
+	for _, o := range opts {
+		o(&pe.pd)
 	}
 	if err := e.eng.RegisterNew(pe.pd.PlanGraph()); err != nil {
 		t.Fatal(err)
@@ -290,5 +293,24 @@ func TestProposedFilesAreValidatedAndKept(t *testing.T) {
 	}
 	if got := p.Tasks[0].Files; len(got) != 2 || got[0] != "internal/auth/" || got[1] != "calc.go" {
 		t.Fatalf("files = %q", got)
+	}
+}
+
+// The Plan screen says before Accept which tasks nobody on the crew can take: the same role match the Assign step makes.
+func TestPlanAssignableFollowsTheCrewRoles(t *testing.T) {
+	p, problems := pipeline.ParseProposal(planJSON(nil))
+	if len(problems) != 0 {
+		t.Fatal(problems)
+	}
+	team := []pipeline.TeamMember{{ID: "a1", Name: "Dana", Role: "Back end"}, {ID: "a2", Name: "Rex", Role: "reviewer"}, {ID: "a3", Name: "Lee", Role: "team lead"}}
+	can := pipeline.PlanAssignable(p, team)
+	if !can["mul"] || !can["div"] || can["docs"] || len(can) != 3 {
+		t.Fatalf("assignable %v", can)
+	}
+	if got := strings.Join(pipeline.CrewPlanRoles(team), ","); got != "backend,reviewer" {
+		t.Fatalf("crew roles %q", got)
+	}
+	if got := pipeline.CrewPlanRoles(nil); got == nil || len(got) != 0 {
+		t.Fatalf("an empty crew has no roles, as an empty list: %#v", got)
 	}
 }

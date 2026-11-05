@@ -4,7 +4,7 @@ import type { Client } from '../api/client.ts';
 import type { Project, Room, Task } from '../api/types.ts';
 import { FakeTransport, ManualScheduler } from '../test/fakes.ts';
 import { EventStore } from './eventStore.ts';
-import { ProjectData } from './project.ts';
+import { needsChanged, ProjectData } from './project.ts';
 import { Workspace } from './workspace.ts';
 
 const task = (seq: number): Task => ({ id: `t${seq}`, projectId: 'p1', seq, title: `Task ${seq}`, description: '', status: 'BACKLOG', priority: 0, iteration: 0, maxIterations: 3, costUsd: 0, created: 0, updated: 0, version: 1 });
@@ -113,5 +113,45 @@ describe('a direct message opened from a page is in the room list before it is s
     const before = reads;
     await data.openDM('p2', 'a7');
     expect(reads).toBe(before);
+  });
+});
+
+describe('needsChanged', () => {
+  it("reloads Needs you after Drydock's own check of the agent CLIs and after a sign-in, not after one starts (A2)", () => {
+    const ev = (type: string) => ({ type, seq: 1, ts: 0 }) as never;
+    expect(needsChanged(ev('connection.checked'))).toBe(true);
+    expect(needsChanged(ev('connection.sign_in_finished'))).toBe(true);
+    expect(needsChanged(ev('connection.sign_in_started'))).toBe(false);
+  });
+});
+
+describe('repository skills are looked for when the window gets focus again (E5)', () => {
+  it('asks the core to refresh the open project\'s skills on focus, and nothing without a project', async () => {
+    const store = new EventStore(new FakeTransport(), { scheduler: new ManualScheduler(), backoff: () => 100 });
+    const asked: string[] = [];
+    const c = {
+      agentList: async () => [],
+      roomList: async () => [],
+      roomUnread: async () => [],
+      needsYouList: async () => [],
+      presenceList: async () => [],
+      taskList: async () => [],
+      taskCount: async () => ({ total: 0 }),
+      skillRefresh: async (id: string) => (asked.push(id), true),
+    } as unknown as Client;
+    const ws = new Workspace(c, store, { persist: false });
+    const win = new EventTarget();
+    const ctl = new AbortController();
+    new ProjectData(c, store, ws).start(ctl.signal, win);
+    win.dispatchEvent(new Event('focus'));
+    expect(asked).toEqual([]);
+    ws.projects.set([{ id: 'p1', name: 'gocalc' } as Project]);
+    await until(() => ws.projectId === 'p1');
+    win.dispatchEvent(new Event('focus'));
+    await until(() => asked.length === 1);
+    expect(asked).toEqual(['p1']);
+    ctl.abort();
+    win.dispatchEvent(new Event('focus'));
+    expect(asked).toEqual(['p1']);
   });
 });

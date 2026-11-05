@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionReport } from '../../api/types.ts';
+import type { AdapterInfo, Agent, Connection, ConnectionReport } from '../../api/types.ts';
 import {
   agentGroups,
   agentNotice,
@@ -12,6 +12,9 @@ import {
   cellText,
   checkedWords,
   connectionKey,
+  withCheckedAdapters,
+  withCheckedConnections,
+  memoLast,
   defaultAgent,
   distroBrand,
   gatewayState,
@@ -254,5 +257,42 @@ describe('the card matrix and the history in words (decision P132)', () => {
     expect(runLine({ id: 2, ok: false, prompt: false, passed: 0, failed: 1, skipped: 4, elapsedMs: 0, at: now })).toBe('0 passed, 1 failed, 4 skipped');
     expect(shortReason('T2: timeout')).toBe('T2: timeout');
     expect(shortReason('x'.repeat(300)).length).toBe(160);
+  });
+
+  it("withCheckedConnections lays a background check newer than the read's row over it, and adds an install only a newer check found (A2)", () => {
+    const c = (key: string, status: string, checkSeq: number): Connection => ({ adapter: key.split('@')[0]!, key, status, installed: true, usable: status === 'ready', platform: 'windows', checkSeq }) as Connection;
+    const fresh = [c('claude', 'unauthenticated', 5), c('codex', 'ready', 6)];
+    expect(withCheckedConnections(fresh, [c('claude', 'ready', 7)])!.map((x) => x.status)).toEqual(['ready', 'ready']);
+    // the read's own checks, kept with the same numbers, are not newer than it: nothing is replaced
+    expect(withCheckedConnections(fresh, [c('claude', 'unauthenticated', 5), c('codex', 'ready', 6)])).toBe(fresh);
+    expect(withCheckedConnections(fresh, [c('claude', 'ready', 4)])).toBe(fresh);
+    expect(withCheckedConnections(fresh, [c('claude@wsl:Ubuntu', 'ready', 7)])!.map(connectionKey)).toEqual(['claude', 'codex', 'claude@wsl:Ubuntu']);
+    expect(withCheckedConnections(fresh, [c('claude@wsl:Ubuntu', 'ready', 3)])).toBe(fresh); // older than the read: it already left
+    // a read whose rows carry no check number (not from Drydock's checks) is left as it is
+    const unnumbered = [c('claude', 'unauthenticated', 0)];
+    expect(withCheckedConnections(unnumbered, [c('claude', 'ready', 7), c('codex', 'ready', 8)])).toBe(unnumbered);
+    expect(withCheckedConnections(undefined, [c('claude', 'ready', 7)])).toBeUndefined();
+    expect(withCheckedConnections(fresh, undefined)).toBe(fresh);
+  });
+
+  it("withCheckedAdapters follows the Windows install's check newer than adapter.list, not an older one or a distro's (A2)", () => {
+    const signedOut = { id: 'claude', detection: { adapter: 'claude', installed: true, status: 'unauthenticated', authenticated: false, checkSeq: 4 }, capabilities: {} } as AdapterInfo;
+    const check = { adapter: 'claude', key: 'claude', runMode: 'native', status: 'ready', installed: true, authenticated: true, usable: true, platform: 'windows', checkSeq: 9 } as Connection;
+    expect(withCheckedAdapters([signedOut], [check])![0]!.detection).toMatchObject({ status: 'ready', authenticated: true, checkSeq: 9 });
+    expect(withCheckedAdapters([signedOut], [{ ...check, checkSeq: 3 }])![0]!.detection.status).toBe('unauthenticated');
+    expect(withCheckedAdapters([signedOut], [{ ...check, runMode: 'wsl', key: 'claude@wsl:Ubuntu' }])![0]!.detection.status).toBe('unauthenticated');
+    // an adapter that detects itself (no check number) is not overridden by Drydock's kept checks
+    const selfDetected = { ...signedOut, detection: { ...signedOut.detection, status: 'ready', checkSeq: undefined } } as AdapterInfo;
+    expect(withCheckedAdapters([selfDetected], [{ ...check, status: 'unauthenticated' }])![0]!.detection.status).toBe('ready');
+  });
+
+  it('memoLast computes again only when an argument changes', () => {
+    let runs = 0;
+    const f = memoLast((a: readonly number[], b: number) => (runs++, a.length + b));
+    const a = [1, 2];
+    expect([f(a, 1), f(a, 1), f(a, 1)]).toEqual([3, 3, 3]);
+    expect(runs).toBe(1);
+    expect(f([1, 2], 1)).toBe(3);
+    expect(runs).toBe(2);
   });
 });

@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, linkedTaskIds, titleFromFile } from './requirements.ts';
+import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, isReadable, linkCriteria, linkedTaskIds, linkLabel, titleFromFile, suggestionWhy } from './requirements.ts';
 
 describe('Requirements helpers', () => {
   it('refuses a file over 1 MB before reading it and titles a file by its name', () => {
@@ -16,6 +16,18 @@ describe('Requirements helpers', () => {
     expect(documentProblem((32 << 20) + 1)).toBe('That file is larger than 32 MB.');
   });
 
+  it('reads documents, Markdown and text, never an image or a spreadsheet as text', () => {
+    expect([isReadable('a.pdf'), isReadable('a.DOCX'), isReadable('a.md'), isReadable('a.markdown'), isReadable('a.txt'), isReadable('notes', 'text/plain')]).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect([isReadable('image.png', 'image/png'), isReadable('table.xlsx'), isReadable('slides.pptx', 'application/octet-stream')]).toEqual([false, false, false]);
+  });
+
   it('criteria are one per line, trimmed', () => {
     expect(criteriaLines(' Given a\n\nGiven b \n')).toEqual(['Given a', 'Given b']);
   });
@@ -29,5 +41,31 @@ describe('Requirements helpers', () => {
 
   it('lists each linked task once', () => {
     expect(linkedTaskIds([{ taskId: 'a' }, { taskId: 'b' }, { taskId: 'a' }])).toEqual(['a', 'b']);
+  });
+});
+
+describe('linking criteria (X42)', () => {
+  it('takes what the core takes as Given/When/Then', () => {
+    expect(isGWT('AC1: Given a, when b, then c')).toBe(true);
+    expect(isGWT('given a\nwhen b\nthen c')).toBe(true);
+    expect(isGWT('When b, given a, then c')).toBe(false);
+    expect(isGWT('Givens are whenever thens')).toBe(false);
+  });
+
+  it('sends the ticked criteria and the written ones, each once, and names the refused lines', () => {
+    const own = ['Given a, when b, then c', 'Given d, when e, then f'];
+    expect(linkCriteria(own, new Set([0, 1]), '')).toEqual({ criteria: own, refused: [] });
+    expect(linkCriteria(own, new Set([1]), 'given  D, when e, then F\nfast')).toEqual({ criteria: ['Given d, when e, then f', 'fast'], refused: ['fast'] });
+    expect(linkLabel(3, 12)).toBe('Link 3 criteria of #12');
+    expect(linkLabel(1, 12)).toBe('Link 1 criterion of #12');
+    expect(linkLabel(0, 12)).toBe('Link');
+  });
+});
+
+describe('suggestionWhy (X43)', () => {
+  it('names what of the task matched and the passage it matched', () => {
+    expect(suggestionWhy({ matched: 'title', heading: 'Checkout > Card payments' })).toBe('its title matches "Card payments"');
+    expect(suggestionWhy({ matched: 'criterion', heading: 'Refunds' })).toBe('a criterion matches "Refunds"');
+    expect(suggestionWhy({ matched: 'title', heading: '' })).toBe('its title matches the text');
   });
 });

@@ -8,7 +8,7 @@ import { css, on, type Handle } from 'remix/component';
 import { ExternalLink, LogIn, LogOut, ShieldCheck } from 'lucide';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { formatDateTime } from '../../lib/format.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { ErrorNote, Spinner } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -75,7 +75,7 @@ export function OAuthPanel(handle: Handle<{ server: McpLibraryServer; onChanged:
     );
     return (
       <div mix={panelCss} data-testid="oauth-panel" data-state={d?.state ?? 'idle'} data-signed-in={String(signedIn)}>
-        <ErrorNote error={act.error ?? st.error} what="Sign-in" />
+        <ErrorNote error={act.error ?? st.error} retry={retryFor(act, st)} what="Sign-in" />
         {d?.state === 'failed' && d.error ? (
           <p mix={failCss} role="alert" data-testid="oauth-error">
             The sign-in did not finish: {d.error}

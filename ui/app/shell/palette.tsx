@@ -29,9 +29,12 @@ import {
   buildItems,
   filterItems,
   isChatsPath,
+  keepsRecent,
   previewBlock,
   previewSteps,
   previewWait,
+  readRecent,
+  recordRecent,
   taskKey,
   type PaletteItem,
   type TaskContext,
@@ -177,10 +180,11 @@ function iconOf(it: PaletteItem): IconNode {
   if (it.href === routes.team.href()) return Users;
   if (it.href === routes.tasks.href()) return ClipboardList;
   if (it.href === routes.needsYou.href()) return Inbox;
-  if (it.group === 'Chats') return MessagesSquare;
-  if (it.group === 'Tasks') return ClipboardList;
-  if (it.group === 'Agents') return Bot;
-  if (it.group === 'Actions') return Zap;
+  const group = it.from ?? it.group;
+  if (group === 'Chats') return MessagesSquare;
+  if (group === 'Tasks') return ClipboardList;
+  if (group === 'Agents') return Bot;
+  if (group === 'Actions') return Zap;
   return ArrowRight;
 }
 
@@ -190,7 +194,7 @@ const typing = (target: EventTarget | null): boolean => {
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName ?? ''));
 };
 
-export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => void; onNavigate?: (href: string) => void; taskId?: string }>) {
+export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => void; onNavigate?: (href: string) => void; taskId?: string; dock?: boolean }>) {
   const s = services(handle);
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href));
   watch(handle, s.ui);
@@ -201,6 +205,8 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   let input: HTMLInputElement | undefined;
   let query = '';
   let active = 0;
+  /** What the person ran last (G10), read each time the menu opens. */
+  let recent: string[] = [];
   let pressedBackdrop = false; // see ui/dialog.tsx: a drag from the input out to the backdrop is not a click on it
   const open = () => s.ui.paletteOpen;
   const ctxId = () => (open() ? handle.props.taskId : undefined);
@@ -290,6 +296,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
     if (s.ui.paletteOpen && !dialog.open) {
       query = '';
       active = 0;
+      recent = readRecent().map((r) => r.id);
       if (input) input.value = '';
       if (act.error) act.clear();
       dialog.showModal();
@@ -336,6 +343,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   };
 
   const run = (it: PaletteItem, andOpen = false) => {
+    if (keepsRecent(it)) recordRecent(it.id);
     if (it.op) {
       void runOp(it, andOpen);
       return;
@@ -355,6 +363,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
         break;
       case 'dock':
         if (arg === 'toggle') s.ui.toggleDock();
+        else if (arg === 'terminal') s.ui.showTerminal(); // a terminal, not only its tab (G6)
         else s.ui.openDock(arg as DockTab);
         break;
       case 'details':
@@ -388,7 +397,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
     if (act.busy === it.id) return <p>{it.op?.kind === 'split' ? 'Asking the team lead...' : 'Working on it...'}</p>;
     if (it.op?.kind !== 'assign') return <p>{it.what ?? it.label}</p>;
     const p: AssignPreview | undefined = preview.data;
-    if (preview.error) return <ErrorNote error={preview.error} what="Could not tell what would happen" />;
+    if (preview.error) return <ErrorNote error={preview.error} retry={preview.reload} what="Could not tell what would happen" />;
     if (!p || p.assignee !== it.op.assignee || p.taskId !== ctx?.task.id) return <p>Reading what would happen...</p>;
     const steps = previewSteps(p);
     const block = previewBlock(p);
@@ -444,8 +453,8 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
       ctx = undefined;
       askChoice = undefined;
     }
-    const all = isOpen ? buildItems(p.roomList, p.taskList, p.agentList, chats.data ?? [], { projectKey, context: ctx }) : [];
-    const shown = filterItems(all, query);
+    const all = isOpen ? buildItems(p.roomList, p.taskList, p.agentList, chats.data ?? [], { projectKey, context: ctx, dock: handle.props.dock ?? true }) : [];
+    const shown = filterItems(all, query, 60, recent);
     const groups = arrange(shown, query);
     const flat = groups.flatMap((g) => g.items);
     const idx = Math.min(active, Math.max(flat.length - 1, 0));

@@ -57,3 +57,58 @@ export function rankText(rank: number): string {
   const p = rank * 100;
   return p >= 10 ? `${p.toFixed(0)}%` : p >= 1 ? `${p.toFixed(1)}%` : `${p.toFixed(2)}%`;
 }
+
+// --- what the person chose, kept per project (X412) ---
+
+/** A project's repo map as the person last made it: the focus paths and the budget (kept per project in drydock.repomap). */
+export interface RepoMapPrefs {
+  focus: string[];
+  budget: number;
+}
+
+/** How many projects' choices are remembered; the oldest written is let go first. */
+export const REPO_MAP_PREFS_MAX = 50;
+const MAX_FOCUS = 64;
+
+const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** The project's remembered choices out of what is stored; anything else, or nothing, is the whole repository at the default budget. */
+export function repoMapPrefsOf(raw: unknown, projectId: string): RepoMapPrefs {
+  const v = isRec(raw) && isRec(raw[projectId]) ? raw[projectId] : {};
+  const focus = Array.isArray(v.focus) ? parseFocus(v.focus.filter((x): x is string => typeof x === 'string' && x.length <= 512).join(',')).slice(0, MAX_FOCUS) : [];
+  const budget = typeof v.budget === 'number' ? budgetOf(String(v.budget)) : REPO_MAP_DEFAULT_BUDGET;
+  return { focus, budget };
+}
+
+/** What is stored once the project's choices are kept: the other projects' kept as they are (well-formed ones only), at most REPO_MAP_PREFS_MAX. */
+export function withRepoMapPrefs(raw: unknown, projectId: string, prefs: RepoMapPrefs): Record<string, RepoMapPrefs> {
+  const out: Record<string, RepoMapPrefs> = {};
+  const others = isRec(raw) ? Object.keys(raw).filter((k) => k !== projectId) : [];
+  for (const k of others.slice(Math.max(0, others.length - (REPO_MAP_PREFS_MAX - 1)))) out[k] = repoMapPrefsOf(raw, k);
+  out[projectId] = repoMapPrefsOf({ [projectId]: prefs }, projectId);
+  return out;
+}
+
+/** The budgets offered as one click each. */
+export const BUDGET_CHOICES: readonly { value: number; label: string }[] = [
+  { value: 1024, label: '1k' },
+  { value: 2048, label: '2k' },
+  { value: 4096, label: '4k' },
+  { value: 8192, label: '8k' },
+];
+
+/** The next budget up for "Double the budget", or undefined at the most the map takes. */
+export const doubled = (budget: number): number | undefined => (budget >= REPO_MAP_MAX_BUDGET ? undefined : Math.min(REPO_MAP_MAX_BUDGET, budget * 2));
+
+/** The focus with one path put in, or taken out when it is there already. */
+export const toggleFocus = (focus: readonly string[], path: string): string[] => (focus.includes(path) ? focus.filter((p) => p !== path) : [...focus, path]);
+
+/** The tasks whose files make a focus in one click: open tasks that name files, the latest changed first, at most `n`. */
+export function taskFocusChips<T extends { id: string; seq: number; status: string; updated: number; files?: string[] }>(tasks: readonly T[], n = 5): { id: string; seq: number; files: string[] }[] {
+  const done = new Set(['COMPLETED', 'CANCELLED', 'FAILED']);
+  return tasks
+    .filter((x) => !done.has(x.status) && (x.files ?? []).some((f) => f.trim()))
+    .sort((a, b) => b.updated - a.updated)
+    .slice(0, n)
+    .map((x) => ({ id: x.id, seq: x.seq, files: parseFocus((x.files ?? []).join(',')) }));
+}

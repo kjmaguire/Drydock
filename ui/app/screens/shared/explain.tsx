@@ -19,7 +19,7 @@ export function ExplainText(handle: Handle<{ decisionId: string }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.routeExplain(handle.props.decisionId), key: () => handle.props.decisionId });
   return () => {
-    if (q.error) return <ErrorNote error={q.error} what="Could not explain" />;
+    if (q.error) return <ErrorNote error={q.error} retry={q.reload} what="Could not explain" />;
     if (!q.data) return <Loading />;
     const d: RoutingDecision = q.data.decision;
     const alts = d.Alternatives ?? [];
@@ -60,7 +60,7 @@ export function TaskDecisions(handle: Handle<{ taskId: string }>) {
     const rows: DecisionRow[] = q.data ?? [];
     return (
       <div data-testid="task-decisions" style={{ display: 'grid', gap: '12px' }}>
-        <ErrorNote error={q.error} what="Could not load routing decisions" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not load routing decisions" />
         {q.data && rows.length === 0 ? <p mix={muted}>No routing decision has been recorded for this task.</p> : null}
         {rows.length > 0 ? (
           <div mix={tableCard}>

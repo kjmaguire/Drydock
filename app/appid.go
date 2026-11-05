@@ -7,3 +7,8 @@ package app
 // shortcut and a running window with different IDs show as two taskbar buttons. The form is Microsoft's
 // CompanyName.ProductName; it must never change once released, or pinned shortcuts stop grouping with the app.
 const AppUserModelID = "Drydock.Drydock"
+
+// AppName is the application's Name for Wails (app_windows.go). Wails's notifications service registers the Windows notifications'
+// identity under it (HKCU\Software\Classes\AppUserModelId\Drydock, notify_windows.go), which the uninstaller removes
+// (packaging/windows/drydock.nsi, TOAST_KEY; a test keeps them equal).
+const AppName = "Drydock"

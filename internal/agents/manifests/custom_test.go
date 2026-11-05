@@ -96,3 +96,12 @@ func TestUserCustomFolderLoadsWhatValidatesAndSaysWhyNot(t *testing.T) {
 		t.Fatal("removed twice")
 	}
 }
+
+// A person's own CLI file loads whatever its display-only install line says: the placeholder check guards Drydock's shipped
+// manifests, and a file that loaded before it was added still loads.
+func TestUserCustomInstallLineMayBeAnything(t *testing.T) {
+	y := userManifest("mycli") + "install:\n  - {shell: powershell, command: 'see vendor docs... TODO'}\n"
+	if _, err := manifests.ParseUserCustom([]byte(y)); err != nil {
+		t.Fatalf("a person's install line was refused: %v", err)
+	}
+}

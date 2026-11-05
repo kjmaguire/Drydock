@@ -503,7 +503,7 @@ func (td TemplateDeps) redCheck() workflow.NodeHandler {
 		spec.LogDir = filepath.Join(td.DataDir, "runs", string(in.RunID), "checks")
 		wrapped, err := td.sandboxChecks(ctx, t, []checks.Spec{spec})
 		if err != nil {
-			return sandboxTrouble(in, err)
+			return sandboxTrouble(in, t, err)
 		}
 		spec = wrapped[0]
 		res, err := checks.Run(ctx, td.PM, spec, func(line string) {

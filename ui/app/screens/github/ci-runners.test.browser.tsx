@@ -2,8 +2,9 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { RunnerKindName, RunnerSlot, RunnersView } from '../../api/runnersClient.ts';
-import { cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
-import { CiRunners, gb, runnerStateText, runnerWhat, sentence } from './ci-runners.tsx';
+import { choose, cleanup, mount, optionsOf, testServices, type, waitFor } from '../../test/render.tsx';
+import { CiRunners, gb, OTHER_REPO, runnerRepoOptions, runnerStateText, runnerWhat, sentence } from './ci-runners.tsx';
+import type { ProjectRepoRow } from '../../api/types.ts';
 
 afterEach(cleanup);
 
@@ -166,6 +167,55 @@ describe('CI runners', () => {
     await waitFor(() => expect(addBtn().disabled).toBe(false), r);
     await r.act(() => addBtn().click());
     await waitFor(() => expect(added[1]).toEqual(['kjmaguire/desktop-app', 'windows', true]), r);
+  });
+
+  it('picks the repository from the projects\' repositories, a public one refused, or another typed (F5)', async () => {
+    const rows: ProjectRepoRow[] = [
+      { projectId: 'p1', project: 'shop', state: 'github', repo: 'kjmaguire/shop', private: true, openPullRequests: 0 },
+      { projectId: 'p2', project: 'site', state: 'github', repo: 'kjmaguire/site', private: false, openPullRequests: 0 },
+      { projectId: 'p3', project: 'notes', state: 'local', openPullRequests: 0 },
+    ];
+    expect(runnerRepoOptions(rows)).toEqual([
+      { value: 'kjmaguire/shop', label: 'kjmaguire/shop', hint: 'private', disabled: false },
+      { value: 'kjmaguire/site', label: 'kjmaguire/site', hint: 'public: refused', disabled: true },
+    ]);
+    const added: string[] = [];
+    const { r } = show({
+      runnersGet: async () => view(),
+      githubProjectRepos: async () => ({ ghInstalled: true, rows }),
+      runnersAdd: async (repo: string) => (added.push(repo), view()),
+    });
+    const form = await openAdd(r);
+    const pick = await waitFor(() => {
+      const el = form.querySelector('[data-testid="runner-repo-pick"]') as HTMLElement | null;
+      if (!el) throw new Error('no repository list yet');
+      return el;
+    }, r);
+    expect(form.querySelector('[data-testid="runner-repo"]')).toBeNull();
+    expect(optionsOf(pick).map((o) => [o.value, o.disabled])).toEqual([
+      ['kjmaguire/shop', false],
+      ['kjmaguire/site', true],
+      [OTHER_REPO, false],
+    ]);
+    expect(optionsOf(pick)[1]!.label).toContain('public: refused');
+    await r.act(() => (form.querySelector('[data-testid="runner-kind-linux"]') as HTMLInputElement).click());
+    const addBtn = () => q(r, '[data-testid="runner-add-button"]') as HTMLButtonElement;
+    expect(addBtn().disabled).toBe(true);
+    await r.act(() => choose(pick, 'kjmaguire/shop'));
+    await waitFor(() => expect(addBtn().disabled).toBe(false), r);
+    await r.act(() => addBtn().click());
+    await waitFor(() => expect(added).toEqual(['kjmaguire/shop']), r);
+
+    // "Another repository..." shows the typed field
+    const form2 = await openAdd(r);
+    const pick2 = await waitFor(() => form2.querySelector('[data-testid="runner-repo-pick"]') as HTMLElement, r);
+    await r.act(() => choose(pick2, OTHER_REPO));
+    const typed = await waitFor(() => form2.querySelector('[data-testid="runner-repo"]') as HTMLInputElement, r);
+    type(typed, 'someone/else');
+    await r.act(() => (form2.querySelector('[data-testid="runner-kind-linux"]') as HTMLInputElement).click());
+    await waitFor(() => expect(addBtn().disabled).toBe(false), r);
+    await r.act(() => addBtn().click());
+    await waitFor(() => expect(added).toEqual(['kjmaguire/shop', 'someone/else']), r);
   });
 
   it('keeps the dialog open with the core\'s refusal, and Add runner is off when nothing can run or the runners are full', async () => {

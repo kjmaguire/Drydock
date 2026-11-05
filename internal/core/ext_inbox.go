@@ -31,9 +31,21 @@ func init() {
 				}
 				return map[string]bool{"removed": true}, nil
 			}),
+			// one item (key) or several at once (keys: "Mark N done"); several are refused whole when any of them cannot be marked done
 			"needsyou.ack": bind(func(ctx context.Context, p struct {
-				Key string `json:"key"`
+				Key  string   `json:"key"`
+				Keys []string `json:"keys"`
 			}) (any, error) {
+				if len(p.Keys) > 0 {
+					if p.Key != "" {
+						return nil, errors.New("mark one item (key) or several (keys), not both")
+					}
+					done, err := c.AckNeedsYouMany(ctx, p.Keys, c.Human())
+					if err != nil {
+						return nil, err
+					}
+					return map[string]any{"acked": true, "done": done}, nil
+				}
 				if err := c.AckNeedsYou(ctx, p.Key, c.Human()); err != nil {
 					return nil, err
 				}
@@ -190,17 +202,8 @@ func (c *Core) AckNeedsYou(ctx context.Context, key, by string) error {
 	if !isPerson(by) {
 		return errors.New("only a person may mark an inbox item done")
 	}
-	kind, _, _ := strings.Cut(key, ":")
-	switch kind {
-	case "approval", "chat-ask":
-		return errors.New("a request leaves the inbox when you answer it: approve or deny it instead")
-	case "join":
-		return errors.New("a request to join leaves the inbox when you answer it: let the agent join or decline")
-	case "task", "connection":
-		return errors.New("this leaves the inbox when what it says changes: open it to act on it")
-	case "question", "check", "watchdog", "budget", "mention", "agent":
-	default:
-		return fmt.Errorf("there is no inbox item %q", key)
+	if err := ackable(key); err != nil {
+		return err
 	}
 	items, err := c.NeedsYou(ctx, "")
 	if err != nil {
@@ -215,10 +218,75 @@ func (c *Core) AckNeedsYou(ctx context.Context, key, by string) error {
 	if item == nil {
 		return fmt.Errorf("%s is not in the inbox (it was answered or marked done)", key)
 	}
-	if err := c.Room.AckNeedsYou(ctx, key, room.Human(strings.TrimPrefix(by, "human:"))); err != nil {
+	return c.ackItem(ctx, *item, by)
+}
+
+// MaxAckKeys bounds how many inbox items one "Mark N done" marks.
+const MaxAckKeys = 200
+
+// AckNeedsYouMany marks several inbox items done at once, with the same refusals as one: a request or a state among them refuses
+// the whole call and nothing is marked (a request is never answered in bulk). An item that already left the inbox is skipped.
+// It returns how many were marked done.
+func (c *Core) AckNeedsYouMany(ctx context.Context, keys []string, by string) (int, error) {
+	if !isPerson(by) {
+		return 0, errors.New("only a person may mark an inbox item done")
+	}
+	if len(keys) > MaxAckKeys {
+		return 0, fmt.Errorf("at most %d items at once, not %d", MaxAckKeys, len(keys))
+	}
+	for _, k := range keys {
+		if err := ackable(k); err != nil {
+			return 0, fmt.Errorf("%s: %w", k, err)
+		}
+	}
+	items, err := c.NeedsYou(ctx, "")
+	if err != nil {
+		return 0, err
+	}
+	byKey := make(map[string]room.NeedsYouItem, len(items))
+	for _, it := range items {
+		byKey[it.Key] = it
+	}
+	done := 0
+	for _, k := range keys {
+		it, ok := byKey[k]
+		if !ok {
+			continue
+		}
+		delete(byKey, k) // a key named twice is marked once
+		if err := c.ackItem(ctx, it, by); err != nil {
+			return done, err
+		}
+		done++
+	}
+	return done, nil
+}
+
+// ackable says why an item of this key's kind cannot be marked done (nil when it can).
+func ackable(key string) error {
+	kind, _, _ := strings.Cut(key, ":")
+	switch kind {
+	case "approval", "chat-ask":
+		return errors.New("a request leaves the inbox when you answer it: approve or deny it instead")
+	case "join":
+		return errors.New("a request to join leaves the inbox when you answer it: let the agent join or decline")
+	case "task", "connection":
+		return errors.New("this leaves the inbox when what it says changes: open it to act on it")
+	case "question", "check", "watchdog", "budget", "mention", "reply", "agent":
+		return nil
+	case "integration", "provider", "mcp-sign-in", "adapter-drift", "tool-install", "crash", "security-findings":
+		// a background problem (B6): marked done it stays out; a service's or provider's comes back the next day if it lasts
+		return nil
+	default:
+		return fmt.Errorf("there is no inbox item %q", key)
+	}
+}
+
+func (c *Core) ackItem(ctx context.Context, item room.NeedsYouItem, by string) error {
+	if err := c.Room.AckNeedsYou(ctx, item.Key, room.Human(strings.TrimPrefix(by, "human:"))); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(map[string]any{"key": key, "kind": string(item.Kind), "by": by})
+	b, _ := json.Marshal(map[string]any{"key": item.Key, "kind": string(item.Kind), "by": by})
 	_, _ = c.Bus.Publish(ctx, events.Event{Type: EventNeedsYouAcked, ProjectID: item.ProjectID, TaskID: item.TaskID, Data: b})
 	return nil
 }
@@ -232,7 +300,8 @@ type ApprovalDetail struct {
 	Kind       string `json:"kind"`
 	ActionKind string `json:"actionKind,omitempty"`
 	Phase      string `json:"phase,omitempty"`
-	// Gate is "permission_prompt" for an agent's tool permission request (answered with run.respond on RunID).
+	// Gate is "permission_prompt" for an agent's tool permission request (answered with run.respond on RunID); for a workflow
+	// request it is its payload's gate (ci, merge, verdict, repo_config_changed, budget_pause...), "" when it has none.
 	Gate        string         `json:"gate,omitempty"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"` // what is being decided, in plain words
@@ -271,6 +340,8 @@ type ApprovalDetail struct {
 	// Payload is a workflow request's own payload, as the task page reads it (a spec, a merge summary); absent for a
 	// security-service approval, whose fields are above.
 	Payload json.RawMessage `json:"payload,omitempty"`
+	// PRReview is a collaborator's change request on GitHub that arrived while this review and merge waited (H12); nil when none.
+	PRReview *PRReviewNote `json:"prReview,omitempty"`
 }
 
 // ApprovalAgent is the agent a request is about.
@@ -366,6 +437,10 @@ FROM approvals WHERE id=?`, id).Scan(&d.ID, &d.RunID, &d.Kind, &d.ActionKind, &d
 		}
 	} else {
 		d.Payload = json.RawMessage(payload)
+		d.Gate = payloadGate(payload) // the inbox answers a gate with the task page's panel for it (C3)
+		if d.Kind == "review" && d.Phase == "merge" && d.Status == "REQUESTED" {
+			d.PRReview = c.prReviewNote(ctx, taskID, d.CreatedAt)
+		}
 		if t != nil {
 			agentID = t.Assignee
 		}
@@ -379,6 +454,19 @@ FROM approvals WHERE id=?`, id).Scan(&d.ID, &d.RunID, &d.Kind, &d.ActionKind, &d
 	}
 	d.Description = approvalDescription(d, t)
 	return d, nil
+}
+
+// payloadGate is a workflow request's gate ("ci", "merge", "verdict", "repo_config_changed", "budget_pause", ...): the "gate" of
+// its payload, "" when it names none or the payload is not an object.
+func payloadGate(payload []byte) string {
+	var v struct {
+		Gate any `json:"gate"`
+	}
+	if json.Unmarshal(payload, &v) != nil {
+		return ""
+	}
+	g, _ := v.Gate.(string)
+	return g
 }
 
 // permissionEditable says whether a person can change a permission request's input before approving it: only where the CLI

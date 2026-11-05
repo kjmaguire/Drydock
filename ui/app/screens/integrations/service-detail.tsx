@@ -20,6 +20,7 @@ import type {
 } from '../../api/extTypes.ts';
 import { formatDateTime, plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
+import { newProjectHref } from '../../shell/new.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -35,8 +36,9 @@ import { DetailHeader, SettingRow, SettingsGroup } from '../../ui/master-detail.
 import { Menu } from '../../ui/menu.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t, tone } from '../../ui/tokens.ts';
-import { connectReply, kindLabel, scopeSummary, serviceState, syncLine, syncText, verifiedText, type ServiceKind } from './integrations.ts';
+import { connectReply, kindLabel, reconnectAsked, scopeSummary, serviceState, syncLine, syncText, verifiedText, type ServiceKind } from './integrations.ts';
 import { codeSpans, sentence } from '../../ui/code-spans.tsx';
+import { GitHubSignIn } from '../shared/github-sign-in.tsx';
 
 const reportCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, border: `1px solid ${t.border}`, background: t.bgApp, '& p': { margin: '0' } });
 const steps = css({ display: 'grid', gap: '4px', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textMd, '& li': { display: 'flex', gap: t.s2, alignItems: 'baseline' } });
@@ -337,7 +339,7 @@ export function ConnectForm(
   let oauth: IntegrationOAuthSession | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pollGen = 0; // a poll answers only for the sign-in it was started for
-  const gh = query(handle, { load: () => s.client.githubStatus(), enabled: () => handle.props.kind === 'github' });
+  const gh = query(handle, { load: () => s.client.githubStatus(), enabled: () => handle.props.kind === 'github', when: (e) => e.type === 'github.sign_in_finished' });
   const stopPoll = () => {
     pollGen++;
     clearTimeout(timer);
@@ -453,7 +455,17 @@ export function ConnectForm(
             {gh.data?.loggedIn ? (
               <Notice tone="ok">gh is signed in as {gh.data.login}. A connection made this way uses that sign-in and stores no GitHub token.</Notice>
             ) : gh.data ? (
-              <Notice tone="warn">{codeSpans(sentence(gh.data.error || 'gh is not signed in'))}. The Agents page shows the GitHub CLI.</Notice>
+              <Notice tone="warn" testId="gh-not-signed-in">
+                {codeSpans(sentence(gh.data.error || 'gh is not signed in'))}.
+                {gh.data.installed && !gh.data.unreachable ? <GitHubSignIn onDone={() => void gh.reload()} /> : null}
+                {!gh.data.installed ? (
+                  <p style={{ margin: '0' }}>
+                    <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="gh-install-link">
+                      How to install gh
+                    </a>
+                  </p>
+                ) : null}
+              </Notice>
             ) : null}
           </div>
         ) : null}
@@ -647,7 +659,8 @@ function ConnectedService(
   const act = action(handle);
   let checked: IntegrationVerifyReport | undefined;
   let synced = '';
-  let reconnect = false;
+  // the Inbox's Reconnect (F14) opens the service with its Reconnect form open: /integrations/<kind>?reconnect=1
+  let reconnect = reconnectAsked(globalThis.location?.search ?? '');
   let confirm = false;
   const set = (f: () => void) => {
     f();
@@ -844,7 +857,7 @@ function ConnectedService(
                 )}
               />
             ) : projects.length === 0 ? (
-              <a href={routes.projectNew.href()} mix={buttonStyle('ghost', 'sm')}>
+              <a href={newProjectHref()} mix={buttonStyle('ghost', 'sm')}>
                 Create a project
               </a>
             ) : undefined

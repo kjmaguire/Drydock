@@ -21,6 +21,7 @@ import { createFolderClient, type FolderClient } from './folderClient.ts';
 import { createLocalClient, type LocalClient } from './localClient.ts';
 import { createShellClient, type ShellClient } from './shellClient.ts';
 import { createKeysClient, type KeysClient } from './keysClient.ts';
+import { createNotifyClient, type NotifyClient } from './notifyClient.ts';
 import { createInboxClient, type InboxClient } from './inboxClient.ts';
 import { createTaskDataClient, type TaskDataClient } from './taskDataClient.ts';
 import { createControlClient, type ControlClient } from './controlClient.ts';
@@ -42,6 +43,7 @@ import type {
   UsageRow,
   AgentSpec,
   AgentUpdate,
+  UpdatedAgent,
   AppInfo,
   DrydockEvent,
   GitConfigStatus,
@@ -59,6 +61,7 @@ import type {
   Task,
   TaskCount,
   TaskCreateReq,
+  TaskCreateResult,
   TaskDetail,
   TaskFilter,
   Unread,
@@ -77,7 +80,23 @@ const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
   estimated: Number(v?.estimated) || 0,
 });
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, KeysClient, InboxClient, TaskDataClient, ControlClient, RoomClient {
+/** What events.replay narrows to (see Client.eventsReplay). */
+export interface EventsReplayOptions {
+  types?: string[];
+  taskId?: string;
+  limit?: number;
+  /** The newest events with a seq below this, instead of the ones after `after`. */
+  before?: number;
+  projectId?: string;
+  /** With projectId: the events that belong to no project count as the project's too. */
+  withWorkspace?: boolean;
+  runId?: string;
+  agentId?: string;
+  /** Each payload cut as the run explanation cuts it (16 KB), for a list of many; without it each comes back whole. */
+  cut?: boolean;
+}
+
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, KeysClient, NotifyClient, InboxClient, TaskDataClient, ControlClient, RoomClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -102,15 +121,16 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   /** Trusts the configuration with this fingerprint for this adapter (a human only), the one that was shown. Returns the findings read again. */
   projectTrustAgentConfig(id: string, adapter: string, fingerprint: string): Promise<AgentConfigFinding[]>;
   githubIssues(projectId: string, labels?: string): Promise<GitHubIssue[]>;
-  githubImportIssue(projectId: string, number: number): Promise<Task>;
+  /** Imports an issue as a backlog task; with a crew it is assigned too, and with start it starts (Import and start, C11). */
+  githubImportIssue(projectId: string, number: number, crew?: { assignee: string; reviewer?: string; start?: boolean }): Promise<TaskCreateResult>;
   githubPullRequest(taskId: string): Promise<PRState>;
   adapterList(): Promise<AdapterInfo[]>;
   agentCreate(spec: AgentSpec): Promise<Agent>;
-  agentUpdate(u: AgentUpdate): Promise<Agent>;
+  agentUpdate(u: AgentUpdate): Promise<UpdatedAgent>;
   /** Removes an agent from the team; its history stays. Refused while it owns unfinished tasks. */
   agentArchive(id: string): Promise<Agent>;
   agentList(projectId: string): Promise<Agent[]>;
-  taskCreate(req: TaskCreateReq): Promise<Task>;
+  taskCreate(req: TaskCreateReq): Promise<TaskCreateResult>;
   /**
    * The newest TASK_LIST_LIMIT tasks (newest first), whatever the project has in all: ask taskCount how many there are. An empty
    * projectId is every project; `filter` narrows to an agent's tasks, a label, or the tasks that ended since a time.
@@ -145,7 +165,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   eventsHead(): Promise<number>;
   usageList(filter: { taskId?: string; agentId?: string; limit?: number }): Promise<UsageRow[]>;
   agentGet(id: string): Promise<AgentDetail>;
-  connectionList(): Promise<Connection[]>;
+  /**
+   * Every agent CLI, probed afresh. With `cached`, at once: the last check of each (Drydock's own background check, A2), each with
+   * when it was made (`at`); nothing is started, and a CLI not checked yet is missing.
+   */
+  connectionList(cached?: boolean): Promise<Connection[]>;
   connectionAcknowledge(gateId: string): Promise<void>;
   /** With prompt, also one tiny prompt on the adapter's cheapest model (uses the person's account). */
   /** distro tests the install inside that WSL distro (its own Connection) instead of the Windows one. */
@@ -154,6 +178,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   connectionSignIn(adapter: string, distro?: string): Promise<TerminalInfo>;
   /** Checks one Connection again now, its sign-in included (the card's "Check again", and when its sign-in ends). */
   connectionCheck(adapter: string, distro?: string): Promise<Connection>;
+  /**
+   * A5: a shell of no project (in the home folder, inside the distro for a WSL install) with the CLI's install command typed at its
+   * prompt and not run: the person presses Enter.
+   */
+  connectionInstallTerminal(adapter: string, distro?: string): Promise<TerminalInfo>;
   /** An install's kept Test connection runs, newest first, and its capability matrix (decision P132). */
   connectionHistory(adapter: string, distro?: string): Promise<ConnectionHistory>;
   /** A person's own CLIs (decision P115): the folder they are kept in and every file, with why one did not load. */
@@ -181,7 +210,11 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   roomUnread(projectId: string): Promise<Unread[]>;
   needsYouList(projectId: string): Promise<NeedsYouItem[]>;
   presenceList(): Promise<PresenceState[]>;
-  eventsReplay(after: number, opts?: { types?: string[]; taskId?: string; limit?: number }): Promise<DrydockEvent[]>;
+  /**
+   * A page of the event log: the events after `after`, oldest first, or, with `before`, the newest ones older than it (still
+   * oldest first; X53). The core narrows by task, project (`withWorkspace`: and the workspace's own events), run and agent.
+   */
+  eventsReplay(after: number, opts?: EventsReplayOptions): Promise<DrydockEvent[]>;
 }
 
 export function createClient(t: Transport): Client {
@@ -205,6 +238,7 @@ export function createClient(t: Transport): Client {
     ...createLocalClient(t),
     ...createShellClient(t),
     ...createKeysClient(t),
+    ...createNotifyClient(t),
     ...createInboxClient(t),
     ...createTaskDataClient(t),
     ...createControlClient(t),
@@ -223,7 +257,7 @@ export function createClient(t: Transport): Client {
     projectAgentConfig: async (id) => agentConfig(await t.call<AgentConfigFinding[] | null>('project.agentConfig', { id })),
     projectTrustAgentConfig: async (id, adapter, fingerprint) => agentConfig(await t.call<AgentConfigFinding[] | null>('project.trustAgentConfig', { id, adapter, fingerprint })),
     githubIssues: async (projectId, labels = '') => arr(await t.call<GitHubIssue[] | null>('github.issues', { projectId, labels })),
-    githubImportIssue: (projectId, number) => t.call('github.importIssue', { projectId, number }),
+    githubImportIssue: (projectId, number, crew) => t.call('github.importIssue', { projectId, number, ...crew }),
     githubPullRequest: (taskId) => t.call('github.pullRequest', { taskId }),
     adapterList: async () => arr(await t.call<AdapterInfo[] | null>('adapter.list')),
     agentCreate: (spec) => t.call('agent.create', spec),
@@ -257,7 +291,7 @@ export function createClient(t: Transport): Client {
       const d = await t.call<AgentDetail>('agent.get', { id });
       return { ...d, runs: arr(d.runs), usage: arr(d.usage), usageTotals: usageTotals(d.usageTotals) };
     },
-    connectionList: async () => arr(await t.call<Connection[] | null>('connection.list')),
+    connectionList: async (cached = false) => arr(await t.call<Connection[] | null>('connection.list', cached ? { cached: true } : undefined)),
     connectionAcknowledge: async (gateId) => {
       await t.call('connection.acknowledge', { gateId });
     },
@@ -267,6 +301,7 @@ export function createClient(t: Transport): Client {
     },
     connectionSignIn: (adapter, distro = '') => t.call<TerminalInfo>('connection.signIn', { adapter, distro }),
     connectionCheck: (adapter, distro = '') => t.call<Connection>('connection.check', { adapter, distro }),
+    connectionInstallTerminal: (adapter, distro = '') => t.call<TerminalInfo>('connection.installTerminal', { adapter, distro, cols: 100, rows: 24 }),
     connectionHistory: async (adapter, distro = '') => {
       const h = await t.call<ConnectionHistory | null>('connection.history', { adapter, distro });
       return { key: h?.key ?? adapter, runs: arr(h?.runs), matrix: h?.matrix ?? {}, matrixAt: h?.matrixAt ?? 0 };
@@ -300,7 +335,15 @@ export function createClient(t: Transport): Client {
     roomUnread: async (projectId) => arr(await t.call<Unread[] | null>('room.unread', { projectId })),
     needsYouList: async (projectId) => arr(await t.call<NeedsYouItem[] | null>('needsyou.list', { projectId })),
     presenceList: async () => arr(await t.call<PresenceState[] | null>('presence.list')),
-    eventsReplay: async (after, opts = {}) =>
-      arr(await t.call<DrydockEvent[] | null>('events.replay', { after, types: opts.types ?? [], taskId: opts.taskId ?? '', limit: opts.limit ?? 0 })),
+    eventsReplay: async (after, opts = {}) => {
+      const p: Record<string, unknown> = { after, types: opts.types ?? [], taskId: opts.taskId ?? '', limit: opts.limit ?? 0 };
+      if (opts.before) p.before = opts.before;
+      if (opts.projectId) p.projectId = opts.projectId;
+      if (opts.withWorkspace) p.withWorkspace = true;
+      if (opts.runId) p.runId = opts.runId;
+      if (opts.agentId) p.agentId = opts.agentId;
+      if (opts.cut) p.cut = true;
+      return arr(await t.call<DrydockEvent[] | null>('events.replay', p));
+    },
   };
 }

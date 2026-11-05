@@ -7,6 +7,7 @@ import { byText, cleanup, mount, testServices, waitFor } from '../../test/render
 import { conn, kinds } from '../integrations/fixtures.ts';
 import { galleryCard, projServer } from '../mcp/fixtures.ts';
 import { GitHubDetail, signInState, syncChip } from './github-screen.tsx';
+import { focusRereadGap, FOCUS_REREAD_MS } from '../../lib/focus.ts';
 
 afterEach(cleanup);
 
@@ -93,9 +94,9 @@ describe('GitHub on the Integrations page', () => {
     expect(r.$('[data-testid="gh-crumb"]')).toBeNull();
     expect(r.$('nav[aria-label="Breadcrumb"]')).toBeNull();
     for (const part of ['access-sync', 'access-mcp', 'gh-tokens']) expect(r.$(`[data-testid="${part}"]`)).not.toBeNull();
-    // a GitHub repository into a folder of this PC, linked as a project: the new project wizard clones it
+    // a GitHub repository into a folder of this PC, linked as a project: New project clones it (P143)
     const clone = await find(r, '[data-testid="repos-clone"]');
-    expect([clone.textContent, clone.getAttribute('href')]).toEqual(['Clone a repository', '/project/new']);
+    expect([clone.textContent, clone.getAttribute('href')]).toEqual(['Clone a repository', '/home?new=project&where=clone']);
     // the old stacked boxes are gone
     for (const old of ['gh-connection', 'gh-integrations-link', 'gh-runners', 'integration-tile', 'gh-about']) expect(r.$(`[data-testid="${old}"]`)).toBeNull();
     expect(r.$('a[href="/connections"]')).toBeNull();
@@ -239,6 +240,7 @@ describe('GitHub on the Integrations page', () => {
     // repeat the core's sentence, and its gh button waits until gh is there
     expect(hero.textContent).toContain('GitHub CLI not found');
     expect(hero.textContent).toContain('Install it from cli.github.com');
+    expect(hero.querySelector('[data-testid="gh-sign-in"]')).toBeNull();
     const form = await find(r, '[data-testid="sync-connect"] form');
     expect(form.querySelector('[data-testid="gh-status"]')).toBeNull();
     expect(r.$('[data-testid="github-page"]')!.textContent!.includes('is not installed')).toBe(false);
@@ -261,14 +263,38 @@ describe('GitHub on the Integrations page', () => {
     await waitFor(() => expect(calls).toBe(before + 1), r);
   });
 
+  it('signs in with gh auth login in a terminal here and reads gh again when it finishes (F4)', async () => {
+    let signedIn = false;
+    const asked: (boolean | undefined)[] = [];
+    const signIns: number[] = [];
+    const r = show({
+      githubStatus: async (refresh?: boolean) => (asked.push(refresh), signedIn ? { installed: true, loggedIn: true, login: 'kyle' } : { installed: true, loggedIn: false, login: '' }),
+      githubSignIn: async () => (signIns.push(1), { id: 'term-gh' }) as never,
+      terminalRead: () => new Promise(() => {}),
+      terminalClose: async () => {},
+    });
+    const hero = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
+    await r.act(() => (hero.querySelector('[data-testid="gh-sign-in"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$('[data-testid="gh-sign-in-terminal"]')).toBeTruthy(), r);
+    expect(signIns.length).toBe(1);
+    signedIn = true;
+    r.s.emit({ type: 'github.sign_in_finished', data: { exitCode: 0, signedIn: true } });
+    await waitFor(() => expect(text(r, '[data-testid="gh-signin-state"]')).toContain('kyle'), r);
+    // Check again asks gh itself, past the core's kept answer
+    const n = asked.length;
+    await r.act(() => byText(r.$('[data-testid="access-gh"]')!, 'button', 'Check again').click());
+    await waitFor(() => expect(asked.slice(n)).toEqual([true]), r);
+  });
+
   it('tells "not signed in" from "GitHub did not answer"', async () => {
     const r = show({ githubStatus: async () => ({ installed: true, loggedIn: false, login: '', error: 'gh is not signed in: run `gh auth login`' }) });
     const hero = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
     expect(hero.textContent).toContain('gh is not signed in.');
     // the core's words only repeat the heading here, so the fix is said once
-    expect(hero.textContent).toContain('Run gh auth login in a terminal');
     expect(hero.textContent).not.toContain('gh is not signed in: run');
-    expect(hero.textContent).toContain("gh's own credentials never pass through Drydock");
+    expect(hero.textContent).toContain("Sign in with gh's own sign-in: its credentials never pass through Drydock.");
+    // F4: the fix is a button here, not a terminal of the person's own
+    expect(hero.querySelector('[data-testid="gh-sign-in"]')!.textContent).toBe('Sign in');
     expect(line(r, '[data-testid="gh-state"]')).toContain('Not signed in');
     cleanup();
     const u = show({ githubStatus: async () => ({ installed: true, loggedIn: false, unreachable: true, login: '', error: 'GitHub did not answer within 20 s' }) });
@@ -276,6 +302,27 @@ describe('GitHub on the Integrations page', () => {
     expect(slow.textContent).toContain('GitHub did not answer in time.');
     expect(slow.textContent).toContain('gh may well be signed in');
     expect(line(u, '[data-testid="gh-state"]')).toContain('GitHub did not answer');
+  });
+
+  it('reads github.status again when the window gets focus back, once a minute at most (F11)', async () => {
+    let reads = 0;
+    let signedIn = false;
+    const r = show({ githubStatus: async () => (reads++, signedIn ? { installed: true, loggedIn: true, login: 'kyle' } : { installed: true, loggedIn: false, login: '' }) });
+    await waitFor(() => expect(text(r, '[data-testid="gh-signin-state"]')).toContain('not signed in'), r);
+    await r.act(() => {});
+    const before = reads;
+    window.dispatchEvent(new Event('focus'));
+    await r.act(() => {});
+    expect(reads).toBe(before);
+    signedIn = true;
+    focusRereadGap.ms = 0;
+    try {
+      window.dispatchEvent(new Event('focus'));
+      await waitFor(() => expect(reads).toBe(before + 1), r);
+      await waitFor(() => expect(text(r, '[data-testid="gh-signin-state"]')).toContain('kyle'), r);
+    } finally {
+      focusRereadGap.ms = FOCUS_REREAD_MS;
+    }
   });
 
   it('says it is checking gh, and the error when github.status fails', async () => {
@@ -288,6 +335,59 @@ describe('GitHub on the Integrations page', () => {
 });
 
 describe('the Repositories table', () => {
+  it('a private repository\'s "Run its CI on this PC" opens Add a runner with it chosen (F5)', async () => {
+    const r = show({
+      githubProjectRepos: async () =>
+        repos([
+          row({ projectId: 'prj_1', state: 'github', repo: 'kyle/gocalc', private: true }),
+          row({ projectId: 'prj_2', project: 'site', state: 'github', repo: 'kyle/site', private: false }),
+        ]),
+    });
+    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(2), r);
+    // a public repository is refused by the runners, so its row offers nothing
+    expect(r.$$('[data-testid="repo-run-ci"]').length).toBe(1);
+    await r.act(() => (r.$('[data-testid="repo-run-ci"]') as HTMLButtonElement).click());
+    const pick = await waitFor(() => {
+      const el = r.$('dialog[open] [data-testid="runner-repo-pick"]') as HTMLElement | null;
+      if (!el) throw new Error('the dialog is not open with the list');
+      return el;
+    }, r);
+    expect(pick.getAttribute('data-value')).toBe('kyle/gocalc');
+  });
+
+  it('"Run its CI on this PC" leaves Add a runner closed and says why when no runner can be added (F5)', async () => {
+    const r = show({
+      githubProjectRepos: async () => repos([row({ projectId: 'prj_1', state: 'github', repo: 'kyle/gocalc', private: true })]),
+      runnersGet: async () =>
+        runners({
+          kinds: [
+            { kind: 'windows', available: false, reason: 'not set up', where: 'on this PC', runsOn: '[self-hosted, windows, drydock]' },
+            { kind: 'linux', available: false, reason: 'no container engine', where: 'in a container', runsOn: '[self-hosted, linux, drydock]' },
+          ],
+        }),
+    });
+    const run = await find(r, '[data-testid="repo-run-ci"]');
+    await waitFor(() => expect(r.$$('[data-testid="runner-kind"]').length).toBe(2), r);
+    await r.act(() => (run as HTMLButtonElement).click());
+    const note = await find(r, '[data-testid="runner-request-refused"]');
+    expect(note.textContent).toBe('No runner can be added for kyle/gocalc now. No kind of runner can run on this PC now');
+    expect(r.$('dialog[open]')).toBeNull();
+  });
+
+  it('"Run its CI on this PC" says the runners are full instead of opening a dialog that cannot add one (F5)', async () => {
+    const slots = Array.from({ length: 8 }, (_, i) => slot(`kyle/r${i}`, 'windows', 'idle'));
+    const r = show({
+      githubProjectRepos: async () => repos([row({ projectId: 'prj_1', state: 'github', repo: 'kyle/gocalc', private: true })]),
+      runnersGet: async () => runners({ slots }),
+    });
+    const run = await find(r, '[data-testid="repo-run-ci"]');
+    await waitFor(() => expect(r.$$('[data-testid="runner-kind"]').length).toBe(2), r);
+    await r.act(() => (run as HTMLButtonElement).click());
+    const note = await find(r, '[data-testid="runner-request-refused"]');
+    expect(note.textContent).toContain('At most 8 runners');
+    expect(r.$('dialog[open]')).toBeNull();
+  });
+
   const all = (): ProjectRepoRow[] => [
     row({ projectId: 'prj_1', project: 'gocalc', state: 'github', repo: 'kyle/gocalc', url: 'https://github.com/kyle/gocalc', defaultBranch: 'main', ci: 'passing', openPullRequests: 2, checkedAt: 1 }),
     row({ projectId: 'prj_2', project: 'website', state: 'github', repo: 'kyle/website', url: 'https://github.com/kyle/website', defaultBranch: 'trunk', ci: 'failing', openPullRequests: 1 }),
@@ -394,7 +494,7 @@ describe('the Repositories table', () => {
     const empty = show({ githubProjectRepos: async (refresh) => (asked.push(!!refresh), repos([])) });
     const box = await find(empty, '[data-testid="repos-empty"]');
     expect(box.textContent).toContain('No projects yet');
-    expect(box.querySelector('a')!.getAttribute('href')).toBe('/project/new');
+    expect(box.querySelector('a')!.getAttribute('href')).toBe('/home?new=project');
     expect(asked).toEqual([false]);
     await empty.act(() => (empty.$('[data-testid="repos-refresh"]') as HTMLButtonElement).click());
     await waitFor(() => expect(asked).toEqual([false, true]), empty);
@@ -422,3 +522,33 @@ describe('words', () => {
 function slot(repo: string, kind: 'windows' | 'linux', state: 'idle' | 'paused' | 'busy', job?: string): RunnersView['slots'][number] {
   return { key: `${repo}:${kind}`, repo, kind, enabled: state !== 'paused', state, job, jobs: 0, since: '' };
 }
+
+describe('Project folders: the check for new commits (decision P143)', () => {
+  it('shows the setting, turns it off with the core, and says when the core refuses', async () => {
+    const calls: boolean[] = [];
+    let fail = false;
+    const r = show({
+      repoSyncSettings: async () => ({ auto: true }),
+      repoSyncSettingsSet: async ({ auto }) => {
+        calls.push(!!auto);
+        if (fail) throw new Error('the database is read-only');
+        return { auto: !!auto };
+      },
+    });
+    const row = await find(r, '[data-testid="gh-folder-sync"] [data-testid="folder-sync-auto"]');
+    const sw = await waitFor(() => {
+      const b = row.querySelector('button[role="switch"]') as HTMLButtonElement | null;
+      if (!b) throw new Error('no switch');
+      return b;
+    }, r);
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(row.textContent).toContain('files change only with Sync now');
+    await r.act(() => sw.click());
+    await waitFor(() => expect(sw.getAttribute('aria-checked')).toBe('false'), r);
+    expect(calls).toEqual([false]);
+    fail = true;
+    await r.act(() => sw.click());
+    await waitFor(() => expect(row.textContent).toContain('Could not change the check'), r);
+    expect(calls).toEqual([false, true]);
+  });
+});

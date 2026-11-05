@@ -285,3 +285,43 @@ func TestVersionParsingAndOrder(t *testing.T) {
 		t.Error("ordering is numeric, not lexical")
 	}
 }
+
+// Every install line is shown with a Copy button, so a shipped manifest carries the vendor's real command, never a placeholder
+// such as "curl ... install.cmd" or "(exact URL not recorded)". The goose and Antigravity lines are the ones their vendors
+// publish (goose: documentation/docs/getting-started/installation.md in aaif-goose/goose; Antigravity: the README of
+// google-antigravity/antigravity-cli).
+func TestShippedInstallLinesAreRealCommands(t *testing.T) {
+	for _, m := range embeddedSet(t).All() {
+		for i, in := range m.Install {
+			for _, mk := range []string{"...", "…", "(see ", "not recorded", "TODO", "TBD"} {
+				if strings.Contains(in.Command, mk) {
+					t.Errorf("%s: install[%d] %q is a placeholder (%q)", m.Meta.ID, i, in.Command, mk)
+				}
+			}
+		}
+	}
+	want := map[string]map[string]string{
+		"goose": {"powershell": `Invoke-WebRequest -Uri "https://raw.githubusercontent.com/aaif-goose/goose/main/download_cli.ps1" -OutFile "download_cli.ps1"; .\download_cli.ps1`},
+		"antigravity": {
+			"powershell": `irm https://antigravity.google/cli/install.ps1 | iex`,
+			"cmd":        `curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd`,
+		},
+	}
+	for id, shells := range want {
+		m := get(t, id)
+		for shell, cmd := range shells {
+			found := false
+			for _, in := range m.Install {
+				if in.Shell == shell && in.Command == cmd {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%s: no %s install line %q", id, shell, cmd)
+			}
+		}
+	}
+	if got := get(t, "goose").InstallHint(); !strings.HasPrefix(got, "powershell: Invoke-WebRequest") {
+		t.Errorf("goose install hint %q, want the vendor's PowerShell download", got)
+	}
+}

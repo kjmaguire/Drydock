@@ -1,19 +1,20 @@
 // An agent's page (Crew HQ, decision P64), /team/:id: the crew list on the left (each a link to its page), then a hero (the
-// big dot, the name, the purpose, chips with what it is on, its CLI and model, effort, where it runs and whether it is held
+// big dot, the name, the purpose (two lines, then Show all), chips with what it is on, its CLI and model, effort, where it runs and whether it is held
 // in) and four tabs. Overview: what it is doing right now (its task, how far along, its activity), numbers counted from the
 // task list, its skills with switches, its MCP tools, what the crew remembers. Skills & tools, Memory and History go deeper.
 // Everything is a projection of what the core reports; nothing is estimated and nothing is invented.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Trash2, Users, UserX } from 'lucide';
+import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Trash2, Users, UserX, X } from 'lucide';
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
 import { formatDateTime, formatUsd, isStopped, presenceFor, presenceWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
+import { proposalsOf, proposalsText } from '../memory/memory.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
-import { Avatar, Badge, StatusChip, hueFor, muted, presenceColor } from '../../ui/data.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
+import { Avatar, StatusChip, hueFor, presenceColor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -28,11 +29,13 @@ import { TaskDecisions } from '../shared/explain.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { UsageTable } from '../shared/usage.tsx';
-import { AgentEditor, RemoveAgent } from './agent-forms.tsx';
+import { RemoveAgent } from './agent-forms.tsx';
+import { AgentPanelHost, openAgentEditor } from './agent-panel.tsx';
+import { GatewayLine } from './skill-chips.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { Run } from './inspector.tsx';
 import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runStatusWords, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
-import { MoreMenu } from '../../ui/menu.tsx';
+import { Menu, MoreMenu, type MenuItem } from '../../ui/menu.tsx';
 
 const layoutCss = css({
   display: 'grid',
@@ -98,6 +101,9 @@ const heroCss = css({
   '& .who': { flex: '1', minWidth: '0' },
   '& h1': { fontSize: t.textTitle, fontWeight: '700', letterSpacing: '-0.03em', lineHeight: '1.15', overflowWrap: 'anywhere' },
   '& .purpose': { marginTop: '4px', color: t.textMuted, fontSize: t.textMd, lineHeight: '1.5', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' },
+  // the instructions are two lines until "Show all" (decision P137: the whole text was a wall above the tabs)
+  '& .purpose[data-clamped="true"]': { display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+  '& .show-all': { justifySelf: 'start', marginTop: '2px', padding: '0', minHeight: '0', border: '0', background: 'transparent', color: t.accentText, fontSize: t.textSm, cursor: 'pointer' },
   '& .none': { marginTop: '4px', color: t.textFaint, fontSize: t.textMd, fontStyle: 'italic' },
   '& .chips': { display: 'flex', flexWrap: 'wrap', gap: t.s2, marginTop: t.s3 },
   '& .acts': { display: 'flex', flexDirection: 'column', gap: t.s2, flex: 'none' },
@@ -231,9 +237,9 @@ export function skillsOf(all: readonly Skill[], agent: Pick<Agent, 'id' | 'role'
 /** The project's MCP servers this agent is granted. */
 export const serversOf = (servers: readonly McpServer[], agentId: string): McpServer[] => servers.filter((sv) => sv.agents.some((x) => x.agentId === agentId));
 
-function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: string; full?: boolean }>) {
+function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: string; agentName: string; full?: boolean; busy?: boolean; onRemove?: (serverId: string) => void }>) {
   return () => {
-    const { servers, agentId, full } = handle.props;
+    const { servers, agentId, agentName, full, busy, onRemove } = handle.props;
     return (
       <ul mix={rowsCss} aria-label="MCP servers">
         {servers.map((sv) => {
@@ -253,6 +259,9 @@ function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: strin
                 </small>
               </span>
               <em>{sv.enabled ? 'on' : 'off in this project'}</em>
+              {onRemove ? (
+                <IconButton icon={X} label={`Take ${sv.display || sv.id} away from ${agentName}`} disabled={busy} data-testid="agent-tool-remove" mix={on('click', () => onRemove(sv.id))} />
+              ) : null}
             </li>
           );
         })}
@@ -260,6 +269,56 @@ function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: strin
     );
   };
 }
+
+/**
+ * An agent's MCP servers, granted and taken away in place (mcpserver.grant, as the editor panel's "+ Add" does): the rows, each
+ * with an X, and "+ Add" with the library's servers it does not have yet. Every call still asks for approval as before.
+ */
+function AgentTools(handle: Handle<{ projectId: string; agent: Agent; granted: readonly McpServer[]; full?: boolean; onChanged: () => void }>) {
+  const s = services(handle);
+  // a read that fails (an older core, no MCP library) leaves only the rows
+  const lib = query(handle, { load: () => s.client.mcpLibList().catch(() => []), when: (e) => e.type.startsWith('mcp'), key: () => handle.props.projectId });
+  const act = action(handle);
+  const grant = async (serverId: string, on: boolean) => {
+    const { projectId, agent, onChanged } = handle.props;
+    if (await act.run(`grant-${serverId}`, () => s.client.mcpServerGrant(projectId, serverId, agent.id, on))) onChanged();
+  };
+  return () => {
+    const { agent, granted, full } = handle.props;
+    const have = new Set(granted.map((sv) => sv.id));
+    const items: MenuItem[] = (lib.data ?? []).filter((x) => !have.has(x.id)).map((x) => ({ name: x.id, label: x.display || x.id }));
+    const add =
+      items.length > 0 ? (
+        <Menu
+          label="Give an MCP server"
+          items={items}
+          onSelect={(id) => void grant(id, true)}
+          trigger={(mix) => (
+            <Button size="sm" variant="ghost" icon={Plus} disabled={act.busy !== ''} data-testid="agent-tool-add" mix={mix}>
+              Add
+            </Button>
+          )}
+        />
+      ) : null;
+    return (
+      <>
+        <ErrorNote error={act.error} what="MCP server" />
+        {granted.length === 0 ? (
+          <p class="quiet" mix={toolsEmptyCss} data-testid="agent-tools-empty">
+            No MCP server is granted to {agent.name}. {add}
+          </p>
+        ) : (
+          <>
+            <ToolRows servers={granted} agentId={agent.id} agentName={agent.name} full={full} busy={act.busy !== ''} onRemove={(id) => void grant(id, false)} />
+            {add ? <div>{add}</div> : null}
+          </>
+        )}
+        <GatewayLine adapter={agent.adapter} hasServers={granted.length > 0} />
+      </>
+    );
+  };
+}
+const toolsEmptyCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2 });
 
 function MemoryNotes(handle: Handle<{ entries: readonly MemoryEntry[]; limit?: number }>) {
   return () => {
@@ -315,7 +374,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   // two actions, so a failed direct message and a failed skill switch each say what they were
   const dm = action(handle);
   let tab: TabName = 'overview';
-  let editing = false;
+  let purposeOpen = false;
   let removing = false;
   const pid = () => s.workspace.projectId ?? '';
 
@@ -328,6 +387,8 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   const skills = query(handle, { load: () => s.client.skillList(pid()), when: (e) => e.type.startsWith('skill.') || e.type.startsWith('agent.'), key: pid, enabled: () => !!pid() });
   const servers = query(handle, { load: () => s.client.mcpServerList(pid()), when: (e) => e.type.startsWith('mcp.server') || e.type === 'mcp.access_changed' || e.type.startsWith('agent.'), key: pid, enabled: () => !!pid() });
   const memory = query(handle, { load: () => s.client.memoryList(pid(), 'accepted'), when: (e) => e.type.startsWith('memory.'), key: pid, enabled: () => !!pid() });
+  // the project's open proposals: the Memory tab lists this agent's own, waiting for the person (E10)
+  const proposals = query(handle, { load: () => s.client.memoryList(pid(), 'proposed'), when: (e) => e.type.startsWith('memory.'), key: pid, enabled: () => !!pid() });
 
   const go = (href: string) => {
     if (handle.props.onNavigate) handle.props.onNavigate(href);
@@ -355,6 +416,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
     const sk = a ? skillsOf(skills.data ?? [], a, agents) : { mine: [], accepted: [] };
     const tools = serversOf(servers.data ?? [], id);
     const notes = memory.data ?? [];
+    const proposed = proposalsOf(proposals.data ?? [], id);
     const iso = d?.isolation;
     const where = a ? runsWhere(a) : '';
     const mine = tasks.filter((x) => x.assignee === id || x.reviewer === id);
@@ -445,7 +507,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             <h2>
               Skills <span>{skills.data ? `${sk.mine.length} given to ${a.name}` : ''}</span>
             </h2>
-            <ErrorNote error={skills.error} what="Skills" />
+            <ErrorNote error={skills.error} retry={skills.reload} what="Skills" />
             {skills.data && sk.mine.length === 0 ? <p class="quiet">{a.name} has no skill yet. Give it the ones its role needs.</p> : null}
             <AgentSkillList agent={a} skills={sk.accepted} limit={5} onChanged={() => skills.reload()} />
             <button
@@ -461,19 +523,14 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             <h2>
               Tools <span>MCP</span>
             </h2>
-            <ErrorNote error={servers.error} what="MCP servers" />
-            {servers.data && tools.length === 0 ? (
-              <p class="quiet">
-                No MCP server is granted to {a.name}. Grants are made on the project's <a href={routes.projectIntegrations.href()}>Integrations</a> page.
-              </p>
-            ) : null}
-            <ToolRows servers={tools} agentId={a.id} />
+            <ErrorNote error={servers.error} retry={servers.reload} what="MCP servers" />
+            {servers.data ? <AgentTools projectId={a.projectId || pid()} agent={a} granted={tools} onChanged={() => servers.reload()} /> : null}
           </section>
           <section mix={panelCss} aria-label="Remembers">
             <h2>
               Remembers <span>{memory.data ? `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}` : ''}</span>
             </h2>
-            <ErrorNote error={memory.error} what="Memory" />
+            <ErrorNote error={memory.error} retry={memory.reload} what="Memory" />
             {memory.data && notes.length === 0 ? (
               <p class="quiet">
                 Nothing accepted yet. What you accept on the <a href={routes.memory.href()}>Memory</a> page reaches every agent of the crew.
@@ -491,7 +548,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
           <section mix={[panelCss, leadCss]} aria-label="Team lead" data-testid="agent-lead">
             <h2>Team lead</h2>
             <p class="quiet">{a.name} supervises the team: it steps in when a task loops, stalls or trips the watchdog, and can post a stand-up.</p>
-            <RunStandup projectId={pid()} lead={lead} size="sm" />
+            <RunStandup projectId={pid()} lead={lead} size="sm" schedule />
             <Interventions projectId={pid()} limit={20} />
           </section>
         ) : null}
@@ -506,7 +563,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
               Skills <span>{skills.data ? `${sk.mine.length} given to ${a.name}` : ''}</span>
             </h2>
             <p class="quiet">Each agent is a specialist: give it the skills its role needs, and nothing else.</p>
-            <ErrorNote error={skills.error} what="Skills" />
+            <ErrorNote error={skills.error} retry={skills.reload} what="Skills" />
             {skills.loading && !skills.data ? <Loading /> : null}
             {skills.data && sk.mine.length === 0 ? <p class="quiet">{a.name} has no skill yet.</p> : null}
             <AgentSkillList agent={a} skills={sk.accepted} full onChanged={() => skills.reload()} />
@@ -523,12 +580,11 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             Tools <span>MCP</span>
           </h2>
           <p class="quiet">
-            The MCP servers this agent may call, with the tools it was granted. Grants and approvals live on the project's <a href={routes.projectIntegrations.href()}>Integrations</a> page.
+            The MCP servers this agent may call, with the tools it was granted. Each call is approved on the project's <a href={routes.projectIntegrations.href()}>Integrations</a> page.
           </p>
-          <ErrorNote error={servers.error} what="MCP servers" />
+          <ErrorNote error={servers.error} retry={servers.reload} what="MCP servers" />
           {servers.loading && !servers.data ? <Loading /> : null}
-          {servers.data && tools.length === 0 ? <p class="quiet">No MCP server is granted to {a.name}.</p> : null}
-          <ToolRows servers={tools} agentId={a.id} full />
+          {servers.data ? <AgentTools projectId={a.projectId || pid()} agent={a} granted={tools} full onChanged={() => servers.reload()} /> : null}
         </section>
       </div>
     ) : null;
@@ -541,10 +597,21 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
         <p class="quiet">
           Project memory is shared by the whole crew: decisions, conventions and known issues you accepted on the <a href={routes.memory.href()}>Memory</a> page reach every agent's session.
         </p>
-        <ErrorNote error={memory.error} what="Memory" />
+        <ErrorNote error={memory.error} retry={memory.reload} what="Memory" />
         {memory.loading && !memory.data ? <Loading /> : null}
         {memory.data && notes.length === 0 ? <p class="quiet">Nothing accepted yet.</p> : null}
         <MemoryNotes entries={notes} />
+        {proposed.length > 0 ? (
+          <div data-testid="agent-proposals" style={{ display: 'grid', gap: '8px' }}>
+            <h2>
+              Proposed <span>{a ? `${proposalsText(proposed.length)} from ${a.name}, waiting for you` : ''}</span>
+            </h2>
+            <p class="quiet">
+              Agents see a proposal only once you accept it on the <a href={routes.memory.href()}>Memory</a> page.
+            </p>
+            <MemoryNotes entries={proposed} limit={proposed.length} />
+          </div>
+        ) : null}
       </section>
     );
 
@@ -606,7 +673,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
               {!a ? (
                 <div mix={panelCss}>
                   <h1 id={titleId}>Agent</h1>
-                  <ErrorNote error={detail.error} what="Could not load the agent" />
+                  <ErrorNote error={detail.error} retry={detail.reload} what="Could not load the agent" />
                   {detail.loading || (!detail.error && !s.project.agents.data) ? <Loading /> : null}
                   {s.project.agents.data && !detail.loading && !agents.some((x) => x.id === id) ? (
                     <Empty title="No such agent" icon={UserX}>
@@ -623,9 +690,16 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                     <div class="who">
                       <h1 id={titleId}>{a.name}</h1>
                       {a.purpose ? (
-                        <p class="purpose" data-testid="agent-page-purpose">
-                          {a.purpose}
-                        </p>
+                        <>
+                          <p class="purpose" data-testid="agent-page-purpose" data-clamped={purposeOpen || !longPurpose(a.purpose) ? undefined : 'true'}>
+                            {a.purpose}
+                          </p>
+                          {longPurpose(a.purpose) ? (
+                            <button type="button" class="show-all" aria-expanded={purposeOpen ? 'true' : 'false'} mix={on('click', () => ((purposeOpen = !purposeOpen), void handle.update()))}>
+                              {purposeOpen ? 'Show less' : 'Show all'}
+                            </button>
+                          ) : null}
+                        </>
                       ) : (
                         <p class="none">No standing instructions. Edit the agent to give it a purpose.</p>
                       )}
@@ -673,7 +747,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                       <Button variant="primary" icon={MessageSquare} disabled={dm.busy === 'dm'} mix={on('click', () => void message(a))}>
                         Message {a.name}
                       </Button>
-                      <Button variant="secondary" icon={Pencil} aria-haspopup="dialog" aria-expanded={editing} mix={on('click', () => ((editing = true), void handle.update()))}>
+                      <Button variant="secondary" icon={Pencil} aria-haspopup="dialog" mix={on('click', () => openAgentEditor(a.id))}>
                         Edit
                       </Button>
                       {/* the two a person uses every time stay buttons; the rest is in "..." (UI audit 2026-10-26: five stacked
@@ -699,7 +773,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                   </div>
                   <ErrorNote error={dm.error} what="Could not open a direct message" />
                   <TaskTotalNotice>The numbers and the task list on this page are counted from these tasks only.</TaskTotalNotice>
-                  <ErrorNote error={detail.error} what="Could not load the agent's runs and usage" />
+                  <ErrorNote error={detail.error} retry={detail.reload} what="Could not load the agent's runs and usage" />
                   <Tabs
                     label={`${a.name}'s page`}
                     pills
@@ -727,20 +801,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                       />
                     ) : null}
                   </Dialog>
-                  <Dialog open={editing} title={`Edit ${a.name}`} label={`Edit ${a.name}`} wide onClose={() => ((editing = false), void handle.update())}>
-                    {editing ? (
-                      <EditWithAdapter
-                        agent={a}
-                        onDone={() => {
-                          editing = false;
-                          void handle.update();
-                          s.project.agents.reload();
-                          detail.reload();
-                        }}
-                        onCancel={() => ((editing = false), void handle.update())}
-                      />
-                    ) : null}
-                  </Dialog>
+                  <AgentPanelHost agents={agents} onSaved={() => detail.reload()} />
                 </>
               )}
             </div>
@@ -751,18 +812,5 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   };
 }
 
-/** The agent editor with its adapter's capabilities (model aliases, effort levels) read on demand. */
-function EditWithAdapter(handle: Handle<{ agent: Agent; onDone: () => void; onCancel: () => void }>) {
-  const s = services(handle);
-  const adapters = query(handle, { load: () => s.client.adapterList() });
-  return () => {
-    const { agent, onDone, onCancel } = handle.props;
-    return (
-      <div>
-        {adapters.loading && !adapters.data ? <p mix={muted}>Reading the adapter's capabilities...</p> : null}
-        <AgentEditor key={agent.id} agent={agent} adapter={(adapters.data ?? []).find((x) => x.id === agent.adapter)} onDone={onDone} onCancel={onCancel} />
-        {adapters.error ? <Badge tone="warn">adapter capabilities not read</Badge> : null}
-      </div>
-    );
-  };
-}
+/** Instructions longer than about two lines of the hero get "Show all". */
+const longPurpose = (p: string): boolean => p.length > 180 || p.split('\n').length > 2;

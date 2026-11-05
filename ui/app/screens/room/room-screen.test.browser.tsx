@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Agent, Message, Room } from '../../api/types.ts';
 import { roomMessagesDouble } from '../../test/fakes.ts';
-import { byLabel, byText, cleanup, fromMenu, menuItems, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { Conversation, RoomScreen } from './room-screen.tsx';
 
 afterEach(cleanup);
@@ -39,6 +39,7 @@ function servicesWith(client: Partial<Client>, rooms: Room[] = []) {
     roomMembers: async () => [],
     roomTurns: async () => [],
     roomMarkRead: async () => true,
+    roomReplyOutcome: async () => null,
     ...roomMessagesDouble(() => []),
     ...client,
   });
@@ -58,6 +59,48 @@ afterEach(() => {
 });
 
 describe('Conversation', () => {
+  it('says why nobody answered the newest message and asks an agent by name; Ask again on a failed turn; Ask from a message (X12)', async () => {
+    const channel: Room = { ...taskRoom, kind: 'channel', name: 'general', taskId: undefined };
+    const asked: unknown[][] = [];
+    const messages: Message[] = [
+      msg({ seq: 1, body: 'first question' }),
+      msg({ seq: 2, type: 'ERROR', author: { kind: 'system', id: 'system' }, reply_to_id: 'm1', body: 'Backend #1 could not answer: the turn failed', payload: { code: 'agent_turn_failed', agent_id: 'agt1' } }),
+      msg({ seq: 3, body: 'how should we store sessions?' }),
+      // a chained turn failed: its trigger is an agent's reply (m4), which an agent is never asked to answer, so no Ask again
+      msg({ seq: 4, author: { kind: 'agent', id: 'agt2' }, reply_to_id: 'm1', body: '@Backend #1 can you check?' }),
+      msg({ seq: 5, type: 'ERROR', author: { kind: 'system', id: 'system' }, reply_to_id: 'm4', body: 'Backend #1 could not answer: the turn failed', payload: { code: 'agent_turn_failed', agent_id: 'agt1' } }),
+    ];
+    const s = servicesWith({
+      ...roomMessagesDouble(() => messages),
+      roomMembers: async () => [{ roomId: 'r', member: { kind: 'agent', id: 'agt1' }, role: 'backend', state: 'observer', addedAt: '', lastReadSeq: 0 }],
+      projectdevGet: async () => ({ respond: true }) as never,
+      roomReplyOutcome: async () => ({ trigger: 'm3', turns: [], bounded: false, why: 'nobody addressed', room: 'r' }),
+      roomReply: async (...a: unknown[]) => (asked.push(a), { trigger: String(a[0]), turns: [], bounded: false, stopped: 'a newer human message took over the room' }),
+    });
+    const r = mount(<Conversation room={channel} />, s);
+    await waitFor(() => expect(q(r, '[data-testid="room-ask-why"]')?.textContent).toBe('No agent answered: nobody was mentioned.'), r);
+    const chips = qa(r, '[data-testid="room-ask-agent"]');
+    expect(chips.map((b) => b.textContent)).toEqual(['Ask Backend #1']);
+    await r.act(() => chips[0]!.click());
+    await waitFor(() => expect(asked).toEqual([['m3', 'agt1']]), r);
+    // an ask that gave no answer says so in words
+    await waitFor(() => expect(q(r, '[data-testid="room-ask-why"]')?.textContent ?? q(r, '[data-testid="room-ask-note"]')?.textContent).toBeTruthy(), r);
+    // the failed turn's line offers Ask again, for that agent on that message
+    // only the line about a turn on the person's message offers it, not the chained turn's line
+    expect(qa(r, '[data-testid="msg-ask-again"]').length).toBe(1);
+    const again = q(r, '[data-testid="msg-ask-again"]')!;
+    expect(again.textContent).toBe('Ask Backend #1 again');
+    await r.act(() => again.click());
+    await waitFor(() => expect(asked[1]).toEqual(['m1', 'agt1']), r);
+    // the person's own message has a hover action that opens the row for it
+    const ask = qa(r, '[data-testid="msg-ask"]');
+    expect(ask.length).toBe(2);
+    await r.act(() => ask[0]!.click());
+    await waitFor(() => expect(q(r, '[data-testid="room-ask-why"]')?.textContent).toBe('Ask an agent to answer this message:'), r);
+    await r.act(() => q(r, '[data-testid="room-ask-agent"]')!.click());
+    await waitFor(() => expect(asked[2]).toEqual(['m1', 'agt1']), r);
+  });
+
   it('renders author kinds, markers, check cards with failure summary, and inert agent text', async () => {
     const messages: Message[] = [
       msg({ seq: 1, body: 'plain **human**' }),
@@ -473,7 +516,7 @@ describe('Stopping and muting a room (P130)', () => {
     expect([ev.defaultPrevented, stops, q(r, '[data-testid="room-stop"]'), q(r, '[data-testid="room-esc-again"]')]).toEqual([false, [], null, null]);
   });
 
-  it("mutes and unmutes the room from the room's menu", async () => {
+  it("mutes and unmutes the room with one click on the header's bell (X111)", async () => {
     const calls: unknown[] = [];
     let muted = false;
     const s = servicesWith({
@@ -485,13 +528,43 @@ describe('Stopping and muting a room (P130)', () => {
       },
     });
     const r = mount(<Conversation room={general} />, s);
-    const menu = await waitFor(() => q<HTMLButtonElement>(r, '[data-testid="room-menu"]')!, r);
-    expect(menu.getAttribute('aria-label')).toBe('Room actions');
-    await fromMenu(r, menu, 'Mute room');
+    const bell = () => q<HTMLButtonElement>(r, '[data-testid="room-mute"]')!;
+    await waitFor(() => expect(bell().getAttribute('aria-label')).toBe('Mute room'), r);
+    expect(q(r, '[data-testid="room-menu"]')).toBeNull();
+    await r.act(() => bell().click());
     await waitFor(() => expect(calls).toEqual([['r', true]]), r);
-    await waitFor(() => expect(s.project.unread.data?.[0]?.muted).toBe(true), r);
-    expect(await menuItems(r, menu)).toEqual(['Unmute room']);
-    await fromMenu(r, menu, 'Unmute room');
+    await waitFor(() => expect(bell().getAttribute('aria-label')).toBe('Unmute room'), r);
+    await r.act(() => bell().click());
     await waitFor(() => expect(calls).toEqual([['r', true], ['r', false]]), r);
+  });
+
+  it("with agent replies off for the project, the room says so with Turn on and nothing promises an answer to a mention (X13)", async () => {
+    const sets: unknown[] = [];
+    const settings = { maxParallel: 2, respond: false, autoSchedule: false, e2e: {}, preview: {} } as never;
+    const s = servicesWith({
+      projectdevGet: async () => settings,
+      projectdevSet: async (projectId: string, v: unknown) => (sets.push([projectId, v]), { ...(v as object) }) as never,
+    });
+    const r = mount(<Conversation room={general} />, s);
+    const notice = await waitFor(() => {
+      const n = q(r, '[data-testid="replies-off"]');
+      if (!n) throw new Error('no notice yet');
+      return n;
+    }, r);
+    expect(notice.textContent).toContain("Agents do not answer in this project's rooms");
+    expect(q(r, 'header')!.textContent).not.toContain('agents answer when you mention them');
+    expect(r.container.textContent).not.toContain('@ to mention');
+    await r.act(() => byText<HTMLButtonElement>(notice, 'button', 'Turn on').click());
+    await waitFor(() => expect(sets).toEqual([['p', { maxParallel: 2, respond: true, autoSchedule: false, e2e: {}, preview: {} }]]), r);
+    await waitFor(() => expect(q(r, '[data-testid="replies-off"]')).toBeNull(), r);
+    expect(q(r, 'header')!.textContent).toContain('agents answer when you mention them');
+    expect(r.container.textContent).toContain('@ to mention');
+  });
+
+  it('a direct message has no mode chip (X16)', async () => {
+    const dm: Room = { ...general, kind: 'dm', name: 'dm:human:kyle+agt1', agentId: 'agt1' };
+    const r = mount(<Conversation room={dm} />, servicesWith({}));
+    await waitFor(() => q(r, '[data-testid="room-mute"]')!, r);
+    expect(q(r, '[data-testid="room-mode"]')).toBeNull();
   });
 });

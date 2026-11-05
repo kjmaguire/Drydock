@@ -88,6 +88,14 @@ type Config struct {
 	// app sets it (app/app_windows.go); without it a person types a full path instead. The e2e harness sets a labelled
 	// stand-in.
 	PickFile func(ctx context.Context, p FilePick) (string, error)
+	// PickSave opens the window's own Save dialog and returns the file the person named ("" when they cancelled): a support
+	// bundle's or a project export's "Save to" (A11). The desktop app sets it (app/app_windows.go); without it a person types a
+	// full path instead.
+	PickSave func(ctx context.Context, p SavePick) (string, error)
+	// Reveal shows a file in Windows' file manager with the file selected ("Show in folder", A11). The core only passes a path
+	// it wrote itself in this run (a support bundle, a project export). The desktop app sets it (app/app_windows.go); without
+	// it the page offers Copy path alone.
+	Reveal func(ctx context.Context, path string) error
 	// PickFolder opens the window's own folder dialog and returns the folder the person chose ("" when they cancelled): the
 	// new project's "Choose folder..." (decision P58). The desktop app sets it (app/app_windows.go); without it a person types
 	// the path. The e2e harness sets a labelled stand-in.
@@ -96,10 +104,20 @@ type Config struct {
 	// does not open inside the app. The desktop app sets it (app/app_windows.go); the address has passed ExternalURL by then. Without
 	// it (the browser harness) the page uses the browser's own link.
 	OpenURL func(ctx context.Context, rawURL string) error
+	// OpenPath opens a task's worktree or a project's repository, or a file in it, in Explorer or a code editor (effort review X26):
+	// the path is one the core resolved and confined (Core.OpenPath), the editor a program of its allowlist found on PATH. The desktop
+	// app sets it (app/app_windows.go); without it the page offers Copy path only. The e2e harness sets a labelled stand-in.
+	OpenPath func(ctx context.Context, p PathOpen) error
+	// LookPath finds an editor's command on PATH for OpenPath. Default: exec.LookPath; tests and the e2e harness set a stand-in.
+	LookPath func(file string) (string, error)
 	// OpenSandboxApp shows a forwarded port of a task's sandbox in a window of Drydock's own, in a process of its own with a
 	// storage partition of its own (decision P134). The desktop app sets it (app/sandboxview_windows.go); without it (the browser
 	// harness) the page says the viewer is not available, and never opens the address in a browser.
 	OpenSandboxApp func(ctx context.Context, app SandboxApp) error
+	// SandboxAppShown says whether Drydock's viewer shows the address now, and CloseSandboxApp ends that viewer (effort review X314:
+	// a second Open brings the window to the front, Stop closes it). The desktop app sets both with OpenSandboxApp.
+	SandboxAppShown func(url string) bool
+	CloseSandboxApp func(url string) error
 	// Restart starts Drydock again and quits this one: "Restart now" after a staged restore (decision P116). The desktop app sets
 	// it (app/restart_windows.go); without it (the browser harness) the page says to quit and reopen.
 	Restart func(ctx context.Context) error
@@ -143,15 +161,36 @@ type FilePick struct {
 	FilterPattern string // semicolon-separated globs, for example "*.exe"
 }
 
+// SavePick is what a Save dialog asks for.
+type SavePick struct {
+	Title         string
+	Dir           string // the folder the dialog opens at ("" lets the system choose)
+	Name          string // the file name it suggests
+	FilterName    string
+	FilterPattern string
+}
+
 // FolderPick is what a folder dialog asks for.
 type FolderPick struct {
 	Title string
+	// Dir is the folder the dialog opens at: the deepest folder that exists of the one in the field, else of the person's code
+	// folder ("" lets the system choose).
+	Dir string
 }
 
 // Core is the running application.
 type Core struct {
-	cfg         Config
-	fwdCache    forwardCache // what sandbox.forward.list last asked the engine, for a few seconds
+	cfg Config
+	// folderSync is held for writing while Sync now checks that no agent works in a project's folder and fast-forwards it
+	// (ext_reposync.go), and for reading while a chat claims its turn (chats.Deps.HoldFolders): a turn cannot start in between.
+	folderSync  sync.RWMutex
+	fwdCache    forwardCache  // what sandbox.forward.list last asked the engine, for a few seconds
+	clones      cloneRuns     // the clones running now, for github.cloneCancel (B12)
+	landing     landingClones // the clones a made project waits for (project.setup with repo.later, B12)
+	ghStatus    ghStatusCache // the last github.status answer, for a few seconds (F4)
+	written     writtenFiles  // the files this run wrote for the person, the only ones fs.reveal shows (A11)
+	sbStarts    sandboxStarts // how the last start of each task's sandbox went, step by step (X39)
+	start       startState    // what this start found the last one left behind (X511, ext_startreport.go)
 	DB          *storage.DB
 	Bus         *events.SQLBus
 	Tasks       *tasks.Service
@@ -208,6 +247,8 @@ type Core struct {
 	// onCall, when set, is told the name of every method Call dispatches (the usage counters, decision P121)
 	onCall atomic.Pointer[func(name string)]
 	cancel context.CancelFunc
+	// bg lives as long as the core: work that outlives the call that started it (a clone a made project waits for) runs in it
+	bg context.Context
 }
 
 // Open creates (or reopens) the application state in cfg.DataDir and resumes interrupted runs.
@@ -240,9 +281,14 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		}
 		return nil, err
 	}
+	// the last process left its marker when it ended without Close (X511): said once, in the start report
+	unclean := markRunning(cfg.DataDir)
 	locked := false
 	defer func() {
 		if !locked {
+			if !unclean {
+				clearRunning(cfg.DataDir)
+			}
 			lock.Release()
 		}
 	}()
@@ -252,7 +298,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	bg, cancel := context.WithCancel(context.Background())
-	c := &Core{cfg: cfg, DB: db, cancel: cancel, adapters: map[string]agents.Adapter{}, repos: map[string]*git.Repo{}}
+	c := &Core{cfg: cfg, DB: db, cancel: cancel, bg: bg, adapters: map[string]agents.Adapter{}, repos: map[string]*git.Repo{}}
+	c.start.r = StartReport{StartedAt: storage.Now(), Unexpected: unclean, Resumed: []StartRun{}, NotResumed: []StartRun{}, Resuming: []StartRun{}}
 	acked, err := c.loadGateAcks(ctx)
 	if err != nil {
 		cancel()
@@ -402,6 +449,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		c.logf("close stale agent runs: %v", err)
 	} else if n > 0 {
 		c.logf("closed %d agent run(s) the last stop left open", n)
+		c.start.update(func(r *StartReport) { r.AgentRunsClosed = n })
 	}
 	if err := c.startExtensions(bg); err != nil {
 		c.logf("extensions: %v", err)
@@ -415,14 +463,23 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// the method registry is complete once the extensions have started: build it once for Call
 	m := c.Methods()
 	c.methods.Store(&m)
+	recoverHead, _ := c.Bus.LastSeq(ctx)
+	recoverSince := storage.Now()
+	// the runs a dead owner still holds a valid lease on (killed and started again within the lease TTL): Recover cannot take
+	// them now, WatchRecover takes them once the lease expires, and the start report says so then (X511 review)
+	held, heldUntil := c.heldByOthers(ctx)
 	if n, err := c.Engine.Recover(ctx); err != nil {
 		c.logf("recover: %v", err)
 	} else if n > 0 {
 		c.logf("resumed %d interrupted run(s)", n)
 	}
+	c.noteRecovered(ctx, recoverHead, recoverSince, held)
 	// a run whose last owner's lease was still valid at start (killed and restarted within the lease TTL) is taken over
 	// as soon as that lease expires
 	safe.Go("core.Open#2", func() { c.Engine.WatchRecover(bg, 0) })
+	if len(held) > 0 {
+		safe.Go("core.Open#3", func() { c.noteTakenOver(bg, recoverHead, recoverSince, held, heldUntil) })
+	}
 	c.lock, locked = lock, true
 	return c, nil
 }
@@ -430,6 +487,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 // Close stops background work. Running agent processes are killed with their job objects.
 func (c *Core) Close() {
 	c.cancel()
+	c.landing.wg.Wait() // a clone still landing ends with bg: it removes its half-made folder before the database closes
 	for i := len(c.extClose) - 1; i >= 0; i-- {
 		c.extClose[i]()
 	}
@@ -437,6 +495,8 @@ func (c *Core) Close() {
 	c.Engine.Close()
 	c.Bus.Close()
 	_ = c.DB.Close()
+	// closed as it should: the next start is not told otherwise (X511)
+	clearRunning(c.cfg.DataDir)
 	c.lock.Release() // last: until the database is closed this folder is still ours
 }
 
@@ -576,6 +636,9 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 	}
 	c.publish(ctx, "project.created", p.ID, map[string]any{"name": p.Name, "hasRepo": p.HasRepo})
 	c.placeNewProject(ctx, p.ID) // where its agents run: on Windows, or where the agent CLI is ready (decision P58)
+	if p.HasRepo {
+		c.scanRepoSkillsQuietly(ctx, p.ID) // the repository's own skills are found now, not at the first run (E5)
+	}
 	return p, nil
 }
 
@@ -620,6 +683,7 @@ func (c *Core) AttachRepository(ctx context.Context, projectID, repoPath string)
 	c.mu.Unlock()
 	c.trustGitConfigNow(ctx, projectID)
 	c.publish(ctx, "project.updated", projectID, map[string]any{"repoAttached": true})
+	c.scanRepoSkillsQuietly(ctx, projectID)
 	return c.GetProject(ctx, projectID)
 }
 
@@ -779,6 +843,9 @@ type Agent struct {
 	// inside the WSL distro WSLDistro.
 	RunMode   string `json:"runMode"`
 	WSLDistro string `json:"wslDistro"`
+	// TemplateID is the agent template it was made from (decision P137), '' for none: the editor's "Everywhere" saves a change
+	// to that template too.
+	TemplateID string `json:"templateId,omitempty"`
 }
 
 // RouteModel is one model the router may choose for an agent, with the tier the router's ladder treats it as.
@@ -833,6 +900,12 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	if strings.TrimSpace(s.Name) == "" || strings.TrimSpace(s.Role) == "" {
 		return Agent{}, errors.New("an agent needs a name and a role")
 	}
+	// every way of making an agent gives it a name no other agent of the project has ("Code Reviewer 2")
+	name, err := c.uniqueAgentName(ctx, s.ProjectID, strings.TrimSpace(s.Name))
+	if err != nil {
+		return Agent{}, err
+	}
+	s.Name = name
 	if err := c.validateAgentFields(s.Adapter, s.Model, s.Effort, s.Purpose); err != nil {
 		return Agent{}, err
 	}
@@ -843,7 +916,6 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 	if err := c.checkPermissionMode(s.Adapter, s.PermissionMode); err != nil {
 		return Agent{}, err
 	}
-	var err error
 	if s.RunMode, s.WSLDistro, err = c.checkRunMode(ctx, s.ProjectID, s.Adapter, s.RunMode, s.WSLDistro); err != nil {
 		return Agent{}, err
 	}
@@ -886,7 +958,7 @@ func (c *Core) AllAgents(ctx context.Context) ([]Agent, error) {
 }
 
 func (c *Core) agentsWhere(ctx context.Context, where string, args ...any) ([]Agent, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE `+where, args...)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro,template_id FROM agents WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -896,7 +968,7 @@ func (c *Core) agentsWhere(ctx context.Context, where string, args ...any) ([]Ag
 		var a Agent
 		var archived, practices int64
 		var routes string
-		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro); err != nil {
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro, &a.TemplateID); err != nil {
 			return nil, err
 		}
 		a.Archived, a.Practices = archived != 0, practices != 0
@@ -910,8 +982,8 @@ func (c *Core) agent(ctx context.Context, id string) (Agent, error) {
 	var a Agent
 	var archived, practices int64
 	var routes string
-	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE id=?`, id).
-		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro)
+	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro,template_id FROM agents WHERE id=?`, id).
+		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro, &a.TemplateID)
 	a.Archived, a.Practices = archived != 0, practices != 0
 	a.RouteModels = parseRouteModels(routes)
 	return a, err
@@ -949,6 +1021,9 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 // starts from it, so a turn's checks (the sandbox+WSL refusal) see the run mode the runtime will start the CLI in.
 func (c *Core) agentRunSpec(ctx context.Context, a Agent) agents.RunSpec {
 	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
+	// an agent a person made "Read only" (mode plan, decision P137) runs read-only: the adapter then gives Claude Code its
+	// default mode with the writing tools denied, never its own plan mode (CLAUDE-PLAN-01)
+	spec.ReadOnly = a.PermissionMode == "plan"
 	spec.RunMode, spec.WSLDistro, spec.RunModeWhy = c.runPlacement(ctx, a)
 	return spec
 }

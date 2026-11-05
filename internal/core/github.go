@@ -60,13 +60,32 @@ func (c *Core) GitHubIssues(ctx context.Context, projectID, labels string) ([]ho
 // instruction-like title withheld) inside a quoted block that says it is data; an issue with a high injection risk is not
 // imported at all. The pull request later says "Closes #n".
 func (c *Core) ImportIssue(ctx context.Context, projectID string, number int) (tasks.Task, error) {
+	r, err := c.ImportIssueWith(ctx, ImportIssueReq{ProjectID: projectID, Number: number})
+	return r.Task, err
+}
+
+// ImportIssueReq is github.importIssue: the issue, and optionally its crew and its start in the same click (the Pull requests
+// page's "Import and start", C11). Without them the task is a BACKLOG task, as an import always made (P37(4)/M27: imported
+// work waits until a person moves it on; this per-issue click is that person). Start runs under task.create's checks (licence,
+// repository), made before the task is, so a refused start imports nothing.
+type ImportIssueReq struct {
+	ProjectID string `json:"projectId"`
+	Number    int    `json:"number"`
+	Assignee  string `json:"assignee"`
+	Reviewer  string `json:"reviewer"`
+	Start     bool   `json:"start"`
+}
+
+// ImportIssueWith is github.importIssue: ImportIssue's cleaning and refusal, then task.create's assignment and start.
+func (c *Core) ImportIssueWith(ctx context.Context, req ImportIssueReq) (CreateTaskResult, error) {
+	projectID, number := req.ProjectID, req.Number
 	cfg, err := c.prSource(ctx, projectID)
 	if err != nil {
-		return tasks.Task{}, err
+		return CreateTaskResult{}, err
 	}
 	issues, err := cfg.GitHub.Issues(ctx, "", timeZero)
 	if err != nil {
-		return tasks.Task{}, err
+		return CreateTaskResult{}, err
 	}
 	for _, is := range issues {
 		if is.Number != number {
@@ -76,11 +95,12 @@ func (c *Core) ImportIssue(ctx context.Context, projectID string, number int) (t
 		by := "the human, from an issue by " + nonEmpty(is.Author, "an unknown author")
 		x := integrations.Sanitizer{Scanner: c.Scanner}.OutsideTask(ctx, "GitHub issue", ref, is.URL, by, is.Title, is.Body)
 		if x.Risk >= integrations.RiskThreshold {
-			return tasks.Task{}, fmt.Errorf("issue %s has a high injection risk (%s): it is not turned into a task; write the task yourself", ref, strings.Join(x.Flags, ", "))
+			return CreateTaskResult{}, fmt.Errorf("issue %s has a high injection risk (%s): it is not turned into a task; write the task yourself", ref, strings.Join(x.Flags, ", "))
 		}
-		return c.CreateTask(ctx, tasks.CreateReq{ProjectID: projectID, Title: x.Title, Description: x.Description, IssueRef: ref})
+		return c.CreateTaskWith(ctx, CreateTaskReq{CreateReq: tasks.CreateReq{ProjectID: projectID, Title: x.Title, Description: x.Description, IssueRef: ref},
+			Assignee: req.Assignee, Reviewer: req.Reviewer, Start: req.Start})
 	}
-	return tasks.Task{}, fmt.Errorf("issue #%d is not an open issue of this repository", number)
+	return CreateTaskResult{}, fmt.Errorf("issue #%d is not an open issue of this repository", number)
 }
 
 // PRState is the pull request view of a task.

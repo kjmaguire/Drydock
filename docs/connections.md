@@ -41,7 +41,9 @@ Pipeline per agent CLI (all steps through the Process Manager, argv arrays only,
 
 **Performance.** An agent in a distro reads a repository on a Windows drive (a Dev Drive included) across the WSL 9P file share, which is slow for many small files; a repository inside the distro is on the distro's own disk and fast for the agent, and its task worktrees are made inside the distro next to it (P41). Drydock's own reads of such a repository go the other way, across `\\wsl.localhost`.
 
-**Install guidance, never a download.** Manifest `install[]` entries are display text with a "Copy" and an "Open in terminal" button; the user presses Enter themselves. (As built: the card shows the install hint as plain text, "Drydock never runs this for you"; the Copy and Open in terminal buttons are not built, and neither are Re-check or Sign in buttons: the page detects again each time it loads and on `connection.*` events.) Drydock never runs an installer, never fetches a binary, never edits `PATH`. The guidance text for each CLI is in its manifest (section 7). Windows install commands are from [cli §1-§5, §8]; none were executed (NEEDS-WINDOWS).
+**Install guidance, never a download.** Manifest `install[]` entries are display text with a "Copy" and an "Open in terminal" button; the user presses Enter themselves. (As built: the Install and update tab shows the install hint with Copy and **Open in a terminal here**: `connection.installTerminal` opens a shell that belongs to no project, in the person's home folder (inside the distro for a WSL install), and types the manifest's install command at its prompt without a line break (not the card's display hint with its `powershell: ` or `inside the distro: ` label: the first line for that shell, PowerShell's own, else a cmd line as `cmd /c '...'`; inside a distro its first wsl line), so nothing runs until the person presses Enter (D9); when the shell ends the install is checked again. A missing prerequisite's guidance links its vendor's download page (`Prereq.link`). Sign in and Check again are on the card's header.) Drydock never runs an installer, never fetches a binary, never edits `PATH`. The guidance text for each CLI is in its manifest (section 7). Windows install commands are from [cli §1-§5, §8]; none were executed (NEEDS-WINDOWS).
+
+**Drydock checks the CLIs itself (A2, as built).** The `clicheck` extension (`internal/core/ext_clicheck.go`) checks the CLIs in use (the installs that agents and chats not archived run: on Windows, or inside the WSL distro an agent or a chat runs in, by its Connection key `<adapter>@wsl:<distro>`; before anything uses one, every CLI Drydock knows on Windows) 30 seconds after start, every 30 minutes, after a sign-in ends (`connection.sign_in_finished`) and after an agent fails to start (`agent.failed` with phase start). A check is the same `--version` and sign-in status probe the Agents page runs: no model is called, no credentials are read. Each answer becomes the newest of its Connection (`Service.Last`); `connection.list {cached: true}` returns them at once with when each was made, and `connection.checked` (keys and counts only) makes the Inbox and the Agents page read them.
 
 ## 3. Status evaluation
 
@@ -203,7 +205,7 @@ provider_config: {writer: opencode_inline_json, env: OPENCODE_CONFIG_CONTENT, te
 ---
 meta: {id: goose, license: Apache-2.0, tier: cheap}   # aaif-goose/goose (the agent, not the migrations tool)
 binaries: {native: [goose.exe]}
-install: [{shell: powershell, command: 'download_cli.ps1 from the aaif-goose/goose repository (exact URL not recorded)'}, {shell: cmd, command: 'npm install -g @aaif/goose-acp', requires: [{tool: node, min: "22"}]}]
+install: [{shell: powershell, command: 'Invoke-WebRequest -Uri "https://raw.githubusercontent.com/aaif-goose/goose/main/download_cli.ps1" -OutFile "download_cli.ps1"; .\download_cli.ps1'}, {shell: cmd, command: 'npm install -g @aaif/goose-acp', requires: [{tool: node, min: "22"}]}]
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
 versions: {min: "1.53.0", recommended: "1.53.0"}
 auth: {login: {argv: [configure], terminal: true}, probe: none}
@@ -215,7 +217,7 @@ provider_config: {writer: goose_env, env: [GOOSE_PROVIDER, GOOSE_MODEL, OPENAI_H
 ---
 meta: {id: antigravity, license: proprietary, tier: premium}   # D2: official `agy` only, behind an acknowledgement gate
 binaries: {native: [agy.exe]}
-install: [{shell: powershell, command: 'irm https://antigravity.google/cli/install.ps1 | iex'}, {shell: cmd, command: 'curl ... install.cmd (see antigravity.google/cli)'}]
+install: [{shell: powershell, command: 'irm https://antigravity.google/cli/install.ps1 | iex'}, {shell: cmd, command: 'curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd'}]
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}                 # flag unverified
 versions: {min: "1.3.0", recommended: "1.3.1"}
 auth: {login: {argv: [], terminal: true, note: "interactive agy; Google Sign-In if no keyring session"}, probe: {argv: [-p, /usage], unverified: true}}

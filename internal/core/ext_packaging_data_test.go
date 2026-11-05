@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -434,5 +435,28 @@ func TestProjectExportImportThroughTheMethods(t *testing.T) {
 	var cnt int
 	if err := b.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM settings WHERE key LIKE 'license%'`).Scan(&cnt); err != nil && err != sql.ErrNoRows || cnt != 0 {
 		t.Fatalf("license settings leaked into the other install: %d", cnt)
+	}
+}
+
+// The support page's run picker (X56): the newest runs that failed or were stopped part way, named by their task and project;
+// completed, running and cancelled runs are not offered.
+func TestRecentRunsListsTheFailedAndInterruptedRunsNewestFirst(t *testing.T) {
+	a := open(t, "")
+	p := gitProject(t, a, "gocalc")
+	var tk tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Add Divide"}, &tk)
+	for i, st := range []string{"FAILED", "COMPLETED", "PAUSED", "RUNNING", "CANCELLED"} {
+		a.sql(`INSERT INTO workflow_runs(id,workflow,status,project_id,task_id,topology_hash,created_at,updated_at) VALUES(?,'w',?,?,?,'h',1,?)`,
+			fmt.Sprintf("run_recent%d", i), st, p.ID, tk.ID, 100+i)
+	}
+	var out struct {
+		Runs []core.RecentRun `json:"runs"`
+	}
+	a.call("supportbundle.recentRuns", struct{}{}, &out)
+	if len(out.Runs) != 2 || out.Runs[0].RunID != "run_recent2" || out.Runs[0].Status != "PAUSED" || out.Runs[1].RunID != "run_recent0" {
+		t.Fatalf("recent runs %+v", out.Runs)
+	}
+	if r := out.Runs[1]; r.TaskID != tk.ID || r.Title != "Add Divide" || r.Project != "gocalc" || r.ProjectID != p.ID {
+		t.Fatalf("named %+v", r)
 	}
 }

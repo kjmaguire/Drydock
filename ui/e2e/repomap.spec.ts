@@ -34,11 +34,17 @@ test('the repo map ranks the most used file first, leaves ignored files out, and
   await expect(page.getByTestId('repomap-stats')).toContainText('Languages: go 6.');
 
   await page.getByLabel('Focus paths').fill('handlers/beta');
-  await page.getByLabel('Token budget').fill('100');
   await page.getByTestId('repomap-make').click();
   await expect(page.getByTestId('repomap-stats')).toContainText('Focus: handlers/beta.');
-  await expect(page.getByTestId('repomap-stats')).toContainText('of 256 tokens');
-  await expect(page.getByLabel('Token budget')).toHaveValue('256');
   await expect(page.getByTestId('repomap-ranking').locator('tr', { hasText: 'handlers/beta/handler.go' })).toContainText('focus');
+  // a budget is one click, and the map is made again with it (X412)
+  await page.getByTestId('repomap-budget').getByRole('radio', { name: '1k' }).click();
+  await expect(page.getByTestId('repomap-stats')).toContainText('of 1024 tokens');
+  await expect(page.getByTestId('repomap-budget')).toHaveAttribute('data-value', '1024');
+  // the next visit starts from the same focus and budget
+  await projectNav(page, 'nav-knowledge');
+  await projectNav(page, 'nav-repo-map');
+  await expect(page.getByLabel('Focus paths')).toHaveValue('handlers/beta');
+  await expect(page.getByTestId('repomap-stats')).toContainText('of 1024 tokens', { timeout: 60_000 });
   await expect(page.locator('body')).not.toContainText('No repo map in this build');
 });

@@ -8,7 +8,7 @@
 // opens with or without a project, and the sidebar's Inbox and Running counts are the same lists.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { AtSign, Bot, CircleCheck, CircleHelp, CirclePause, FileText, GitMerge, Hourglass, ListTree, MessageSquare, OctagonX, PlugZap, Shield, Eye, UserPlus, Wallet, type IconNode } from 'lucide';
+import { AtSign, Bot, CircleCheck, MessageSquareReply, CircleHelp, CirclePause, FileText, GitMerge, Hourglass, ListTree, MessageSquare, OctagonX, PlugZap, Shield, Eye, TriangleAlert, UserPlus, Wallet, type IconNode } from 'lucide';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
@@ -18,21 +18,31 @@ import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { starts } from '../../state/live.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import type { InboxTab } from '../../state/ui.ts';
 import { Button, buttonStyle } from '../../ui/button.tsx';
+import { supportFor } from '../support/support.ts';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { headerCss } from '../../ui/layout.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
+import { RunAgainButton } from '../shared/run-again.tsx';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
+import { GateAnswer, hasGatePanel } from '../tasks/review-panel.tsx';
+import { AskCard } from '../chats/chat-asks.tsx';
+import { MyTasksList } from './my-tasks-screen.tsx';
+import { CliFix, distroOfKey } from '../shared/cli-fix.tsx';
+import { ProblemFix, problemOpenLabel } from './problem-fix.tsx';
 import {
   answerOf,
   canAck,
+  chatAskOf,
+  pendingOf,
   clock,
   doingWords,
+  KIND_LABEL,
   LOOK_WORDS,
   msOf,
   needsHint,
@@ -40,6 +50,9 @@ import {
   needsRowTitle,
   needsSubtitle,
   needsTarget,
+  inboxAddress,
+  runningBesideNeeds,
+  tabOfItem,
   scanProgress,
   shortHash,
   startOfToday,
@@ -64,12 +77,18 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
   budget: { icon: Wallet, tone: 'warn' },
   task: { icon: Hourglass, tone: 'warn' },
   mention: { icon: AtSign, tone: 'accent' },
+  reply: { icon: MessageSquareReply, tone: 'accent' },
   join: { icon: UserPlus, tone: 'accent' },
   agent: { icon: Bot, tone: 'err' },
   connection: { icon: PlugZap, tone: 'err' },
+  problem: { icon: TriangleAlert, tone: 'warn' },
+  changes: { icon: MessageSquare, tone: 'warn' },
 };
 
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
+/** The most keys one needsyou.ackMany call takes (MaxAckKeys in internal/core/ext_inbox.go). */
+export const ACK_CHUNK = 200;
+
 const frameCss = css({ height: '100%', minHeight: '0', containerType: 'inline-size' });
 const gridCss = css({
   display: 'grid',
@@ -89,6 +108,8 @@ const listSide = css({
 const hintCss = css({ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', color: t.textFaint, fontSize: t.textXs });
 const scrollCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', paddingBottom: t.s3, '@container (max-width: 820px)': { overflowY: 'visible' } });
 const groupCss = css({ margin: '0', padding: `${t.s3} 20px 6px`, color: t.textFaint, fontSize: t.textXs, fontWeight: '500' });
+// the Needs you heading with Mark N done at its end
+const groupRowCss = css({ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: t.s2, paddingRight: '12px' });
 const listCss = css({ display: 'grid', margin: '0', padding: '0', listStyle: 'none' });
 const rowCss = css({
   display: 'flex',
@@ -107,6 +128,8 @@ const rowCss = css({
   justifyContent: 'flex-start',
   '&:hover': { background: t.bgHover, color: t.text },
   '&[aria-current="true"]': { background: t.bgActive, boxShadow: `inset 2px 0 0 ${t.accent}` },
+  // a row Shift+J/K added to the items to mark done together
+  '&[data-picked="true"]': { background: t.bgActive },
   '&:focus-visible': { outline: 'none', boxShadow: `inset 0 0 0 2px ${t.accent}` },
   '& .text': { display: 'flex', flexDirection: 'column', gap: '2px', flex: '1', minWidth: '0' },
   '& .title': { fontWeight: '500', overflowWrap: 'anywhere' },
@@ -138,6 +161,8 @@ const keyCss = css({ color: t.textFaint, fontFamily: t.mono, fontSize: t.textXs,
 const tileCss = css({ display: 'inline-grid', placeItems: 'center', flex: 'none', width: '22px', height: '22px', borderRadius: '6px' });
 const dotCss = css({ display: 'inline-block', flex: 'none', width: '8px', height: '8px', borderRadius: '50%' });
 const barCss = css({ height: '4px', borderRadius: '2px', background: t.bgActive, overflow: 'hidden', '& > span': { display: 'block', height: '4px', borderRadius: '2px' } });
+// the Mine tab's list keeps its own card look (MyTasksList), set in from the edges like the groups
+const mineCss = css({ display: 'grid', gap: t.s2, padding: `0 20px ${t.s4}`, '& > h2': { padding: `${t.s3} 0 0` } });
 const emptyCss = css({ margin: '0', padding: `6px 20px ${t.s2}`, color: t.textMuted });
 const footCss = css({ display: 'flex', flexWrap: 'wrap', gap: t.s4, flex: 'none', padding: '12px 20px', borderTop: `1px solid ${t.border}`, color: t.textFaint, fontSize: t.textXs, '& > span': { display: 'inline-flex', alignItems: 'center', gap: '6px' } });
 
@@ -185,7 +210,7 @@ const quietCss = css({ margin: '0', padding: '0 24px 12px 16px', color: t.textFa
 const statusCss = css({ margin: '0', padding: '12px 24px 0 16px', color: t.textMuted });
 const noneCss = css({ margin: 'auto', padding: t.s6, color: t.textMuted, textAlign: 'center' });
 
-const TABS: InboxTab[] = ['needs', 'running', 'done'];
+const TABS: InboxTab[] = ['needs', 'running', 'done', 'mine'];
 const tabOf = (v: string | undefined): InboxTab | undefined => (TABS.includes(v as InboxTab) ? (v as InboxTab) : undefined);
 
 /** One row of the list: an item that needs you, a running task or scan, a task done today. Keys are unique across them. */
@@ -196,7 +221,15 @@ type Row =
   | { key: string; type: 'done'; task: Task };
 
 
-export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening goes (tests); default the router's navigate. */ onNavigate?: (href: string) => void }>) {
+export function NeedsYouScreen(
+  handle: Handle<{
+    tab?: string;
+    /** The ?item= row key ("needs:<key>", "task:<id>", "scan:<id>", "done:<id>"): the row selected when the page opens. */
+    item?: string;
+    /** Where opening goes (tests); default the router's navigate. */
+    onNavigate?: (href: string) => void;
+  }>,
+) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.ui);
@@ -208,6 +241,14 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
   const ack = action(handle);
   let selected: string | undefined;
   let lastIndex = 0;
+  // the rows Shift+J/K picked to mark done together (row keys); a plain move or click clears them
+  let picked = new Set<string>();
+  // the ?item= last applied or written into the address (null: none yet): a link to an item counts as new when it names
+  // another one, also the one the Inbox opened on before the selection moved (the sidebar's project count links there again)
+  let propItem: string | undefined | null = null;
+  let written: string | undefined;
+  // the address's item until its row is listed (its list may still be loading, its tab not yet shown)
+  let wanted: string | undefined;
   // the address's tab, once it has been applied (null: not yet, so the first render applies it, ?tab= or none)
   let propTab: string | undefined | null = null;
   let now = Date.now();
@@ -232,6 +273,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
     const next = tabOf(name) ?? 'needs';
     if (next === tab()) return;
     selected = undefined;
+    picked = new Set();
     s.ui.setInboxTab(next);
   };
 
@@ -254,14 +296,17 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
   const projectOf = (r: Row): string | undefined =>
     r.type === 'needs' ? r.item.projectId : r.type === 'task' ? r.summary.projectId : r.type === 'done' ? r.task.projectId : r.scan.projectId;
   /** Opens the row's page, in its own project (a task page and a project's Integrations page are of the open project). */
-  const open = (r: Row) => {
-    const pid = projectOf(r);
+  const open = (r: Row) => go(hrefOf(r), projectOf(r));
+  const go = (href: string, pid: string | undefined) => {
     if (pid && pid !== s.workspace.projectId) s.workspace.selectProject(pid);
-    const href = hrefOf(r);
     if (handle.props.onNavigate) handle.props.onNavigate(href);
     else void navigate(href);
   };
-  const selectRow = (key: string) => {
+  const selectRow = (key: string, extend = false) => {
+    if (extend) {
+      if (selected) picked.add(selected);
+      picked.add(key);
+    } else picked = new Set();
     selected = key;
     void handle.update();
   };
@@ -274,6 +319,23 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
       await s.workspace.needs.reload();
     });
   };
+  /** The items Mark N done marks: the picked ones that can be marked done, else every one shown that can. */
+  const bulkItems = (): NeedsYouItem[] => {
+    const all = rows.flatMap((r) => (r.type === 'needs' && canAck(r.item) ? [r] : []));
+    const chosen = all.filter((r) => picked.has(r.key));
+    return (chosen.length ? chosen : all).map((r) => (r as Extract<Row, { type: 'needs' }>).item);
+  };
+  const markMany = (items: NeedsYouItem[]) => {
+    if (!items.length || ack.busy) return;
+    void ack.run('ack', async () => {
+      // the core takes at most ACK_CHUNK keys a call (MaxAckKeys in internal/core/ext_inbox.go): more go in turn
+      const keys = items.map((it) => it.key);
+      for (let i = 0; i < keys.length; i += ACK_CHUNK) await s.client.needsYouAckMany(keys.slice(i, i + ACK_CHUNK));
+      picked = new Set();
+      await s.workspace.needs.reload();
+    });
+  };
+  const pickedAckable = (): NeedsYouItem[] => rows.flatMap((r) => (r.type === 'needs' && picked.has(r.key) && canAck(r.item) ? [r.item] : []));
 
   window.addEventListener(
     'keydown',
@@ -285,8 +347,16 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
         e.preventDefault();
         const i = rows.findIndex((r) => r.key === selected);
         const n = i < 0 ? 0 : k === 'j' ? Math.min(rows.length - 1, i + 1) : Math.max(0, i - 1);
-        selectRow(rows[n]!.key);
+        // Shift+J/K extends the selection: the rows passed are marked done together (E, or Mark N done)
+        selectRow(rows[n]!.key, e.shiftKey);
         handle.queueTask(() => document.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(rows[n]!.key)}"]`)?.scrollIntoView({ block: 'nearest' }));
+      } else if (k === 'Escape' && picked.size) {
+        e.preventDefault();
+        picked = new Set();
+        void handle.update();
+      } else if (k === 'e' && pickedAckable().length) {
+        e.preventDefault();
+        markMany(pickedAckable());
       } else if (k === 'e') {
         const r = current();
         if (r?.type !== 'needs' || !canAck(r.item)) return;
@@ -308,10 +378,22 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
   return () => {
     const ws = s.workspace;
     // the sidebar's Running link and a link with ?tab= choose the tab when the address changes
-    if (handle.props.tab !== propTab) {
+    // without one, the Inbox opens on the tab it was left on (remembered), or the one its ?item= is on
+    // the item prop is the address's at the last navigation; once the selection is written into the address it is stale,
+    // so it counts only while the address still names it
+    const onInbox = location.pathname === routes.needsYou.href();
+    const itemNew = handle.props.item !== propItem && (!onInbox || propItem === null || new URLSearchParams(location.search).get('item') === (handle.props.item ?? null));
+    if (handle.props.tab !== propTab || itemNew) {
       propTab = handle.props.tab;
-      const want = tabOf(propTab) ?? 'needs';
-      if (want !== tab()) handle.queueTask(() => s.ui.setInboxTab(want));
+      if (itemNew) {
+        propItem = handle.props.item;
+        if (propItem) {
+          wanted = propItem;
+          picked = new Set();
+        }
+      }
+      const want = tabOf(propTab) ?? tabOfItem(propItem ?? undefined, tab());
+      if (want && want !== tab()) handle.queueTask(() => s.ui.setInboxTab(want));
     }
     const active = tab();
     const needs = ws.needs.data ?? [];
@@ -320,24 +402,51 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
     const doneList = done.data ?? [];
 
     const needsRows: Row[] = needs.map((item) => ({ key: `needs:${item.key}`, type: 'needs', item }));
-    const runRows: Row[] = [
-      ...runningTasks.map((summary): Row => ({ key: `task:${summary.taskId}`, type: 'task', summary })),
+    const runRowsOf = (tasks: readonly TaskSummary[]): Row[] => [
+      ...tasks.map((summary): Row => ({ key: `task:${summary.taskId}`, type: 'task', summary })),
       ...scans.map((scan): Row => ({ key: `scan:${scan.id}`, type: 'scan', scan })),
     ];
+    const runRows = runRowsOf(runningTasks);
+    // under the items on Needs you, a task is not listed again when it already has an item there (decision P144)
+    const runRowsHere = active === 'needs' ? runRowsOf(runningBesideNeeds(runningTasks, needs)) : runRows;
     const doneRows: Row[] = doneList.map((task) => ({ key: `done:${task.id}`, type: 'done', task }));
-    rows = active === 'needs' ? [...needsRows, ...runRows] : active === 'running' ? runRows : doneRows;
+    rows = active === 'needs' ? [...needsRows, ...runRowsHere] : active === 'running' ? runRows : active === 'done' ? doneRows : [];
+    // the address's item is selected once its row is listed; it is let go when its list has loaded without it
+    if (wanted) {
+      const target = tabOfItem(wanted, active);
+      const shown = !target || target === active;
+      const loaded = active === 'needs' ? !!ws.needs.data && !!ws.summaries.data : active === 'running' ? !!ws.summaries.data : active === 'done' ? !!done.data : true;
+      if (shown && rows.some((r) => r.key === wanted)) {
+        selected = wanted;
+        wanted = undefined;
+      } else if (shown && loaded) wanted = undefined;
+    }
     // the selection stays on its item; when the item leaves (it was answered), the one now in its place is selected
     const at = rows.findIndex((r) => r.key === selected);
     if (at >= 0) lastIndex = at;
     else if (rows.length) selected = rows[Math.min(lastIndex, rows.length - 1)]!.key;
     else selected = undefined;
+    for (const k of picked) if (!rows.some((r) => r.key === k)) picked.delete(k);
     const sel = current();
+    // the selection goes into the address (?item=), so Reload and Back come back to it
+    if (!wanted && selected !== written && (ws.needs.data || active !== 'needs')) {
+      written = selected;
+      handle.queueTask(() => {
+        if (location.pathname !== routes.needsYou.href()) return;
+        const href = inboxAddress(location.pathname, location.search, written);
+        if (href !== location.pathname + location.search) window.history.replaceState(window.history.state, '', href);
+        propItem = written;
+      });
+    }
+    const bulk = active === 'needs' ? bulkItems() : [];
 
     const running = runRows.length;
     const items = [
       { name: 'needs', label: <>Needs you <span style={{ color: needs.length ? t.warning : undefined }} data-testid="tab-count">{needs.length}</span></>, testId: 'inbox-tab-needs' },
       { name: 'running', label: <>Running <span data-testid="tab-count">{running}</span></>, testId: 'inbox-tab-running' },
       { name: 'done', label: <>Done today <span data-testid="tab-count">{doneList.length}</span></>, testId: 'inbox-tab-done' },
+      // the person's own tasks in every project (once the My tasks page, decision P140): each row opens its task
+      { name: 'mine', label: <>Mine</>, testId: 'inbox-tab-mine' },
     ];
 
     const needsRow = (r: Extract<Row, { type: 'needs' }>) => {
@@ -350,7 +459,13 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
       const isSel = r.key === selected;
       return (
         <li key={r.key} data-testid="needs-item" data-kind={it.kind} data-look={look} data-project={it.projectId}>
-          <button type="button" mix={[rowCss, on('click', () => selectRow(r.key))]} data-row-key={r.key} aria-current={isSel ? 'true' : undefined}>
+          <button
+            type="button"
+            mix={[rowCss, on('click', (e) => selectRow(r.key, e.shiftKey))]}
+            data-row-key={r.key}
+            aria-current={isSel ? 'true' : undefined}
+            data-picked={picked.has(r.key) && picked.size > 1 ? 'true' : undefined}
+          >
             <span mix={tileCss} aria-hidden="true" style={{ background: tone[v.tone].bg, color: tone[v.tone].fg }}>
               <Icon icon={v.icon} size={13} />
             </span>
@@ -361,7 +476,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
               </span>
               <span class="sub" data-testid="needs-sub">{needsSubtitle(it, p?.name, summary, now)}</span>
             </span>
-            {isSel && answered?.key === r.key && answered.kind !== 'open' ? <kbd aria-hidden="true">A</kbd> : null}
+            {isSel && answered?.key === r.key && answered.kind !== 'open' && answered.kind !== 'gate' ? <kbd aria-hidden="true">A</kbd> : null}
           </button>
         </li>
       );
@@ -437,10 +552,18 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
 
     const needsSection = (
       <section aria-labelledby="inbox-needs" data-testid="inbox-needs">
-        <h2 id="inbox-needs" mix={groupCss}>
-          Needs you
-        </h2>
-        <ErrorNote error={ws.needs.error} what="Could not load what needs you" />
+        <div mix={groupRowCss}>
+          <h2 id="inbox-needs" mix={groupCss}>
+            Needs you
+          </h2>
+          {/* several notices at once (a failed check, a pause, a question...); a request is never answered in bulk */}
+          {bulk.length > 1 ? (
+            <Button size="sm" variant="ghost" data-testid="mark-many" disabled={!!ack.busy} mix={on('click', () => markMany(bulk))}>
+              {ack.busy === 'ack' ? 'Marking...' : `Mark ${bulk.length} done`}
+            </Button>
+          ) : null}
+        </div>
+        <ErrorNote error={ws.needs.error} retry={retryFor(ws.needs)} what="Could not load what needs you" />
         {ws.needs.loading && !ws.needs.data ? <Loading /> : null}
         {ws.needs.data && needs.length === 0 ? <p mix={emptyCss}>Nothing is waiting for you. Approvals, spec gates, reviews and questions from every project appear here.</p> : null}
         {needs.length ? (
@@ -455,11 +578,11 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
         <h2 id="inbox-running" mix={groupCss} style={{ paddingTop: active === 'needs' ? '18px' : undefined }}>
           Running
         </h2>
-        <ErrorNote error={ws.summaries.error} what="Could not load the running tasks" />
+        <ErrorNote error={ws.summaries.error} retry={retryFor(ws.summaries)} what="Could not load the running tasks" />
         {ws.summaries.data && running === 0 ? <p mix={emptyCss}>No agent is working on a task and no scan runs.</p> : null}
-        {running ? (
+        {runRowsHere.length ? (
           <ul mix={listCss} aria-label="Running now">
-            {runRows.map((r) => runRow(r as Extract<Row, { type: 'task' | 'scan' }>))}
+            {runRowsHere.map((r) => runRow(r as Extract<Row, { type: 'task' | 'scan' }>))}
           </ul>
         ) : null}
       </section>
@@ -469,7 +592,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
         <h2 id="inbox-done" mix={groupCss}>
           Done today
         </h2>
-        <ErrorNote error={done.error} what="Could not load the tasks done today" />
+        <ErrorNote error={done.error} retry={done.reload} what="Could not load the tasks done today" />
         {done.loading && !done.data ? <Loading /> : null}
         {done.data && doneList.length === 0 ? <p mix={emptyCss}>No task was completed today yet.</p> : null}
         {doneList.length ? (
@@ -497,12 +620,20 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
               {active === 'needs' ? (
                 <>
                   {needsSection}
-                  {runningSection}
+                  {/* every running task already has its item above: no second, empty-looking Running group */}
+                  {running > 0 && runRowsHere.length === 0 ? null : runningSection}
                 </>
               ) : active === 'running' ? (
                 runningSection
-              ) : (
+              ) : active === 'done' ? (
                 doneSection
+              ) : (
+                <section aria-labelledby="inbox-mine" data-testid="inbox-mine" mix={mineCss}>
+                  <h2 id="inbox-mine" mix={groupCss}>
+                    My tasks
+                  </h2>
+                  <MyTasksList />
+                </section>
               )}
             </div>
             <footer mix={footCss} aria-label="Keys">
@@ -522,7 +653,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
           </section>
           <aside mix={asideCss} aria-label="Selected item" data-testid="inbox-detail">
             {!sel ? (
-              <p mix={noneCss}>{rows.length ? 'Choose an item to see it here.' : 'Nothing to show here yet.'}</p>
+              <p mix={noneCss}>{active === 'mine' ? 'Open a task to see it.' : rows.length ? 'Choose an item to see it here.' : 'Nothing to show here yet.'}</p>
             ) : sel.type === 'needs' ? (
               <NeedsDetail
                 key={sel.key}
@@ -532,6 +663,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
                 projectName={project(sel.item.projectId)?.name}
                 now={now}
                 onOpen={() => open(sel)}
+                onGo={(href) => go(href, sel.item.projectId)}
                 onDone={() => markDone(sel.item)}
                 onAnswer={(kind) => onAnswer(sel.key, kind)}
                 acking={ack.busy === 'ack'}
@@ -564,6 +696,8 @@ function NeedsDetail(
     projectName: string | undefined;
     now: number;
     onOpen: () => void;
+    /** Opens another page of the item's project (the new task a Run again made). */
+    onGo: (href: string) => void;
     onDone: () => void;
     /** Says what this request's detail can answer here, once it is read. */
     onAnswer?: (kind: Answer['kind']) => void;
@@ -577,10 +711,24 @@ function NeedsDetail(
     enabled: () => !!handle.props.item.approvalId,
     when: (e) => starts(e, 'approval.', 'run.', 'permission.'),
   });
+  // a chat's waiting tool call (chat-ask:<id>): answered here with the chat's own card (C3)
+  const asks = query(handle, {
+    load: () => s.client.chatAsks(chatAskOf(handle.props.item)!.chatId),
+    enabled: () => !!chatAskOf(handle.props.item),
+    when: (e) => starts(e, 'chat.permission'),
+  });
   const act = action(handle);
   let sent = false;
 
-  const answer = (): Answer => (detail.data ? answerOf(detail.data) : { kind: 'open' });
+  const ask = () => {
+    const c = chatAskOf(handle.props.item);
+    return c ? asks.data?.find((x) => x.id === c.askId) : undefined;
+  };
+  const answer = (): Answer => {
+    if (detail.data) return answerOf(detail.data, hasGatePanel);
+    const c = chatAskOf(handle.props.item);
+    return c && ask() ? { kind: 'chat', ...c } : { kind: 'open' };
+  };
   const readOnly = () => s.workspace.license.readOnly;
   const respond = (label: string, fn: () => Promise<void>) =>
     void act.run(label, async () => {
@@ -589,16 +737,41 @@ function NeedsDetail(
       // the item leaves the list when the core says so; the counts and the list read again now
       await s.workspace.needs.reload();
     });
-  const approve = (once = false) => {
+  // a chat's request: Allow once (exactly that call), Allow in this chat (its rule recorded), Deny
+  const answerChat = (how: 'allow' | 'deny' | 'remember') => {
+    const a = answer();
+    if (a.kind !== 'chat' || act.busy || sent || (how !== 'deny' && readOnly())) return;
+    respond(how, async () => {
+      if (how === 'remember') await s.client.chatAllowAndRemember(a.chatId, a.askId);
+      else await s.client.chatAnswer(a.chatId, a.askId, how === 'allow');
+    });
+  };
+  // a gate's panel answers on the request's run, as on the task page
+  const respondGate = async (decision: string, data?: unknown) => {
     const a = answer();
     const d = detail.data;
+    if (!d || a.kind !== 'gate' || act.busy || sent) return;
+    await act.run('gate', async () => {
+      await s.client.runRespond(a.runId, d.id, decision, data);
+      sent = true;
+      await s.workspace.needs.reload();
+      return true;
+    });
+  };
+  const approve = (once = false) => {
+    const a = answer();
+    if (a.kind === 'chat') return answerChat('allow');
+    const d = detail.data;
     // an answer already sent is not sent again by a second key while the item waits to leave the list (audit 2026-10-27)
-    if (!d || a.kind === 'open' || readOnly() || act.busy || sent) return;
+    // a gate's answers are its panel's buttons (a waiver keeps its second click): no key answers it
+    // a review a collaborator asked changes on is not merged by a key: its answer is Send back, or the task's page
+    if (!d || a.kind === 'open' || a.kind === 'gate' || a.kind === 'changes' || readOnly() || act.busy || sent) return;
     if (a.kind === 'permission' && a.forTask && !once) respond('approve', () => s.client.runApproveForTask(a.runId, d.id));
     else respond(once ? 'once' : 'approve', () => s.client.runRespond(a.runId, d.id, 'approved'));
   };
   const deny = () => {
     const a = answer();
+    if (a.kind === 'chat') return answerChat('deny');
     const d = detail.data;
     if (!d || (a.kind !== 'permission' && a.kind !== 'approval') || act.busy || sent) return;
     respond('deny', () => s.client.runRespond(a.runId, d.id, 'rejected'));
@@ -627,7 +800,7 @@ function NeedsDetail(
     const d: ApprovalDetail | undefined = detail.data;
     const a = answer();
     const busy = !!act.busy || sent;
-    if (d) handle.queueTask(() => handle.props.onAnswer?.(a.kind));
+    if (d || a.kind === 'chat') handle.queueTask(() => handle.props.onAnswer?.(a.kind));
     const ro = readOnly();
     const title = needsRowTitle(it, summary);
     // a budget item's detail is what to do: it is the hint below, not said twice
@@ -641,16 +814,18 @@ function NeedsDetail(
     const failing = (summary?.checks ?? []).filter((c) => c.status === 'failed').map((c) => c.kind);
     const spec = d && d.kind === 'review' && d.phase === 'spec' ? specPayload({ id: d.id, nodeId: '', step: 0, spec: { kind: d.kind, title: d.title, payload: d.payload, phase: d.phase } }) : undefined;
     const permission = a.kind === 'permission';
-    const review = look === 'spec' || look === 'merge' || look === 'plan' || look === 'review';
+    const review = look === 'spec' || look === 'merge' || look === 'plan' || look === 'review' || look === 'changes';
     const expires = d?.expiresAt || msOf(it.expiresAt);
     const answerHere = a.kind !== 'open';
     const budgetPage = it.kind === 'budget' && it.budgetState !== 'paused';
     const join = it.kind === 'join_request' && !!it.joinRequestId;
-    const openLabel = it.chatId
+    const openLabel = problemOpenLabel(it.kind)
+      ? problemOpenLabel(it.kind)
+      : it.chatId
       ? 'Open the chat'
       : budgetPage
         ? 'Open Budgets'
-        : it.kind === 'mention'
+        : it.kind === 'mention' || it.kind === 'reply'
           ? 'Open the room'
           : it.kind === 'agent'
             ? 'Open the agent'
@@ -679,7 +854,7 @@ function NeedsDetail(
       <>
         <div mix={paneHead} data-testid="detail-head">
           <span mix={kindLine} style={{ color: tone[v.tone].fg }} data-testid="detail-kind">
-            {[lookWords(look), projectName].filter(Boolean).join(' · ')}
+            {[look === 'problem' ? (KIND_LABEL[it.kind] ?? lookWords(look)) : lookWords(look), projectName].filter(Boolean).join(' · ')}
           </span>
           <h2>
             {key ? <span mix={keyCss}>{key}</span> : null}
@@ -687,11 +862,15 @@ function NeedsDetail(
           </h2>
           {description ? <p data-testid="detail-description">{visible(description)}</p> : null}
           {/* what to do where it is decided, for what is not answered here */}
-          {(!d || a.kind === 'open') && hint ? <p data-testid="needs-hint">{hint}</p> : null}
+          {(!d || a.kind === 'open') && a.kind !== 'chat' && hint ? <p data-testid="needs-hint">{hint}</p> : null}
+          {/* an agent CLI that is not ready: its fix here, Sign in first (A9); the Agents page keeps the full detail */}
+          {/* what went wrong in the background: its fix here where there is one (B6, F14 and H7) */}
+          {look === 'problem' ? <ProblemFix key={it.key} item={it} /> : null}
+          {it.kind === 'connection' && it.adapter ? <CliFix key={it.connectionKey || it.adapter} adapter={it.adapter} distro={distroOfKey(it.connectionKey) || undefined} /> : null}
           {/* a request answered here keeps its page one step away, under what it is about */}
           {answerHere ? <div mix={openRow}>{openLink}</div> : null}
         </div>
-        <ErrorNote error={detail.error} what="Could not read the request" />
+        <ErrorNote error={detail.error} retry={detail.reload} what="Could not read the request" />
         {it.approvalId && detail.loading && !d ? <Loading /> : null}
         <dl mix={dlCss} data-testid="detail-facts">
           {agent || it.agentName ? (
@@ -810,6 +989,43 @@ function NeedsDetail(
             Answer sent. It leaves the inbox when the core confirms.
           </p>
         ) : null}
+        {a.kind === 'gate' && d ? (
+          <div data-testid="detail-gate">
+            <GateAnswer
+              p={pendingOf(d)}
+              runId={a.runId}
+              busy={busy}
+              readOnly={ro}
+              onRespond={respondGate}
+              onDone={() => {
+                sent = true;
+                void s.workspace.needs.reload();
+                void handle.update();
+              }}
+            />
+          </div>
+        ) : null}
+        {a.kind === 'changes' && d?.prReview ? (
+          <div mix={staysCss} data-testid="detail-pr-review">
+            <span class="h">{visible(d.prReview.summary)}</span>
+            <span class="b">Send back sends the worker these words. Nothing was sent yet.</span>
+            <pre class="b" style={{ whiteSpace: 'pre-wrap', margin: '0', overflowWrap: 'anywhere' }}>
+              {visible(d.prReview.feedback)}
+            </pre>
+          </div>
+        ) : null}
+        {a.kind === 'chat' && ask() ? (
+          <div data-testid="detail-chat-ask">
+            <AskCard
+              ask={ask()!}
+              cli="The chat's agent"
+              busy={act.busy ? `${act.busy}:${a.askId}` : sent ? 'sent' : ''}
+              readOnly={ro}
+              onAnswer={(allow) => answerChat(allow ? 'allow' : 'deny')}
+              onRemember={() => answerChat('remember')}
+            />
+          </div>
+        ) : null}
         <div mix={actionsCss} data-testid="detail-actions">
           {a.kind === 'permission' || a.kind === 'approval' ? (
             <>
@@ -825,6 +1041,16 @@ function NeedsDetail(
                 </Button>
               ) : null}
             </>
+          ) : a.kind === 'changes' && d ? (
+            <Button
+              variant="primary"
+              data-variant="primary"
+              disabled={busy || ro}
+              mix={[on('click', () => respond('send-back', () => s.client.runRespond(a.runId, d.id, 'rejected', { feedback: a.feedback })))]}
+              data-testid="detail-send-back"
+            >
+              Send back with the GitHub review
+            </Button>
           ) : a.kind === 'spec' || a.kind === 'merge' ? (
             <Button variant="primary" data-variant="primary" disabled={busy || ro} mix={[on('click', () => approve())]} data-testid="detail-approve">
               {a.kind === 'spec' ? 'Accept spec' : 'Merge'} <kbd>A</kbd>
@@ -845,6 +1071,16 @@ function NeedsDetail(
                 Decline
               </Button>
             </>
+          ) : null}
+          {it.kind === 'agent' && it.taskId && summary && (summary.status === 'FAILED' || summary.status === 'CANCELLED') ? (
+            // the agent failed its task: run the work again from here, with the run page's confirmation (paid work again)
+            <RunAgainButton taskId={it.taskId} seq={summary.seq} status={summary.status} variant="secondary" disabled={ro} onNavigate={handle.props.onGo} />
+          ) : null}
+          {it.kind === 'agent' && it.runId ? (
+            // the Support page with the run picked and previewed (X56 with C6): nobody types a run id
+            <a href={supportFor(it.runId)} mix={buttonStyle('secondary', 'md')} data-testid="detail-report">
+              Report this
+            </a>
           ) : null}
           {canAck(it) ? (
             <Button disabled={acking} mix={[on('click', onDone)]} data-testid="detail-done">

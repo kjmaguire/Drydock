@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { BudgetPausePayload } from '../../api/extTypes.ts';
-import { budgetStatus, expiredLicense, usage } from '../../test/fixtures.ts';
+import { budget, budgetStatus, expiredLicense, usage } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, errorOf, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
 import { TOKENS_ERROR, TURNS_ERROR, USD_ERROR } from '../budgets/budgets.ts';
 import { BudgetPausePanel } from './budget-pause.tsx';
@@ -24,6 +24,9 @@ describe('UsageTable', () => {
   });
 });
 
+// the primary answer says what it does (C12): its text changes with the limits typed
+const resume = (r: { container: HTMLElement }) => Array.from(r.container.querySelectorAll('button')).find((b) => b.textContent!.startsWith('Resume'))!;
+
 describe('BudgetPausePanel', () => {
   it('resumes the exact request with raised limits, or stops the run', async () => {
     const calls: unknown[] = [];
@@ -32,8 +35,9 @@ describe('BudgetPausePanel', () => {
     const payload: BudgetPausePayload = { gate: 'budget', message: 'Budget limit reached: project prj_1 at 100%.', exceeded: [budgetStatus({ state: 'exceeded', pct: 1.1 })] };
     const r = mount(<BudgetPausePanel payload={payload} runId="run-9" requestId="req-3" onDone={() => done++} />, s);
     expect(r.container.textContent).toContain('Budget limit reached');
-    type(byLabel(r.container, 'New USD limit'), '10');
-    await r.act(() => byText(r.container, 'button', 'Resume').click());
+    await r.act(() => type(byLabel(r.container, 'New USD limit'), '10'));
+    expect(resume(r).textContent).toBe('Resume with a $10 limit');
+    await r.act(() => resume(r).click());
     await waitFor(() => expect(calls[0]).toEqual({ runId: 'run-9', requestId: 'req-3', decision: 'approved', limitUsd: 10, limitTokens: undefined, limitTurns: undefined }), r);
     await waitFor(() => expect(done).toBe(1), r);
     await r.act(() => byText(r.container, 'button', 'Stop the run').click());
@@ -60,7 +64,7 @@ describe('BudgetPausePanel', () => {
     ] as const) {
       for (const f of [usd, tokens, turns]) type(f(), '');
       type(field(), bad);
-      await r.act(() => byText(r.container, 'button', 'Resume').click());
+      await r.act(() => resume(r).click());
       await waitFor(() => expect(errorOf(field())).toBe(message), r);
       await waitFor(() => expect(document.activeElement).toBe(field()), r);
       for (const other of [usd, tokens, turns].filter((f) => f !== field)) expect(errorOf(other())).toBe(null);
@@ -71,12 +75,18 @@ describe('BudgetPausePanel', () => {
     await r.act(() => byText(r.container, 'button', 'Stop the run').click());
     await waitFor(() => expect(calls).toEqual([{ runId: 'run-9', requestId: 'req-3', decision: 'rejected', limitUsd: undefined, limitTokens: undefined, limitTurns: undefined }]), r);
     // blank fields still resume without a new limit (exactly one more turn); a plain number is sent as it is
-    for (const f of [usd, tokens, turns]) type(f(), '');
-    await r.act(() => byText(r.container, 'button', 'Resume').click());
+    await r.act(() => {
+      for (const f of [usd, tokens, turns]) type(f(), '');
+    });
+    expect(resume(r).textContent).toBe('Resume for one more turn');
+    await r.act(() => resume(r).click());
     await waitFor(() => expect(calls[1]).toEqual({ runId: 'run-9', requestId: 'req-3', decision: 'approved', limitUsd: undefined, limitTokens: undefined, limitTurns: undefined }), r);
-    type(usd(), '12.50');
-    type(tokens(), ' 500000 ');
-    await r.act(() => byText(r.container, 'button', 'Resume').click());
+    await r.act(() => {
+      type(usd(), '12.50');
+      type(tokens(), ' 500000 ');
+    });
+    expect(resume(r).textContent).toBe('Resume with the new limits');
+    await r.act(() => resume(r).click());
     await waitFor(() => expect(calls[2]).toEqual({ runId: 'run-9', requestId: 'req-3', decision: 'approved', limitUsd: 12.5, limitTokens: 500000, limitTurns: undefined }), r);
     expect(errorOf(usd())).toBe(null);
   });
@@ -86,11 +96,93 @@ describe('BudgetPausePanel', () => {
     const s = testServices({ licenseStatus: async () => expiredLicense, projectList: async () => [], appInfo: async () => ({}) as never, budgetResume: async (p) => (calls.push(p), {}) as never });
     s.workspace.start();
     const r = mount(<BudgetPausePanel payload={{ gate: 'budget', message: 'Budget limit reached.', exceeded: [] }} runId="run-1" requestId="req-1" onDone={() => undefined} />, s);
-    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Resume').disabled).toBe(true), r);
+    await waitFor(() => expect((resume(r) as HTMLButtonElement).disabled).toBe(true), r);
     const stop = byText<HTMLButtonElement>(r.container, 'button', 'Stop the run');
     expect(stop.disabled).toBe(false);
     await r.act(() => stop.click());
     await waitFor(() => expect(calls[0]!.decision).toBe('rejected'), r);
+  });
+});
+
+describe('BudgetPausePanel raise chips (C12)', () => {
+  it('with one limit, +50% is chosen to start with and Resume says the limit it sets', async () => {
+    const calls: unknown[] = [];
+    const s = testServices({ budgetResume: async (p) => (calls.push(p), { runId: 'r', requestId: 'q', decision: 'approved', raised: ['bud_1'], by: 'human:kyle' }) as never });
+    const payload: BudgetPausePayload = { gate: 'budget', message: 'Budget limit reached.', exceeded: [budgetStatus({ state: 'exceeded', pct: 1.1, budget: budget({ limitUsd: 10 }) })] };
+    const r = mount(<BudgetPausePanel payload={payload} runId="run-9" requestId="req-3" onDone={() => undefined} />, s);
+    expect(byLabel<HTMLInputElement>(r.container, 'New USD limit').value).toBe('15');
+    expect(resume(r).textContent).toBe('Resume with a $15 limit');
+    const chips = r.container.querySelector('[data-testid="budget-raise"]')!;
+    expect(chips.textContent).toContain('$10 limit');
+    expect(Array.from(chips.querySelectorAll('button')).map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([
+      ['+25%', 'false'],
+      ['+50%', 'true'],
+      ['x2', 'false'],
+    ]);
+    await r.act(() => byText(chips, 'button', 'x2').click());
+    expect(byLabel<HTMLInputElement>(r.container, 'New USD limit').value).toBe('20');
+    await r.act(() => byText(chips, 'button', '+25%').click());
+    expect(resume(r).textContent).toBe('Resume with a $12.50 limit');
+    // nothing is resumed by choosing a raise: only the button sends it
+    expect(calls).toEqual([]);
+    await r.act(() => resume(r).click());
+    await waitFor(() => expect(calls).toEqual([{ runId: 'run-9', requestId: 'req-3', decision: 'approved', limitUsd: 12.5, limitTokens: undefined, limitTurns: undefined }]), r);
+  });
+
+  it('with more than one limit nothing is chosen for the person, and a turn limit is raised in whole turns', async () => {
+    const s = testServices({});
+    const payload: BudgetPausePayload = {
+      gate: 'budget',
+      message: 'Budget limit reached.',
+      exceeded: [
+        budgetStatus({ state: 'exceeded', pct: 1.2, pctUsd: 1.2, budget: budget({ limitUsd: 5 }) }),
+        budgetStatus({ state: 'exceeded', pct: 1, binding: 'turns', pctUsd: undefined, pctTurns: 1, budget: budget({ id: 'bud_2', scope: 'task', scopeId: '*', limitUsd: undefined, limitTurns: 1 }) }),
+      ],
+    };
+    const r = mount(<BudgetPausePanel payload={payload} runId="run-9" requestId="req-3" onDone={() => undefined} />, s);
+    expect(byLabel<HTMLInputElement>(r.container, 'New USD limit').value).toBe('');
+    expect(resume(r).textContent).toBe('Resume for one more turn');
+    const rows = Array.from(r.container.querySelectorAll('[data-testid="budget-raise"]'));
+    expect(rows.length).toBe(2);
+    await r.act(() => byText(rows[1]!, 'button', '+25%').click());
+    expect(byLabel<HTMLInputElement>(r.container, 'New turn limit').value).toBe('2');
+    expect(resume(r).textContent).toBe('Resume with a 2-turn limit');
+  });
+
+  it('two paused budgets with a USD limit get no raise of one of them: the new value would be set on both', async () => {
+    const calls: unknown[] = [];
+    const s = testServices({ budgetResume: async (p) => (calls.push(p), { runId: 'r', requestId: 'q', decision: 'approved', raised: [], by: 'human:kyle' }) as never });
+    const payload: BudgetPausePayload = {
+      gate: 'budget',
+      message: 'Budget limit reached.',
+      exceeded: [
+        budgetStatus({ state: 'exceeded', pct: 1.1, pctUsd: 1.1, budget: budget({ id: 'bud_t', scope: 'task', scopeId: 'tsk_1', limitUsd: 10 }) }),
+        budgetStatus({ state: 'exceeded', pct: 1.01, pctUsd: 1.01, budget: budget({ id: 'bud_p', scope: 'project', scopeId: 'prj_1', limitUsd: 100 }) }),
+      ],
+    };
+    const r = mount(<BudgetPausePanel payload={payload} runId="run-9" requestId="req-3" onDone={() => undefined} />, s);
+    expect(r.container.querySelectorAll('[data-testid="budget-raise"]').length).toBe(0);
+    expect(r.container.querySelector('[data-testid="budget-raise-shared"]')!.textContent).toBe('A new USD limit is set on all 2 paused budgets that have one.');
+    expect(byLabel<HTMLInputElement>(r.container, 'New USD limit').value).toBe('');
+    expect(resume(r).textContent).toBe('Resume for one more turn');
+    await r.act(() => resume(r).click());
+    await waitFor(() => expect(calls).toEqual([{ runId: 'run-9', requestId: 'req-3', decision: 'approved', limitUsd: undefined, limitTokens: undefined, limitTurns: undefined }]), r);
+  });
+
+  it('only the limit that ran out gets chips: a budget out of turns offers no USD raise', async () => {
+    const s = testServices({});
+    const payload: BudgetPausePayload = {
+      gate: 'budget',
+      message: 'Budget limit reached.',
+      exceeded: [budgetStatus({ state: 'exceeded', pct: 1, binding: 'turns', pctUsd: 0.4, pctTurns: 1, budget: budget({ limitUsd: 10, limitTurns: 20 }) })],
+    };
+    const r = mount(<BudgetPausePanel payload={payload} runId="run-9" requestId="req-3" onDone={() => undefined} />, s);
+    const rows = Array.from(r.container.querySelectorAll('[data-testid="budget-raise"]'));
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.textContent).toContain('project: 20-turn limit');
+    expect(byLabel<HTMLInputElement>(r.container, 'New USD limit').value).toBe('');
+    expect(byLabel<HTMLInputElement>(r.container, 'New turn limit').value).toBe('30');
+    expect(resume(r).textContent).toBe('Resume with a 30-turn limit');
   });
 });
 

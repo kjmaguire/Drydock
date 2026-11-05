@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -54,78 +55,83 @@ func Sync(d Deps, project func(ctx context.Context, projectID string) (ProjectIn
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		target := baseTarget(t, pi)
-		w := worktreeOf(t)
-		route := func(r string, v any) (workflow.NodeOutput, error) {
-			b, _ := json.Marshal(v)
-			return workflow.NodeOutput{Value: b, Route: r}, nil
-		}
-		// back to work: a task in REVIEW or VERIFICATION goes back to IN_PROGRESS
-		reopen := func(reason string) error {
-			if t.Status == tasks.InProgress {
-				return nil
-			}
-			_, err := d.Tasks.Transition(ctx, t.ID, tasks.InProgress, tasks.TransitionOpts{By: "system", Reason: reason, Resync: true})
-			return err
-		}
+		return syncBranch(ctx, d, repo, t, baseTarget(t, pi), true)
+	}
+}
 
-		// a merge left in progress by an earlier pass that the agent did not finish
-		if repo.MergeInProgress(ctx, w) {
-			left, err := repo.UnresolvedConflicts(ctx, w)
-			if err != nil {
-				return workflow.NodeOutput{}, fmt.Errorf("list the conflicts with %s: %w", target, err)
-			}
-			if len(left) > 0 {
-				if err := reopen("conflicts with " + target + " are not resolved"); err != nil {
-					return workflow.NodeOutput{}, err
-				}
-				return route(RouteConflict, map[string]any{"conflict": map[string]any{"files": left, "target": target}})
-			}
+// syncBranch brings target into the task's branch and routes: current (or approved, when allowApproved and a human already
+// approved this very change), changed (checks run again), or conflict (the owner resolves the markers).
+func syncBranch(ctx context.Context, d Deps, repo *git.Repo, t tasks.Task, target string, allowApproved bool) (workflow.NodeOutput, error) {
+	w := worktreeOf(t)
+	route := func(r string, v any) (workflow.NodeOutput, error) {
+		b, _ := json.Marshal(v)
+		return workflow.NodeOutput{Value: b, Route: r}, nil
+	}
+	// back to work: a task in REVIEW or VERIFICATION goes back to IN_PROGRESS
+	reopen := func(reason string) error {
+		if t.Status == tasks.InProgress {
+			return nil
 		}
-		behind, err := repo.Behind(ctx, w, target)
+		_, err := d.Tasks.Transition(ctx, t.ID, tasks.InProgress, tasks.TransitionOpts{By: "system", Reason: reason, Resync: true})
+		return err
+	}
+
+	// a merge left in progress by an earlier pass that the agent did not finish
+	if repo.MergeInProgress(ctx, w) {
+		left, err := repo.UnresolvedConflicts(ctx, w)
 		if err != nil {
-			return workflow.NodeOutput{}, fmt.Errorf("compare with %s: %w", target, err)
+			return workflow.NodeOutput{}, fmt.Errorf("list the conflicts with %s: %w", target, err)
 		}
-		current := func() (workflow.NodeOutput, error) {
-			if patch, perr := repo.PatchID(ctx, w, target); perr == nil {
-				if by, ok := approvalFor(ctx, d, t.ID, patch); ok {
-					// the base moved after a human approved this very change, it merged cleanly and the checks passed again
-					if t.Status == tasks.Review {
-						if _, err := d.Tasks.Transition(ctx, t.ID, tasks.Verification, tasks.TransitionOpts{By: "system", Reason: "the change is the one " + by + " approved; the base moved and the checks pass again"}); err != nil {
-							return workflow.NodeOutput{}, err
-						}
-					}
-					d.emit(ctx, "task.reapproved_unchanged", t, map[string]any{"approvedBy": by, "target": target})
-					return route(RouteApproved, map[string]any{"target": target, "approvedBy": by})
-				}
-			}
-			return route(RouteCurrent, map[string]any{"target": target, "behind": 0})
-		}
-		if behind == 0 {
-			return current()
-		}
-		changed, conflicts, err := repo.MergeIn(ctx, w, target)
-		if err != nil {
-			return workflow.NodeOutput{}, fmt.Errorf("bring %s into %s: %w", target, t.Branch, err)
-		}
-		if !changed {
-			return current()
-		}
-		if len(conflicts) > 0 {
-			d.emit(ctx, "task.base_conflict", t, map[string]any{"target": target, "files": conflicts, "behind": behind})
-			_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "sync", Summary: fmt.Sprintf("%s moved ahead by %d commit(s) and conflicts in %s", target, behind, strings.Join(conflicts, ", "))})
-			if err := reopen(target + " moved ahead and conflicts with this task"); err != nil {
+		if len(left) > 0 {
+			if err := reopen("conflicts with " + target + " are not resolved"); err != nil {
 				return workflow.NodeOutput{}, err
 			}
-			return route(RouteConflict, map[string]any{"conflict": map[string]any{"files": conflicts, "target": target}})
+			return route(RouteConflict, map[string]any{"conflict": map[string]any{"files": left, "target": target}})
 		}
-		d.emit(ctx, "task.base_merged", t, map[string]any{"target": target, "behind": behind})
-		_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "sync", Summary: fmt.Sprintf("brought %d commit(s) of %s into the branch; checks run again", behind, target)})
-		if err := reopen(target + " moved ahead; checks run again on the result"); err != nil {
+	}
+	behind, err := repo.Behind(ctx, w, target)
+	if err != nil {
+		return workflow.NodeOutput{}, fmt.Errorf("compare with %s: %w", target, err)
+	}
+	current := func() (workflow.NodeOutput, error) {
+		if patch, perr := repo.PatchID(ctx, w, target); allowApproved && perr == nil {
+			if by, ok := approvalFor(ctx, d, t.ID, patch); ok {
+				// the base moved after a human approved this very change, it merged cleanly and the checks passed again
+				if t.Status == tasks.Review {
+					if _, err := d.Tasks.Transition(ctx, t.ID, tasks.Verification, tasks.TransitionOpts{By: "system", Reason: "the change is the one " + by + " approved; the base moved and the checks pass again"}); err != nil {
+						return workflow.NodeOutput{}, err
+					}
+				}
+				d.emit(ctx, "task.reapproved_unchanged", t, map[string]any{"approvedBy": by, "target": target})
+				return route(RouteApproved, map[string]any{"target": target, "approvedBy": by})
+			}
+		}
+		return route(RouteCurrent, map[string]any{"target": target, "behind": 0})
+	}
+	if behind == 0 {
+		return current()
+	}
+	changed, conflicts, err := repo.MergeIn(ctx, w, target)
+	if err != nil {
+		return workflow.NodeOutput{}, fmt.Errorf("bring %s into %s: %w", target, t.Branch, err)
+	}
+	if !changed {
+		return current()
+	}
+	if len(conflicts) > 0 {
+		d.emit(ctx, "task.base_conflict", t, map[string]any{"target": target, "files": conflicts, "behind": behind})
+		_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "sync", Summary: fmt.Sprintf("%s moved ahead by %d commit(s) and conflicts in %s", target, behind, strings.Join(conflicts, ", "))})
+		if err := reopen(target + " moved ahead and conflicts with this task"); err != nil {
 			return workflow.NodeOutput{}, err
 		}
-		return route(RouteChanged, map[string]any{"target": target, "behind": behind})
+		return route(RouteConflict, map[string]any{"conflict": map[string]any{"files": conflicts, "target": target}})
 	}
+	d.emit(ctx, "task.base_merged", t, map[string]any{"target": target, "behind": behind})
+	_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "sync", Summary: fmt.Sprintf("brought %d commit(s) of %s into the branch; checks run again", behind, target)})
+	if err := reopen(target + " moved ahead; checks run again on the result"); err != nil {
+		return workflow.NodeOutput{}, err
+	}
+	return route(RouteChanged, map[string]any{"target": target, "behind": behind})
 }
 
 // conflictPrompt is what the worker is told when the base branch conflicts with its change.

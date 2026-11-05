@@ -169,11 +169,18 @@ func TestAnEndedTaskRunsAgainAsANewTask(t *testing.T) {
 	run := c.assignAndStart(tk)
 	c.awaitApproval(tk.ID)
 	mustErr(t, a.callErr("task.runAgain", map[string]string{"taskId": tk.ID}), "has not ended")
+	if d := c.detail(tk.ID); d.RunAgain || d.RunAgainWhy != "" {
+		t.Fatalf("a task that has not ended offers no run again: %v %q", d.RunAgain, d.RunAgainWhy)
+	}
 	a.call("task.cancel", map[string]string{"id": tk.ID}, nil)
 	c.a.waitFor("the task cancelled", func() bool { return c.detail(tk.ID).Task.Status == tasks.Cancelled })
 	x := c.explain(tk.ID, run)
 	if !x.Actions.RunAgain || x.Actions.TimeTravel || !strings.Contains(x.Actions.TimeTravelWhy, "Run it again as a new task") {
 		t.Fatalf("actions %+v", x.Actions)
+	}
+	// the task page offers it where the failure is shown: task.get says so too (and nothing while the task had not ended)
+	if d := c.detail(tk.ID); !d.RunAgain || d.RunAgainWhy != "" {
+		t.Fatalf("task.get of a cancelled task must say it can run again: %v %q", d.RunAgain, d.RunAgainWhy)
 	}
 
 	var res core.RunAgainResult

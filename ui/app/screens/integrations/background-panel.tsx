@@ -15,7 +15,7 @@ import { Check, KeyRound, Trash2, Webhook } from 'lucide';
 import type { WebhookEndpoint } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { parseWhole } from '../../lib/limits.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -136,7 +136,7 @@ export function BackgroundPanel(handle: Handle) {
           sub="What runs for every connection: the webhook receiver (off unless you turn it on) and the weekly sweep"
           testId="background-head"
         />
-        <ErrorNote error={hooks.error ?? sweep.error ?? act.error} what="Webhooks and sweeps" />
+        <ErrorNote error={hooks.error ?? sweep.error ?? act.error} retry={retryFor(hooks, sweep, act)} what="Webhooks and sweeps" />
         {!st && hooks.loading ? <Loading /> : null}
         {st ? (
           <SettingsGroup title="Webhook receiver" testId="webhook-receiver">

@@ -1,22 +1,19 @@
-// The project's join rules (decision P130, room-protocol s10 (c)): a rule a person makes adds an agent to every task room
-// created after it, or only to those whose task names a file under a folder. The agent joins as an observer (it reads and
-// answers only when mentioned) unless the person chooses active. Rules never reach channels, direct messages or rooms that
-// exist already; the core checks every rule.
+// The project's join rules on a room's tab (decision P130, room-protocol s10 (c); X17): one summary line per agent that joins task
+// rooms by rule, in words naming every folder it joins by, with Change opening that agent's editor, where the rules are set
+// (Joins task rooms: never, every task, or tasks that touch one or more folders of the repository). The rules belong to the crew, not to a room, so the room only says them.
 
-import { css, on, type Handle } from 'remix/component';
-import { Trash2 } from 'lucide';
+import { css, type Handle } from 'remix/component';
 import type { Agent } from '../../api/types.ts';
-import { action, query, services } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { query, retryFor, services } from '../../state/services.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
-import { Field } from '../../ui/form.tsx';
 import { tightList } from '../../ui/layout.tsx';
-import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { joinWords } from '../team/join-choice.ts';
+import { routes } from '../../routes.ts';
 
 const cardCss = css({
   display: 'grid',
-  gap: t.s3,
+  gap: t.s2,
   padding: t.s4,
   borderRadius: t.rLg,
   background: t.bgApp,
@@ -25,13 +22,6 @@ const cardCss = css({
   '& .muted': { margin: '0', color: t.textMuted, fontSize: t.textSm },
 });
 const rowCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, padding: '4px 8px', fontSize: t.textSm, '& .what': { flex: '1', minWidth: '0' } });
-const formCss = css({ display: 'flex', flexWrap: 'wrap', gap: t.s2, alignItems: 'flex-end', '& > *': { flex: '1 1 140px', minWidth: '0' }, '& > button': { flex: 'none' } });
-
-/** A rule in words: "Sec joins as an observer: tasks naming a file under auth/". */
-export function ruleWords(agentName: string, pathPrefix: string | undefined, state: string): string {
-  const as = state === 'active' ? 'an active member' : 'an observer';
-  return `${agentName} joins as ${as}: ${pathPrefix ? `tasks naming a file under ${pathPrefix}` : 'every task'}`;
-}
 
 export function JoinRules(handle: Handle<{ projectId: string; agents: readonly Agent[] }>) {
   const s = services(handle);
@@ -40,94 +30,31 @@ export function JoinRules(handle: Handle<{ projectId: string; agents: readonly A
     when: (e) => e.type.startsWith('room.join_rule'),
     key: () => handle.props.projectId,
   });
-  const act = action(handle);
-  let agent = '';
-  let prefix = '';
-  let state = 'observer';
-  const update = () => void handle.update();
-  const name = (id: string) => handle.props.agents.find((a) => a.id === id)?.name ?? id;
 
   return () => {
-    const { projectId, agents } = handle.props;
     const list = rules.data ?? [];
-    const busy = act.busy !== '';
+    const withRule = [...new Set(list.map((r) => r.agentId))];
+    const name = (id: string) => handle.props.agents.find((a) => a.id === id)?.name ?? id;
     return (
       <section mix={cardCss} aria-label="Join rules" data-testid="join-rules">
         <h3>Join rules</h3>
-        <p class="muted">Add an agent to each new task room, or only to tasks that name a file under a folder.</p>
-        <ErrorNote error={act.error ?? rules.error} />
-        {list.length ? (
+        <ErrorNote error={rules.error} retry={retryFor(rules)} />
+        {withRule.length ? (
           <ul mix={tightList}>
-            {list.map((r) => (
-              <li key={r.id} mix={rowCss} data-testid="join-rule">
-                <span class="what">{ruleWords(name(r.agentId), r.pathPrefix, r.state)}</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={Trash2}
-                  disabled={busy}
-                  aria-label={`Remove the rule for ${name(r.agentId)}`}
-                  mix={[on('click', () => void act.run('remove', async () => (await s.client.roomJoinRuleRemove(r.id), await rules.reload())))]}
-                >
-                  Remove
-                </Button>
+            {withRule.map((id) => (
+              <li key={id} mix={rowCss} data-testid="join-rule">
+                <span class="what">{joinWords(name(id), list, id)}</span>
+                <a href={`${routes.team.href()}?edit=${encodeURIComponent(id)}`} aria-label={`Change the join rule of ${name(id)}`}>
+                  Change
+                </a>
               </li>
             ))}
           </ul>
+        ) : rules.data ? (
+          <p class="muted" data-testid="join-rules-none">
+            No agent joins task rooms by rule. Set it on an agent's editor, under More settings.
+          </p>
         ) : null}
-        <div mix={formCss}>
-          <Select
-            label="Agent for the rule"
-            value={agent}
-            options={[{ value: '', label: 'Choose an agent...' }, ...agents.map((a) => ({ value: a.id, label: a.name }))]}
-            onChange={(v) => {
-              agent = v;
-              update();
-            }}
-          />
-          <Field label="Folder (optional)">
-            {(id) => (
-              <input
-                id={id}
-                value={prefix}
-                placeholder="auth/"
-                mix={[
-                  on('input', (e) => {
-                    prefix = (e.currentTarget as HTMLInputElement).value;
-                    update();
-                  }),
-                ]}
-              />
-            )}
-          </Field>
-          <Select
-            label="Joins as"
-            value={state}
-            options={[
-              { value: 'observer', label: 'Observer' },
-              { value: 'active', label: 'Active' },
-            ]}
-            onChange={(v) => {
-              state = v;
-              update();
-            }}
-          />
-          <Button
-            disabled={!agent || busy}
-            mix={[
-              on('click', () =>
-                void act.run('add', async () => {
-                  await s.client.roomJoinRuleAdd({ projectId, agentId: agent, pathPrefix: prefix.trim(), state });
-                  agent = '';
-                  prefix = '';
-                  await rules.reload();
-                }),
-              ),
-            ]}
-          >
-            {act.busy === 'add' ? 'Adding...' : 'Add rule'}
-          </Button>
-        </div>
       </section>
     );
   };

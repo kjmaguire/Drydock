@@ -6,7 +6,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { FolderTree } from 'lucide';
-import { REPO_MAP_DEFAULT_BUDGET, REPO_MAP_MAX_BUDGET, REPO_MAP_MIN_BUDGET } from '../../api/repomapClient.ts';
+import { REPO_MAP_DEFAULT_BUDGET } from '../../api/repomapClient.ts';
 import { projectHasRepo } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { query, services, watch } from '../../state/services.tsx';
@@ -16,17 +16,20 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions } from '../../ui/form.tsx';
 import { Page, Section, card, tableCard } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { budgetOf, languagesText, parseFocus, rankText, skippedText, statsText } from './repomap.ts';
+import { Segmented } from '../../ui/segmented.tsx';
+import { BUDGET_CHOICES, doubled, languagesText, parseFocus, rankText, repoMapPrefsOf, skippedText, statsText, taskFocusChips, toggleFocus, withRepoMapPrefs, type RepoMapPrefs } from './repomap.ts';
 
 const introCss = css({ color: t.textMuted, fontSize: t.textMd, maxWidth: '820px' });
 const formCss = css({
   display: 'grid',
-  gridTemplateColumns: 'minmax(220px, 1fr) 160px',
+  gridTemplateColumns: 'minmax(220px, 1fr) auto',
   gap: t.s4,
   alignItems: 'start',
   '& input': { width: '100%', minWidth: '0' },
   '& input.paths': { fontFamily: t.mono, fontSize: t.textSm },
 });
+const budgetCss = css({ display: 'grid', gap: '6px', '& .lbl': { fontSize: t.textSm, fontWeight: '500' } });
+const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, marginTop: t.s2, fontSize: t.textSm, color: t.textMuted });
 const statsCss = css({ color: t.textMuted, fontSize: t.textSm, margin: '0', display: 'grid', gap: '2px' });
 const mapCss = css({
   margin: '0',
@@ -47,25 +50,58 @@ const numCss = css({ textAlign: 'right', fontVariantNumeric: 'tabular-nums' });
 /** How many ranked files the table lists. */
 const TABLE_ROWS = 30;
 
+// each project's focus and budget as the person last made the map (a convenience: unreadable storage is the plain map)
+const PREFS_KEY = 'drydock.repomap';
+
+function readPrefsStore(): unknown {
+  try {
+    const text = localStorage.getItem(PREFS_KEY);
+    return text ? JSON.parse(text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writePrefs(projectId: string, prefs: RepoMapPrefs): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(withRepoMapPrefs(readPrefsStore(), projectId, prefs)));
+  } catch {
+    /* a convenience only */
+  }
+}
+
 export function RepoMapScreen(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
-  // what the fields say, and what the shown map was made with (the query re-reads when the latter changes)
-  let focusText = '';
-  let budgetText = String(REPO_MAP_DEFAULT_BUDGET);
-  let applied = { focus: [] as string[], budget: REPO_MAP_DEFAULT_BUDGET };
+  watch(handle, s.project);
+  // per project: what the focus field says, and what the shown map was made with (the query re-reads when the latter changes);
+  // both start from what the person last made the map with in that project (X412)
+  const per = new Map<string, { focusText: string; applied: RepoMapPrefs }>();
+  const cur = () => {
+    const pid = s.workspace.projectId ?? '';
+    let v = per.get(pid);
+    if (!v) {
+      const applied = pid ? repoMapPrefsOf(readPrefsStore(), pid) : { focus: [], budget: REPO_MAP_DEFAULT_BUDGET };
+      v = { focusText: applied.focus.join(', '), applied };
+      per.set(pid, v);
+    }
+    return v;
+  };
   const q = query(handle, {
-    load: () => s.client.repoMapGet(s.workspace.projectId ?? '', applied.focus, applied.budget),
-    key: () => [s.workspace.projectId, applied.focus, applied.budget],
+    load: () => s.client.repoMapGet(s.workspace.projectId ?? '', cur().applied.focus, cur().applied.budget),
+    key: () => [s.workspace.projectId, cur().applied.focus, cur().applied.budget],
     enabled: () => !!s.workspace.projectId && projectHasRepo(s.workspace.project),
   });
-  const submit = () => {
-    const next = { focus: parseFocus(focusText), budget: budgetOf(budgetText) };
-    budgetText = String(next.budget);
-    if (JSON.stringify(next) === JSON.stringify(applied)) q.reload();
-    else applied = next;
+  // make the map with this focus and budget, and keep them for the project
+  const make = (next: RepoMapPrefs) => {
+    const c = cur();
+    c.focusText = next.focus.join(', ');
+    if (JSON.stringify(next) === JSON.stringify(c.applied)) q.reload();
+    else c.applied = next;
+    if (s.workspace.projectId) writePrefs(s.workspace.projectId, next);
     void handle.update();
   };
+  const submit = () => make({ focus: parseFocus(cur().focusText), budget: cur().applied.budget });
 
   return () => {
     const project = s.workspace.project;
@@ -73,6 +109,9 @@ export function RepoMapScreen(handle: Handle) {
     const v = q.data;
     const r = v?.result;
     const skipped = r ? skippedText(r.skipped) : '';
+    const c = cur();
+    const chips = taskFocusChips(s.project.taskList);
+    const more = r ? doubled(r.budget) : undefined;
     return (
       <Page title="Repo map" icon={FolderTree} testId="repo-map" subtitle={project?.name} guide="knowledge">
         <p mix={introCss}>
@@ -91,9 +130,6 @@ export function RepoMapScreen(handle: Handle) {
               submit();
             })]}
             aria-label="Repo map options"
-            // the budget is kept inside its range when the map is made (budgetOf); the browser's own check would silently
-            // refuse to submit a budget off the 256 steps
-            noValidate
           >
             <div mix={formCss}>
               <Field label="Focus paths" hint="Files or folders relative to the repository, separated by commas. Empty: the whole repository evenly.">
@@ -103,41 +139,47 @@ export function RepoMapScreen(handle: Handle) {
                     class="paths"
                     type="text"
                     placeholder="internal/core, ui/app/screens"
-                    value={focusText}
+                    value={c.focusText}
                     data-testid="repomap-focus"
                     mix={on('input', (e) => {
-                      focusText = e.currentTarget.value;
+                      c.focusText = e.currentTarget.value;
                       void handle.update();
                     })}
                   />
                 )}
               </Field>
-              <Field label="Token budget" hint={`${REPO_MAP_MIN_BUDGET} to ${REPO_MAP_MAX_BUDGET}`}>
-                {(id) => (
-                  <input
-                    id={id}
-                    type="number"
-                    min={String(REPO_MAP_MIN_BUDGET)}
-                    max={String(REPO_MAP_MAX_BUDGET)}
-                    step="256"
-                    value={budgetText}
-                    data-testid="repomap-budget"
-                    mix={on('input', (e) => {
-                      budgetText = e.currentTarget.value;
-                      void handle.update();
-                    })}
-                  />
-                )}
-              </Field>
+              <div mix={budgetCss}>
+                <span class="lbl" aria-hidden="true">
+                  Token budget
+                </span>
+                <Segmented
+                  label="Token budget"
+                  testId="repomap-budget"
+                  value={String(c.applied.budget)}
+                  options={BUDGET_CHOICES.map((b) => ({ value: String(b.value), label: b.label, hint: `${b.value} tokens` }))}
+                  disabled={q.loading}
+                  onChange={(v) => make({ focus: parseFocus(c.focusText), budget: Number(v) })}
+                />
+              </div>
               <div mix={formActions}>
                 <Button type="submit" variant="primary" icon={FolderTree} disabled={q.loading} data-testid="repomap-make">
                   {q.loading ? 'Mapping...' : 'Make the map'}
                 </Button>
               </div>
             </div>
+            {chips.length > 0 ? (
+              <div mix={chipsCss} data-testid="repomap-task-chips">
+                <span>Focus on:</span>
+                {chips.map((ch) => (
+                  <Button key={ch.id} size="sm" variant="ghost" title={ch.files.join(', ')} disabled={q.loading} mix={on('click', () => make({ focus: ch.files, budget: c.applied.budget }))}>
+                    Files of task #{ch.seq}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
           </form>
         ) : null}
-        <ErrorNote error={q.error} what="Repo map" />
+        <ErrorNote error={q.error} retry={q.reload} what="Repo map" />
         {q.loading && !v ? <Loading label="Reading the repository..." /> : null}
         {v && !v.available ? (
           <Notice tone="warn" title="No repo map in this build" testId="repomap-unavailable">
@@ -161,7 +203,15 @@ export function RepoMapScreen(handle: Handle) {
                 <Notice tone="info" testId="repomap-empty">
                   {r.files === 0
                     ? `The repository has no source files in the languages the map reads (${v!.languages.join(', ')}).`
-                    : `${r.files} source files were read, but not even the most important definition fits in ${r.budget} tokens. Try a larger token budget.`}
+                    : `${r.files} source files were read, but not even the most important definition fits in ${r.budget} tokens.`}
+                  {r.files > 0 && more ? (
+                    <>
+                      {' '}
+                      <Button size="sm" disabled={q.loading} data-testid="repomap-double" mix={on('click', () => make({ focus: c.applied.focus, budget: more }))}>
+                        Double the budget
+                      </Button>
+                    </>
+                  ) : null}
                 </Notice>
               )}
             </Section>
@@ -183,6 +233,9 @@ export function RepoMapScreen(handle: Handle) {
                           References
                         </th>
                         <th scope="col">In the map</th>
+                        <th scope="col">
+                          <span class="sr-only">Focus</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -196,6 +249,18 @@ export function RepoMapScreen(handle: Handle) {
                           <td mix={numCss}>{f.defs}</td>
                           <td mix={numCss}>{f.refs}</td>
                           <td>{f.shown ? 'yes' : 'no'}</td>
+                          <td>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              aria-pressed={c.applied.focus.includes(f.path) ? 'true' : 'false'}
+                              aria-label={`Focus on ${f.path}`}
+                              disabled={q.loading}
+                              mix={on('click', () => make({ focus: toggleFocus(c.applied.focus, f.path), budget: c.applied.budget }))}
+                            >
+                              Focus
+                            </Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

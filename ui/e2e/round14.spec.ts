@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { choose, createProject, freshGreenRepo, openAgentPage, openNewAgent, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, freshGreenRepo, openAgentPage, openMoreSettings, openNewAgent, workspaceNav, projectNav } from './helpers';
 
 /** Open a project skill's panel from its row on the Skills page (one-line rows; the panel opens inside the row). */
 async function openSkill(page: Page, name: string) {
@@ -16,7 +16,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
 
   // the green fixture repository has go-style (roles: Backend); accepted with no agent on the team, it goes to nobody yet (P76)
   await projectNav(page, 'nav-skills');
-  await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
+  await page.getByRole('button', { name: 'Scan again' }).click();
   await expect(page.locator('[data-testid=skill-tile][data-name=go-style]')).toHaveAttribute('data-status', 'offered');
   let card = await openSkill(page, 'go-style');
   await card.getByRole('button', { name: 'Accept go-style' }).click();
@@ -29,6 +29,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await form.getByLabel('Agent name').fill('Ada');
   await form.getByLabel('Role', { exact: true }).fill('frontend');
   await choose(form.getByLabel('Adapter', { exact: true }), 'claude');
+  await openMoreSettings(page);
   const box = form.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
   await expect(form.getByTestId('agent-skills')).toContainText('Not given to another agent.');
   await box.check();
@@ -38,6 +39,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await openNewAgent(page, false);
   await form.getByLabel('Agent name').fill('Bob');
   await form.getByLabel('Role', { exact: true }).fill('backend');
+  await openMoreSettings(page);
   await expect(form.getByTestId('agent-skills')).toContainText('Suggested for backend. Also given to Ada.');
   await expect(box).not.toBeChecked();
   await expect(box).toBeEnabled();
@@ -61,17 +63,21 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await openAgentPage(page, 'Bob');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const editor = page.getByTestId('agent-editor');
-  const mine = editor.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
-  await expect(mine).toBeChecked();
-  await mine.uncheck();
-  await editor.getByRole('button', { name: 'Save changes' }).click();
+  // the panel shows it as a chip; its x takes it away
+  await expect(editor.getByTestId('skill-chip').filter({ hasText: 'go-style' })).toBeVisible();
+  await editor.getByRole('button', { name: 'Take go-style away' }).click();
+  await expect(editor.getByTestId('skill-chip')).toHaveCount(0);
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   card = await openSkill(page, 'go-style');
   await expect(card.getByTestId('skill-audience-text')).toHaveText('Nobody yet: give it to the agents that need it');
 
   // a template carries a registry skill (one a prebuilt agent comes with) and keeps it when it is edited
   await workspaceNav(page, 'nav-library');
-  await page.getByRole('button', { name: 'New agent template' }).click();
+  await page.getByTestId('library-new-agent').click();
+  // New agent opens on Describe (E12); the full form is Configure
+  await expect(page.getByTestId('describe-agent')).toBeVisible();
+  await page.getByTestId('library-new-configure').click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('UI dev');
   await tf.getByLabel('Role').fill('frontend');

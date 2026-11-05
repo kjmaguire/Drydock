@@ -7,7 +7,7 @@ import { appUrl } from './helpers';
 test('the region keys, and a shortcut given other keys in Settings, kept by the core and reset', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   const settings = new URL(appUrl());
-  settings.pathname = '/settings';
+  settings.pathname = '/settings/shortcuts';
   await page.goto(settings.toString());
   const section = page.getByRole('region', { name: 'Keyboard shortcuts' });
   await expect(section).toBeVisible({ timeout: 60_000 });

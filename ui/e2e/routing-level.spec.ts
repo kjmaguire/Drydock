@@ -59,7 +59,7 @@ test("a task's own routing level is chosen on its page, over the project's, and 
   await projectNav(page, 'nav-tasks');
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill('Tune the parser');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Tune the parser/ })).toBeVisible();
 
   const row = page.getByTestId('task-routing-level');

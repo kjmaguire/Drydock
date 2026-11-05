@@ -40,6 +40,13 @@ func TestDiffViewerShowsBothVersionsOfEveryFile(t *testing.T) {
 	if files.Source != "recorded" || files.Base == "" || files.Head == "" || !files.LiveAvailable || len(files.Files) != 1 {
 		t.Fatalf("recorded diff: %+v", files)
 	}
+	// the recorded diff names its evidence, so the dock's Raw view reads that exact patch (X212, L36)
+	if files.Worktree != d.Task.Worktree {
+		t.Fatalf("worktree %q, task's %q", files.Worktree, d.Task.Worktree)
+	}
+	if newest := newestDiff(d.Evidence); files.DiffID == 0 || files.DiffID != newest {
+		t.Fatalf("diff id %d, newest diff evidence %d", files.DiffID, newest)
+	}
 	f := files.Files[0]
 	if f.Path != "calc.go" || f.Status != "modified" || f.Additions == 0 {
 		t.Fatalf("file %+v", f)
@@ -202,4 +209,14 @@ func TestDiffViewerReportsAHugeFileWithoutReadingIt(t *testing.T) {
 			t.Fatalf("force %v: the file was read into memory (%d bytes allocated for a %d byte file)", force, grown, size)
 		}
 	}
+}
+
+func newestDiff(ev []tasks.Evidence) int64 {
+	var id int64
+	for _, e := range ev {
+		if e.Kind == "diff" && e.ID > id {
+			id = e.ID
+		}
+	}
+	return id
 }

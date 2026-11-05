@@ -7,7 +7,8 @@ import { css, navigate, on, type Handle } from 'remix/component';
 import { ArrowRight, BookOpen, Cpu, GitBranch, RefreshCw } from 'lucide';
 import type { LibrarySkill } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { newProjectHref } from '../../shell/new.ts';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Select } from '../../ui/select.tsx';
@@ -59,7 +60,7 @@ export function SkillLibraryScreen(handle: Handle<{ onNavigate?: (href: string) 
     if (!pid || ls.length === 0) return;
     s.ui.handSkillPicks(
       pid,
-      ls.map((l) => ({ registryId: l.registryId, name: l.name })),
+      ls.map((l) => ({ registryId: l.registryId, name: l.name, roles: l.roles })),
     );
     s.workspace.selectProject(pid);
     const href = routes.skills.href();
@@ -91,11 +92,11 @@ export function SkillLibraryScreen(handle: Handle<{ onNavigate?: (href: string) 
       <Page title="Skills" icon={Cpu} wide testId="skill-library" subtitle="From the registries you enabled; add them to a project there" guide="skills">
         {s.workspace.projects.data && projects.length === 0 ? (
           <Notice tone="info" testId="skill-library-no-project">
-            Skills are added to a project. <a href={routes.projectNew.href()}>Create a project</a> first; you can browse the registries meanwhile.
+            Skills are added to a project. <a href={newProjectHref()}>Create a project</a> first; you can browse the registries meanwhile.
           </Notice>
         ) : null}
         <Section title="Registries" testId="library-skills">
-          <ErrorNote error={regs.error ?? st.error ?? lib.error ?? act.error} what="Skills" />
+          <ErrorNote error={regs.error ?? st.error ?? lib.error ?? act.error} retry={retryFor(regs, st, lib, act)} what="Skills" />
           {regs.loading && !regs.data ? <Loading /> : null}
           {regs.data && registries.length === 0 ? (
             <p mix={emptyLine} data-testid="lib-skills-empty">

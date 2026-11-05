@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { choose, appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardNext, projectNav, openChecks } from './helpers';
+import { choose, appUrl, createAgent, createAndStartTask, createProject, openNewProject, projectNav, openChecks } from './helpers';
 
 /** What the page shows about the task, used to compare before and after a reload (the projection property). */
 async function snapshot(page: Page) {
@@ -34,7 +34,8 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     // evidence with pass/fail, the reviewer verdict and a diff
     await expect(page.getByTestId('evidence').filter({ hasText: 'test' }).first()).toHaveAttribute('data-result', 'pass');
     await expect(page.getByTestId('review').first()).toHaveAttribute('data-verdict', 'SHIP');
-    await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    // the raw patch is the Diff viewer's Raw view (X212)
+    await page.getByTestId('task-diff').getByRole('button', { name: 'Raw' }).click();
     await expect(page.locator('.diff-add', { hasText: 'return a - b' })).toBeVisible();
 
     // Activity (P87, P97): the worker's and the reviewer's processes, each a line in the feed with its steps after it (every row
@@ -99,14 +100,14 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
       // task.diff itself; the dock's task.diffFiles and task.diffFile are other calls
       if (/\/rpc\/task\.diff(\?|$)/.test(req.url())) diffAsks.push(JSON.parse(req.postData() ?? '{}'));
     });
-    await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    await page.getByTestId('task-diff').getByRole('button', { name: 'Raw' }).click();
     await expect(page.getByTestId('diff')).toBeVisible();
     expect(diffAsks).toHaveLength(1);
     expect(typeof diffAsks[0]!.evidenceId).toBe('number');
 
     await panel.getByRole('button', { name: 'Request changes' }).click();
     await panel.getByLabel('Feedback for the worker').fill('please add a doc comment to Subtract');
-    await panel.getByRole('button', { name: 'Send feedback' }).click();
+    await panel.getByRole('button', { name: 'Send back with these points' }).click();
 
     // the worker is sent back and a NEW review request (new id) is raised after the rework
     await expect(async () => {
@@ -115,11 +116,19 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
       expect(id).not.toBe(firstRequest);
     }).toPass({ timeout: 90_000 });
 
-    // the patch the rework recorded is not swapped in under the reader's eyes: the old text is gone, the page says so, and the
-    // button asks for the newer evidence (L36)
-    await expect(page.getByTestId('raw-diff-changed')).toHaveText('The patch changed since you opened it. Show it again.');
+    // the patch the rework recorded is not swapped in under the reader's eyes: the old text is gone and nothing newer was read on
+    // its own. The viewer either still shows Raw and says the patch changed, or it went to the live worktree while the worker
+    // reworked and is back on the editor; either way the person asks for the newer evidence (L36)
+    const raw = page.getByTestId('task-diff').getByRole('button', { name: 'Raw', exact: true });
+    await expect(async () => {
+      const changed = await page.getByTestId('raw-diff-changed').count();
+      const pressed = await raw.getAttribute('aria-pressed', { timeout: 1000 });
+      expect(changed === 1 || pressed === 'false').toBe(true);
+    }).toPass({ timeout: 30_000 });
     await expect(page.getByTestId('diff')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    expect(diffAsks).toHaveLength(1);
+    if ((await page.getByTestId('raw-diff-changed').count()) === 1) await page.getByRole('button', { name: 'Show the raw patch' }).click();
+    else await raw.click();
     await expect(page.locator('.diff-add', { hasText: 'Subtract returns a minus b' })).toBeVisible();
     expect(diffAsks).toHaveLength(2);
     expect(diffAsks[1]!.evidenceId!).toBeGreaterThan(diffAsks[0]!.evidenceId!);
@@ -134,22 +143,27 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
   });
 
-  test('the core says what is at a bad repository path and the wizard does not go on without a repository', async ({ page }) => {
+  test('the core says what is at a bad repository path and New project does not create without a repository', async ({ page }) => {
     await page.goto(appUrl());
-    await showNewProjectForm(page);
-    await wizardNext(page);
-    await page.getByRole('radiogroup', { name: 'Repository source' }).getByRole('radio', { name: 'Local folder' }).check();
+    await openNewProject(page);
+    const dialog = page.getByTestId('new-project-dialog');
+    await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+    const field = dialog.getByLabel('Folder', { exact: true });
     // a full path on this system (Windows refuses /x as not a full path before it looks for a repository)
-    await page.getByLabel('Repository path').fill(process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo');
-    await expect(page.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
-    await expect(page.getByTestId('folder-check')).toContainText('does not exist yet');
-    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
-    await expect(page.getByText('tick "Create a Git repository here"')).toBeVisible();
+    await field.fill(process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo');
+    await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
+    await expect(dialog.getByTestId('folder-check')).toContainText('does not exist yet');
+    // nothing is there: the box comes ticked (B6); unticked, Create waits for it
+    await expect(dialog.getByLabel(/^Create a Git repository here/)).toBeChecked();
+    await expect(dialog.getByTestId('new-project-create')).toBeEnabled();
+    await dialog.getByLabel(/^Create a Git repository here/).uncheck();
+    await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
+    await expect(dialog.getByText('tick "Create a Git repository here"')).toBeVisible();
     // a relative path is refused with the core's reason
-    await page.getByLabel('Repository path').fill('not/a/full/path');
-    await expect(page.getByTestId('folder-check')).toHaveAttribute('data-state', 'invalid');
-    await expect(page.getByTestId('folder-check')).toContainText('must be a full path');
-    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+    await field.fill('not/a/full/path');
+    await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'invalid');
+    await expect(dialog.getByTestId('folder-check')).toContainText('must be a full path');
+    await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
   });
 });
 
@@ -161,29 +175,26 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
   await projectNav(page, 'nav-pulls');
   await expect(page.getByText('No task has a pull request')).toBeVisible();
-  await page.getByRole('button', { name: 'Load open issues' }).click();
-  await expect(page.getByRole('alert')).toContainText('origin');
+  // the open issues are read as the page opens (C11); a repository without a GitHub origin says so and asks GitHub nothing
+  await expect(page.getByTestId('gh-issues-no-origin')).toContainText('no origin remote on GitHub');
 });
 
-test("the sidebar is keyboard navigable: the Drydock mark comes first (the way home), the arrows move along it, Enter opens the Inbox", async ({ page }) => {
+test("the sidebar is keyboard navigable: New comes first, then Home, the arrows move along it, Enter opens the Inbox", async ({ page }) => {
   await createProject(page, 'gocalc-keys');
   const items = page.locator('nav[aria-label=Main] [data-nav]');
   await expect(items.first()).toHaveAttribute('href', '/home');
-  await expect(items.nth(1)).toHaveAttribute('href', '/needs-you');
+  await expect(items.nth(1)).toHaveAttribute('href', '/home');
+  await expect(items.nth(2)).toHaveAttribute('href', '/needs-you');
   await page.getByTestId('nav-needs-you').focus();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.getByTestId('nav-running')).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.getByTestId('nav-my-tasks')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('nav-chats')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('nav-project-item').first()).toBeFocused();
   await page.keyboard.press('End');
-  await expect(page.getByTestId('nav-guide-top')).toBeFocused();
-  await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-settings')).toBeFocused();
-  await page.getByTestId('nav-running').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByTestId('nav-library')).toBeFocused();
+  await page.getByTestId('nav-chats').focus();
   await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');

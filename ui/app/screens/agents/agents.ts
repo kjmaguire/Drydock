@@ -3,7 +3,7 @@
 // on it, and the plain sentences of a Test connection report.
 
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionHistory, ConnectionReport, MatrixCell, Prereq, TestRun } from '../../api/types.ts';
+import type { AdapterInfo, Agent, Connection, ConnectionHistory, ConnectionReport, MatrixCell, Prereq, TestRun } from '../../api/types.ts';
 import type { ProjectRunMode } from '../../api/wslClient.ts';
 import type { Tone } from '../../ui/tokens.ts';
 import { agoWords, plural } from '../../lib/format.ts';
@@ -69,6 +69,68 @@ export function reportMeta(r: ConnectionReport): string {
 
 /** An install's key: the Windows install is the adapter id, one inside a WSL distro has its own (decision P41). */
 export const connectionKey = (c: Pick<Connection, 'adapter' | 'key'>): string => c.key || c.adapter;
+
+/** Which of Drydock's checks an answer came from (the core numbers each one, checkSeq): the larger is the newer. */
+const seqOf = (d: { checkSeq?: number }): number => d.checkSeq ?? 0;
+
+/**
+ * Whether a kept check is newer than an answer the page holds. An answer with no number did not come from Drydock's checks (an
+ * adapter that detects itself, an older core): no kept check is known to be newer than it, so it is left as it is.
+ */
+const newerCheck = (check: Connection | undefined, held: { checkSeq?: number }): check is Connection => !!check && seqOf(held) > 0 && seqOf(check) > seqOf(held);
+
+/** Drydock's kept checks (connection.list {cached}) by install key. */
+const checksByKey = (checked: readonly Connection[]): Map<string, Connection> => new Map(checked.map((c) => [connectionKey(c), c]));
+
+/**
+ * connection.list with what Drydock's own checks found since it was read (A2): an install's kept check (connection.list
+ * {cached}) that is newer than the row read replaces it, and an install only a check newer than the whole read found is added,
+ * so the page follows a background check (connection.checked) without probing every CLI again. Newer is the core's own check
+ * number (checkSeq), so no clock is compared and the read's own checks never count as newer than itself.
+ */
+export function withCheckedConnections(fresh: readonly Connection[] | undefined, checked: readonly Connection[] | undefined): Connection[] | undefined {
+  if (!fresh || !checked?.length) return fresh as Connection[] | undefined;
+  const byKey = checksByKey(checked);
+  let changed = false;
+  const out = fresh.map((c) => {
+    const k = byKey.get(connectionKey(c));
+    if (!newerCheck(k, c)) return c;
+    changed = true;
+    return k;
+  });
+  const read = Math.max(0, ...fresh.map(seqOf));
+  if (read === 0) return changed ? out : (fresh as Connection[]); // a read with no numbers: nothing is known to be newer
+  const known = new Set(fresh.map(connectionKey));
+  for (const c of checked) {
+    if (!known.has(connectionKey(c)) && seqOf(c) > read) {
+      out.push(c);
+      changed = true;
+    }
+  }
+  return changed ? out : (fresh as Connection[]);
+}
+
+/**
+ * adapter.list with the same checks laid over it (withCheckedConnections): a Windows install's kept check newer than the
+ * adapter's detection replaces its status, so a line follows a background check without starting every CLI again.
+ */
+export function withCheckedAdapters(adapters: readonly AdapterInfo[] | undefined, checked: readonly Connection[] | undefined): AdapterInfo[] | undefined {
+  if (!adapters || !checked?.length) return adapters as AdapterInfo[] | undefined;
+  const byKey = checksByKey(checked);
+  return adapters.map((a) => {
+    const c = byKey.get(a.id); // the Windows install's key is the adapter id; one inside a distro has its own
+    return newerCheck(c, a.detection) ? { ...a, detection: { ...a.detection, status: c.status, installed: c.installed, authenticated: c.authenticated, checkSeq: c.checkSeq } } : a;
+  });
+}
+
+/** fn remembered on its last arguments (compared by identity): a getter read many times in one render computes once. */
+export function memoLast<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  let last: { args: A; r: R } | undefined;
+  return (...args: A) => {
+    if (!last || last.args.length !== args.length || last.args.some((x, i) => x !== args[i])) last = { args, r: fn(...args) };
+    return last.r;
+  };
+}
 
 export const isWSL = (c: Pick<Connection, 'runMode'>): boolean => c.runMode === 'wsl';
 

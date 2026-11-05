@@ -9,7 +9,7 @@ import type { LibrarySkill, Skill, SkillDelivery, SkillRegistry, SkillRegistrySt
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, kv, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -42,6 +42,10 @@ import {
   skillBrand,
   skillTone,
   sortUsage,
+  suggestedAgents,
+  addTargets,
+  addedForText,
+  suggestsRole,
   syncChanges,
   usageTokens,
 } from './skills.ts';
@@ -332,32 +336,42 @@ function AddFromLibrary(
   const act = action(handle);
   let registry = '';
   let picked = new Set<string>();
-  // the agents the skills are added for: each agent is a specialist, so a skill goes to the ones that need it, never to all
-  let forAgents: string[] = [];
+  // the agents the skills are added for: each agent is a specialist, so a skill goes to the ones that need it, never to all.
+  // Until the person ticks a box (undefined) the boxes show the core's own default: the agents whose role the skills name, else
+  // one agent (suggestedAgents), and each skill is added only for its own suggestion (addTargets); a tick makes the choice theirs
+  // and every skill then goes to the ticked agents (P76).
+  let forAgents: string[] | undefined;
+  const ticked = (): string[] | undefined => {
+    const agents = handle.props.agents;
+    return forAgents?.filter((id) => agents.some((a) => a.id === id));
+  };
+  const forThem = (ls: readonly LibrarySkill[]): string[] => ticked() ?? suggestedAgents(ls, handle.props.agents);
   let added: { names: string[]; project: string; who: string } | undefined;
   const set = (f: () => void) => {
     f();
     void handle.update();
   };
-  const addMany = async (ls: readonly LibrarySkill[]) => {
+  // chosen: the agents every skill goes to; undefined adds each skill for its own suggestion
+  const addMany = async (ls: readonly LibrarySkill[], chosen: readonly string[] | undefined) => {
     const { projectId, projectName, onAdded, agents } = handle.props;
-    const to = forAgents.filter((id) => agents.some((a) => a.id === id));
-    if (to.length === 0) return;
-    const done: string[] = [];
+    const plan = addTargets(ls, chosen, agents).filter((p) => p.to.length > 0);
+    if (plan.length === 0) return;
+    const done: { name: string; to: string[] }[] = [];
     await act.run('add', async () => {
-      for (const l of ls) {
+      for (const { skill: l, to } of plan) {
         await s.client.skillLibraryAdd(projectId, l.registryId, l.name, 'agents', to);
-        done.push(l.name);
+        done.push({ name: l.name, to });
       }
       return true;
     });
     if (done.length > 0) {
-      const who = inWords(to.map((id) => agents.find((a) => a.id === id)?.name ?? id));
+      const who = addedForText(done, (id) => agents.find((a) => a.id === id)?.name ?? id);
       set(() => {
-        added = { names: done, project: projectName, who };
+        added = { names: done.map((d) => d.name), project: projectName, who };
         picked = new Set();
+        forAgents = undefined;
       });
-      onAdded(done.length === 1 ? done[0]! : '');
+      onAdded(done.length === 1 ? done[0]!.name : '');
     }
   };
   const sync = async () => {
@@ -366,13 +380,17 @@ function AddFromLibrary(
   };
   return () => {
     const { skills, projectName, statuses, agents } = handle.props;
-    const to = forAgents.filter((id) => agents.some((a) => a.id === id));
     const all = notInProject(lib.data ?? [], skills);
     const groups = libraryGroups(all);
     const chosen = groups.some((g) => g.registryId === registry) ? registry : '';
     const shown = chosen ? all.filter((l) => l.registryId === chosen) : all;
     const library = lib.data ?? [];
     const pickedSkills = all.filter((l) => picked.has(pickKey(l)));
+    const to = forThem(pickedSkills);
+    // a tile's own Add follows the boxes once they show something (skills picked or boxes ticked); with nothing picked or ticked
+    // it goes to the skill's own suggestion, which the tile names next to the button
+    const tileTo = (l: LibrarySkill): string[] => (forAgents || pickedSkills.length > 0 ? to : suggestedAgents([l], agents));
+    const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
     const have = new Set(skills.map((k) => k.name));
     return (
       <Section
@@ -380,10 +398,10 @@ function AddFromLibrary(
         title="Add from the Library"
         description="Pick skills and the agents that need them: adding is your acceptance."
       >
-        <ErrorNote error={lib.error ?? act.error} what="Library" />
+        <ErrorNote error={lib.error ?? act.error} retry={retryFor(lib, act)} what="Library" />
         {added ? (
           <Notice tone="ok" role="status" testId="skill-added">
-            {added.names.length === 1 ? addedText(added.names[0]!, added.project) : `${added.names.length} skills were added to ${added.project} and are accepted ✓: ${added.names.join(', ')}`} For {added.who}.
+            {added.names.length === 1 ? addedText(added.names[0]!, added.project) : `${added.names.length} skills were added to ${added.project} and are accepted ✓: ${added.names.join(', ')}`} {added.who}
           </Notice>
         ) : null}
         {lib.loading && !lib.data ? <Loading /> : null}
@@ -419,6 +437,20 @@ function AddFromLibrary(
             <fieldset mix={forCss} data-testid="library-for-agents">
               <legend>For</legend>
               {agents.length === 0 ? <span class="note">Add an agent to the crew first: skills are given to agents.</span> : null}
+              {agents.length > 0 && !forAgents && pickedSkills.length === 0 ? (
+                <span class="note" data-testid="library-for-suggested">
+                  Each skill's Add goes to the agents named on it. Tick agents here to choose them yourself.
+                </span>
+              ) : null}
+              {agents.length > 0 && !forAgents && pickedSkills.length > 0 ? (
+                <span class="note" data-testid="library-for-suggested">
+                  {pickedSkills.some((k) => agents.some((a) => suggestsRole(k, a.role)))
+                    ? pickedSkills.length > 1
+                      ? 'Ticked for the roles the skills name: each skill goes only to the agents of its own roles. Tick a box to choose the same agents for all.'
+                      : 'Ticked for the roles the skill names. Change it if you like.'
+                    : 'No skill names a role here, so one agent is ticked. Change it if you like.'}
+                </span>
+              ) : null}
               {agents.map((a) => (
                 <Checkbox
                   key={a.id}
@@ -435,7 +467,7 @@ function AddFromLibrary(
                 icon={Plus}
                 disabled={act.busy !== '' || pickedSkills.length === 0 || to.length === 0}
                 data-testid="library-add-picked"
-                mix={on('click', () => void addMany(pickedSkills))}
+                mix={on('click', () => void addMany(pickedSkills, ticked()))}
               >
                 {act.busy === 'add'
                   ? 'Adding...'
@@ -466,19 +498,26 @@ function AddFromLibrary(
               projectName={projectName}
               label="Skills in the Library"
               testId="library-skill-tile"
-              actions={(l) => (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={Plus}
-                  disabled={act.busy !== '' || to.length === 0}
-                  title={to.length === 0 ? 'Choose the agents it is for above' : undefined}
-                  data-testid="library-add"
-                  mix={on('click', () => void addMany([l]))}
-                >
-                  {act.busy === 'add' ? 'Adding...' : `Add to ${projectName}`}
-                </Button>
-              )}
+              actions={(l) => {
+                const forL = tileTo(l);
+                const why = agents.length === 0 ? 'Add an agent to the crew first' : 'Tick the agents it is for above';
+                return (
+                  <>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={Plus}
+                      disabled={act.busy !== '' || forL.length === 0}
+                      title={forL.length > 0 ? `For ${inWords(forL.map(nameOf))}` : why}
+                      data-testid="library-add"
+                      mix={on('click', () => void addMany([l], forL))}
+                    >
+                      {act.busy === 'add' ? 'Adding...' : `Add to ${projectName}`}
+                    </Button>
+                    <small data-testid="library-add-for">{forL.length > 0 ? `For ${inWords(forL.map(nameOf))}` : why}</small>
+                  </>
+                );
+              }}
             />
           </>
         ) : null}
@@ -511,7 +550,7 @@ function Usage(handle: Handle<{ projectId: string; onChanged: () => void }>) {
         title="Usage"
         description="What each skill cost and whether it was read. Nothing changes until you act on a recommendation."
       >
-        <ErrorNote error={q.error ?? act.error} what="Usage" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Usage" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && rows.length === 0 ? <p mix={muted}>No skill has been used in a run yet.</p> : null}
         {rows.length > 0 ? (
@@ -852,12 +891,13 @@ export function SkillsScreen(handle: Handle) {
         guide="skills"
         subtitle={q.data ? `${skills.length} skill${skills.length === 1 ? '' : 's'}${offered ? `, ${offered} waiting for you` : ''}` : undefined}
         actions={
-          <Button icon={ScanSearch} disabled={act.busy !== ''} mix={on('click', () => void runScan())}>
-            Scan the repository for skills
+          // the repository is scanned when the project gets it, after Sync now and when the window gets focus (E5): this is again
+          <Button icon={ScanSearch} title="Look in the repository's .aet/skills folder again now" disabled={act.busy !== ''} mix={on('click', () => void runScan())}>
+            {act.busy === 'scan' ? 'Scanning...' : 'Scan again'}
           </Button>
         }
       >
-        <ErrorNote error={q.error ?? act.error} what="Skills" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Skills" />
         {scan ? (
           <Notice tone="info" role="status" testId="skill-scan">
             {scanText(scan)}
@@ -882,7 +922,7 @@ export function SkillsScreen(handle: Handle) {
           {q.data && skills.length === 0 ? (
             <div mix={card}>
               <Empty title="No skills in this project yet." icon={Cpu}>
-                <p>Add one from the Library below, or scan the repository for its own skills.</p>
+                <p>Add one from the Library below. Skills in the repository's .aet/skills folder show here on their own.</p>
               </Empty>
             </div>
           ) : null}

@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -73,20 +74,46 @@ func TestHealthLoopEmitsUpDegradedDownAndRecovery(t *testing.T) {
 	}
 }
 
-func TestHealthLoopOnlyChecksHostsAndDefaultsToThirtySeconds(t *testing.T) {
+func TestHealthLoopChecksCloudProvidersOnTheirOwnIntervalAndSkipsDisabled(t *testing.T) {
 	e := newEnv(t)
-	var hits atomic.Int32
+	var hits, listings atomic.Int32
 	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
 		"/health": func(w http.ResponseWriter, r *http.Request) { hits.Add(1) },
+		"/v1/models": func(w http.ResponseWriter, r *http.Request) {
+			listings.Add(1)
+			jsonBody(map[string]any{"data": []map[string]any{{"id": "m"}}})(w, r)
+		},
 	})
-	e.create(t, NewProvider{Name: "direct", Kind: KindDirect, BaseURL: f.URL + "/v1"})
+	direct := e.create(t, NewProvider{Name: "direct", Kind: KindDirect, BaseURL: f.URL + "/v1"})
 	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{})
-	if m.o.Interval != 30*time.Second {
-		t.Fatalf("default interval %s", m.o.Interval)
+	if m.o.Interval != 30*time.Second || m.o.CloudInterval != 15*time.Minute || m.o.CatalogEvery != 24*time.Hour {
+		t.Fatalf("default intervals %+v", m.o)
 	}
+	now := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	m.now = func() time.Time { return now }
+	m.jitter = func(time.Duration) time.Duration { return 0 }
+	// the first pass reads the new cloud provider's catalog in full (it has none yet)
 	m.CheckAll(e.ctx)
-	if hits.Load() != 0 {
-		t.Fatal("a non-host provider was health-checked by the host loop")
+	if listings.Load() != 1 {
+		t.Fatalf("listing requests after the first pass: %d", listings.Load())
+	}
+	if ms, _ := e.reg.Models(e.ctx, direct.ID); len(ms) != 1 {
+		t.Fatalf("catalog after the first pass: %v", ms)
+	}
+	if st, _ := m.Status(e.ctx, direct.ID); st.Health != HealthUp {
+		t.Fatalf("a cloud provider that answered is up: %+v", st)
+	}
+	// a host tick later the cloud provider is not asked again
+	now = now.Add(time.Minute)
+	m.CheckAll(e.ctx)
+	if listings.Load() != 1 {
+		t.Fatal("a cloud provider was asked again before its interval")
+	}
+	// fifteen minutes on it is (one listing request)
+	now = now.Add(15 * time.Minute)
+	m.CheckAll(e.ctx)
+	if listings.Load() != 2 {
+		t.Fatalf("listing requests after the cloud interval: %d", listings.Load())
 	}
 	disabled := e.create(t, NewProvider{Name: "off", Kind: KindHost, BaseURL: f.URL + "/v1", Disabled: true})
 	m.CheckAll(e.ctx)
@@ -95,6 +122,212 @@ func TestHealthLoopOnlyChecksHostsAndDefaultsToThirtySeconds(t *testing.T) {
 	}
 	if _, err := m.Acquire(e.ctx, disabled.ID); err != ErrProviderDisabled {
 		t.Fatalf("acquire on disabled: %v", err)
+	}
+}
+
+func TestHealthLoopHonoursRetryAfterAndDoesNotCountA429AsAFailure(t *testing.T) {
+	e := newEnv(t)
+	var listings atomic.Int32
+	var limited atomic.Bool
+	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1/models": func(w http.ResponseWriter, r *http.Request) {
+			listings.Add(1)
+			if limited.Load() {
+				w.Header().Set("Retry-After", "3600")
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			jsonBody(map[string]any{"data": []map[string]any{{"id": "m"}}})(w, r)
+		},
+	})
+	p := e.create(t, NewProvider{Name: "agg", Kind: KindAggregator, BaseURL: f.URL + "/v1"})
+	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{})
+	now := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	m.now = func() time.Time { return now }
+	m.jitter = func(time.Duration) time.Duration { return 0 }
+	m.CheckAll(e.ctx) // the catalog read
+	limited.Store(true)
+	now = now.Add(16 * time.Minute)
+	m.CheckAll(e.ctx) // a 429 with an hour to wait
+	if listings.Load() != 2 {
+		t.Fatalf("listings %d", listings.Load())
+	}
+	if st, _ := m.Status(e.ctx, p.ID); st.Health != HealthUp || !st.Available {
+		t.Fatalf("a 429 made the provider %+v", st)
+	}
+	now = now.Add(30 * time.Minute) // past the cloud interval, inside Retry-After
+	m.CheckAll(e.ctx)
+	if listings.Load() != 2 {
+		t.Fatal("the loop asked again before Retry-After")
+	}
+	now = now.Add(31 * time.Minute)
+	m.CheckAll(e.ctx)
+	if listings.Load() != 3 {
+		t.Fatalf("the loop did not ask after Retry-After: %d", listings.Load())
+	}
+}
+
+func TestHealthLoopRefreshesCatalogsDailyKeepingUserPrices(t *testing.T) {
+	e := newEnv(t)
+	var price atomic.Int32
+	price.Store(1)
+	listing := func(w http.ResponseWriter, r *http.Request) {
+		p := fmt.Sprintf("%d", price.Load())
+		jsonBody(map[string]any{"data": []map[string]any{
+			{"id": "a/one", "context_length": 1000, "pricing": map[string]any{"prompt": "0.00000" + p, "completion": "0.00000" + p}},
+			{"id": "a/two", "context_length": 1000, "pricing": map[string]any{"prompt": "0.00000" + p, "completion": "0.00000" + p}},
+		}})(w, r)
+	}
+	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/api/v1/models":      listing, // the health check
+		"/api/v1/models/user": listing, // the catalog read
+		"/api/v1/key":         jsonBody(map[string]any{"data": map[string]any{"label": "k"}}),
+	})
+	p := e.create(t, NewProvider{Name: "or", Kind: KindAggregator, BaseURL: f.URL + "/api/v1", Flavor: FlavorOpenRouter})
+	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{})
+	now := time.Now().UTC()
+	m.now = func() time.Time { return now }
+	m.jitter = func(time.Duration) time.Duration { return 0 }
+	m.CheckAll(e.ctx)
+	if err := e.reg.SetUserPrice(e.ctx, p.ID, "a/two", 9, 9, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	refreshed := len(e.events(t, "provider.catalog_refreshed"))
+	if refreshed != 1 {
+		t.Fatalf("catalog refreshes after the first pass: %d", refreshed)
+	}
+	price.Store(2)
+	now = now.Add(23 * time.Hour)
+	m.CheckAll(e.ctx) // a plain check, not a catalog read
+	if n := len(e.events(t, "provider.catalog_refreshed")); n != 1 {
+		t.Fatalf("the catalog was read again within the day: %d", n)
+	}
+	now = now.Add(2 * time.Hour)
+	m.CheckAll(e.ctx)
+	if n := len(e.events(t, "provider.catalog_refreshed")); n != 2 {
+		t.Fatalf("the catalog was not read again after a day: %d", n)
+	}
+	ms, _ := e.reg.Models(e.ctx, p.ID)
+	if len(ms) != 2 || ms[0].InputPerM != 2 || ms[1].InputPerM != 9 || ms[1].PriceSource != "user" {
+		t.Fatalf("catalog after the daily read %+v", ms)
+	}
+}
+
+func TestMonitorRefreshProbesANewProviderOnce(t *testing.T) {
+	e := newEnv(t)
+	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1/models": jsonBody(map[string]any{"data": []map[string]any{{"id": "m"}}}),
+	})
+	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{Interval: time.Hour})
+	passes := make(chan struct{}, 4)
+	m.onPass = func() { passes <- struct{}{} }
+	m.Refresh("not-started") // nothing runs while the loop is stopped
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	m.Start(ctx)
+	select { // the first pass (no providers yet) is over before the person saves one
+	case <-passes:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the first pass did not finish")
+	}
+	p := e.create(t, NewProvider{Name: "new", Kind: KindDirect, BaseURL: f.URL + "/v1"})
+	m.Refresh(p.ID)
+	deadline := time.Now().Add(30 * time.Second)
+	for len(e.events(t, "provider.probe_completed")) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	m.Stop() // waits for the refresh
+	if got := f.seen("/v1/models"); len(got) != 1 {
+		t.Fatalf("listing requests %d", len(got))
+	}
+	if g, _ := e.reg.Get(e.ctx, p.ID); g.Status != string(HealthUp) {
+		t.Fatalf("status after the refresh %q", g.Status)
+	}
+	if st, _ := m.Status(e.ctx, p.ID); st.Health != HealthUp {
+		t.Fatalf("monitor state %+v", st)
+	}
+}
+
+// A provider saved while a pass is reading it is read once: Refresh waits for the pass's read and does not repeat it, and
+// a pass that comes round while a read is in flight skips the provider.
+func TestMonitorNeverReadsAProviderTwiceAtOnce(t *testing.T) {
+	e := newEnv(t)
+	arrived := make(chan struct{}, 8)
+	release := make(chan struct{})
+	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1/models": func(w http.ResponseWriter, r *http.Request) {
+			arrived <- struct{}{}
+			<-release
+			jsonBody(map[string]any{"data": []map[string]any{{"id": "m"}}})(w, r)
+		},
+	})
+	p := e.create(t, NewProvider{Name: "new", Kind: KindDirect, BaseURL: f.URL + "/v1"})
+	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{Interval: time.Hour})
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	m.Start(ctx) // the first pass finds no catalog and reads the provider in full
+	select {
+	case <-arrived:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the first pass did not read the provider")
+	}
+	m.Refresh(p.ID)   // saved while the pass is reading it
+	m.CheckAll(e.ctx) // the next tick while the read is in flight
+	close(release)
+	deadline := time.Now().Add(30 * time.Second)
+	for len(e.events(t, "provider.probe_completed")) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	m.Stop()
+	if got := f.seen("/v1/models"); len(got) != 1 {
+		t.Fatalf("listing requests %d, want 1", len(got))
+	}
+	if n := len(e.events(t, "provider.catalog_refreshed")); n > 1 {
+		t.Fatalf("catalog refreshed %d times", n)
+	}
+	if st, _ := m.Status(e.ctx, p.ID); st.Health != HealthUp {
+		t.Fatalf("monitor state %+v", st)
+	}
+}
+
+// The cheap check asks the same listing as the full read, so an Anthropic provider (either base form) and a Gemini provider
+// whose compat endpoint has no listing stay up between catalog reads.
+func TestHealthCheckUsesTheProbeListingPerFlavor(t *testing.T) {
+	e := newEnv(t)
+	ant := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1/models": jsonBody(map[string]any{"data": []map[string]any{{"id": "claude-x"}}}),
+	})
+	gem := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1beta/models": jsonBody(map[string]any{"models": []map[string]any{{"name": "models/gemini-2.5-pro", "supportedGenerationMethods": []string{"generateContent"}}}}),
+	})
+	root := e.create(t, NewProvider{Name: "ant", BaseURL: ant.URL, Flavor: FlavorAnthropic, Tier: TierPremium, APIKey: "sk-ant"})
+	preset := e.create(t, NewProvider{Name: "ant2", BaseURL: ant.URL + "/v1", Flavor: FlavorAnthropic, Tier: TierPremium, APIKey: "sk-ant"})
+	native := e.create(t, NewProvider{Name: "gem", BaseURL: gem.URL + "/v1beta/openai", Flavor: FlavorGemini, DataClass: DataTrainable, Tier: TierFree, APIKey: "g"})
+	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{})
+	now := time.Now().UTC()
+	m.now = func() time.Time { return now }
+	m.jitter = func(time.Duration) time.Duration { return 0 }
+	m.CheckAll(e.ctx) // full reads: no catalog yet
+	for i := 0; i < 3; i++ {
+		now = now.Add(16 * time.Minute)
+		m.CheckAll(e.ctx) // cheap checks
+	}
+	for _, p := range []Provider{root, preset, native} {
+		st, _ := m.Status(e.ctx, p.ID)
+		g, _ := e.reg.Get(e.ctx, p.ID)
+		ms, _ := e.reg.Models(e.ctx, p.ID)
+		if st.Health != HealthUp || !st.Available || g.Status != string(HealthUp) || len(ms) != 1 {
+			t.Fatalf("%s: monitor %+v, registry %q, models %d", p.Name, st, g.Status, len(ms))
+		}
+	}
+	if got := ant.seen("/v1/models"); len(got) != 8 || got[7].APIKey != "sk-ant" {
+		t.Fatalf("anthropic listings %d %+v", len(got), got)
+	}
+	if got := ant.seen("/v1/v1/models"); len(got) != 0 {
+		t.Fatalf("the preset base was doubled: %d", len(got))
+	}
+	if got := gem.seen("/v1beta/models"); len(got) != 4 || got[3].GoogKey != "g" || got[3].Auth != "" {
+		t.Fatalf("gemini native listings %+v", got)
 	}
 }
 

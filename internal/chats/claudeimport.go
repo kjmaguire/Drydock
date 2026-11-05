@@ -372,7 +372,10 @@ func (s *Service) importOne(ctx context.Context, t transcript, distro, dir, proj
 			}
 		}
 		stored = len(t.msgs)
-		return add(RoleSystem, "Imported from Claude Code (session "+t.sessionID+"). The next message continues that session in "+c.Cwd+".", "", "", now)
+		if err := add(RoleSystem, "Imported from Claude Code (session "+t.sessionID+"). The next message continues that session in "+c.Cwd+".", "", "", now); err != nil {
+			return err
+		}
+		return markAllReadTx(ctx, tx, c.ID) // an imported conversation was read where it was held
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") { // imported meanwhile by another call

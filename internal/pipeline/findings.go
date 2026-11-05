@@ -42,7 +42,8 @@ func (d Deps) projectChecks(ctx context.Context, t tasks.Task, ev []tasks.Eviden
 		if ds.E2E.Enabled {
 			add("e2e")
 		}
-		if ds.Preview.Enabled {
+		// only the Full Stack SaaS template has the preview step: a task of another template never gets a preview (X311)
+		if ds.Preview.Enabled && RunsPreview(t.Template) {
 			add("preview")
 		}
 	}

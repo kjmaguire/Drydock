@@ -73,7 +73,8 @@ var Tables = []Table{
 	{Name: "agents", Where: `project_id=@p`,
 		Columns: []string{"id", "project_id", "name", "adapter", "role", "model", "effort", "provider_id", "permission_mode", "config", "created_at", "version", "purpose", "archived_at", "practices", "route_models"},
 		Skipped: map[string]string{"status": "runtime state; imported agents are STOPPED",
-			"run_mode": "machine-specific (decision P41): an imported agent follows the importing project's run mode", "wsl_distro": "machine-specific: a WSL distro of the exporting PC"},
+			"run_mode": "machine-specific (decision P41): an imported agent follows the importing project's run mode", "wsl_distro": "machine-specific: a WSL distro of the exporting PC",
+			"template_id": "agent templates belong to the workspace and are not exported; an imported agent is not linked to one (decision P137)"},
 		Import: importAgent},
 	{Name: "agent_runs", Where: `agent_id IN ` + agentIDs,
 		Columns: []string{"id", "agent_id", "task_id", "status", "started_at", "ended_at", "exit_code", "error", "workflow_run_id"},
@@ -92,7 +93,7 @@ var Tables = []Table{
 		Skipped: map[string]string{"event_seq": why_busSeq}},
 	{Name: "room_turns", Where: `project_id=@p`,
 		Columns: []string{"id", "room_id", "project_id", "trigger_id", "agent_id", "round", "reason", "mode", "status", "message_id", "agent_run_id",
-			"context_msgs", "context_tokens", "input_tokens", "output_tokens", "cost_usd", "error", "started_at", "ended_at"}, Import: importTurn},
+			"context_msgs", "context_tokens", "input_tokens", "output_tokens", "cost_usd", "error", "started_at", "ended_at", "ask"}, Import: importTurn},
 	{Name: "tasks", Where: `project_id=@p`, OrderBy: `seq`,
 		Columns: []string{"id", "project_id", "seq", "title", "description", "status", "priority", "assignee", "reviewer", "template", "files", "acceptance",
 			"branch", "base_branch", "iteration", "max_iterations", "review_feedback", "verdict", "model", "effort", "cost_usd", "issue_ref", "origin", "pr_ref",
@@ -150,7 +151,7 @@ var Tables = []Table{
 		Columns: []string{"run_id", "node_id", "attempt", "task_id", "agent_id", "items", "total_bytes", "created_at"}},
 	{Name: "project_check_settings", Where: `project_id=@p`, Columns: []string{"project_id", "secrets_enabled", "deps_enabled", "deps_offline", "scan_enabled", "updated_at", "updated_by"}},
 	{Name: "plans", Where: `project_id=@p`, OrderBy: `created_at, id`,
-		Columns: []string{"id", "project_id", "run_id", "goal", "requirements_sha", "planner_agent", "status", "proposal", "accepted_tasks", "error", "created_at", "decided_at", "decided_by"}},
+		Columns: []string{"id", "project_id", "run_id", "goal", "requirements_sha", "planner_agent", "status", "proposal", "accepted_tasks", "error", "created_at", "decided_at", "decided_by", "requirement_ids", "unlinked"}},
 	{Name: "requirements", Where: `project_id=@p`, OrderBy: `created_at, id`,
 		Columns: []string{"id", "project_id", "title", "source", "source_ref", "current_version", "content_hash", "archived", "created_by", "created_at", "updated_at"}},
 	{Name: "requirement_versions", Where: `requirement_id IN ` + reqIDs, OrderBy: `requirement_id, version`,
@@ -250,5 +251,6 @@ var ExcludedTables = map[string]string{
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.
 var ExcludedSettings = map[string]string{
-	"mcp.actTools:<project>": "which MCP tools may act is a permission grant; the human grants it again after import",
+	"mcp.actTools:<project>":          "which MCP tools may act is a permission grant; the human grants it again after import",
+	"lead.standup.schedule:<project>": "a schedule of paid team lead turns is the person's choice on this installation; they set it again after import",
 }

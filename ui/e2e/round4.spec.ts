@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
+import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, openNewProject, readZip, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -51,8 +51,9 @@ test('backups: back up now, list, verify, stage a restore, see it pending after 
   const name = (await row.getAttribute('data-name'))!;
   await expect(page.getByTestId('backup-last-success')).not.toHaveText('none yet');
 
-  // restore needs a successful verify first
-  await expect(page.getByRole('button', { name: `Restore ${name}` })).toBeDisabled();
+  // the backup Drydock just made shows its own check without a click, and Restore is open (it checks the backup again first)
+  await expect(row.getByTestId('backup-verified')).toHaveAttribute('data-stored', 'true');
+  await expect(page.getByRole('button', { name: `Restore ${name}` })).toBeEnabled();
   await page.getByRole('button', { name: `Verify ${name}` }).click();
   const verified = page.getByTestId('verify-result').filter({ hasText: name });
   await expect(verified).toHaveAttribute('data-ok', 'true');
@@ -62,6 +63,7 @@ test('backups: back up now, list, verify, stage a restore, see it pending after 
   try {
     await page.getByRole('button', { name: `Restore ${name}` }).click();
     const confirm = page.getByTestId('restore-confirm');
+    await expect(confirm.getByTestId('verify-result')).toHaveAttribute('data-ok', 'true');
     await expect(confirm).toContainText('staged, not applied now');
     await expect(confirm).toContainText('Nothing is destroyed');
     // declining stages nothing
@@ -134,26 +136,27 @@ test('export a project, preview what is in it, import it into a second project; 
   const zip = readZip(path);
   expect(Object.keys(zip)).toContain('manifest.json');
 
-  // import it as a NEW project, linked to a different repository
-  await page.getByLabel(/Archive path/).fill(path);
-  await page.getByRole('button', { name: 'Preview the import' }).click();
+  // import it as a NEW project, linked to a different repository: the file dialog (the harness's stand-in chooses the newest
+  // export) fills the path and previews it at once (X59)
+  await page.getByTestId('import-choose-file').click();
+  await expect(page.getByLabel(/Archive path/)).toHaveValue(path);
   const untrusted = page.getByTestId('import-untrusted');
   await expect(untrusted).toContainText('Memory entries proposed');
   await expect(untrusted).toContainText('Skills offered');
   await expect(untrusted).toContainText('Providers that come without keys');
   await expect(untrusted).toContainText('Runs not resumed (cancelled)');
   await expect(untrusted).toContainText('Approvals cancelled');
-  await expect(page.getByRole('button', { name: 'Import as a new project' })).toBeDisabled();
+  // the repository is optional: it can be attached later in the project's settings
+  await expect(page.getByRole('button', { name: 'Import as a new project' })).toBeEnabled();
   await page.getByLabel(/Local repository to link/).fill(freshRepo());
   await page.getByLabel(/New project name/).fill('pkg-export-copy');
   await page.getByRole('button', { name: 'Import as a new project' }).click();
   await expect(page.getByTestId('import-result-name')).toHaveText('pkg-export-copy');
   await expect(page.getByTestId('import-result')).toContainText('It came in untrusted');
 
-  // the second project exists, is separate, and opens
-  // projects are chosen in the switcher at the top of the sidebar (a menu of radio items)
-  await switchProject(page, 'pkg-export-copy');
-  await expect(roomLink(page, 'general')).toBeVisible();
+  // the second project exists, is separate, and opens from the result
+  await page.getByTestId('import-open-project').click();
+  await expect(page.getByTestId('work')).toBeVisible();
   await openRoom(page, 'general');
   await expect(page.getByTestId('message').filter({ hasText: 'Imported "pkg-export-copy" as a new project' })).toBeVisible();
   await expect(page.getByTestId('message').filter({ hasText: 'Nothing from the file is trusted yet' })).toBeVisible();
@@ -174,7 +177,7 @@ test('support bundle: preview lists files and the scrub report, a planted secret
 
   await workspaceNav(page, 'nav-support');
   await expect(page.getByTestId('bundle-never-uploaded')).toContainText('never uploads');
-  await page.getByRole('button', { name: 'Preview the bundle' }).click();
+  // the page previews by itself when it opens (X57)
   const preview = page.getByTestId('bundle-preview');
   await expect(preview).toContainText('Nothing has been written yet');
   await expect(page.getByTestId('bundle-file').first()).toBeVisible();
@@ -202,8 +205,10 @@ test('support bundle: preview lists files and the scrub report, a planted secret
   expect(listed.length).toBe(Object.keys(entries).length);
 
   // including a run is opt-in; an unknown run is refused by the core before anything is written
+  // the run is picked from the failed ones when there are any (X56); a typed id goes through Another run id...
+  const pick = page.getByTestId('bundle-run-pick');
+  if (await pick.count()) await choose(pick, 'other');
   await page.getByLabel(/Include one run/).fill('run_does_not_exist');
-  await page.getByRole('button', { name: 'Preview the bundle' }).click();
   await expect(page.getByRole('alert')).toContainText('there is no run');
   expect(readFileSync(path).length).toBeGreaterThan(0);
 });
@@ -220,8 +225,7 @@ test('support bundle: a file already at the destination is not written over unti
     support.pathname = '/support';
     await page.goto(support.toString());
     await expect(page.getByRole('heading', { level: 1, name: 'Support bundle' })).toBeVisible();
-    await page.getByRole('button', { name: 'Preview the bundle' }).click();
-    await expect(page.getByTestId('bundle-preview')).toBeVisible();
+    await expect(page.getByTestId('bundle-preview')).toHaveAttribute('data-fresh', 'true');
     await page.getByLabel(/^Save to/).fill(dest);
 
     // nothing is there yet: the bundle is written, and the page shows what is in it and its own scrub report
@@ -284,12 +288,16 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await expect(banner).toHaveAttribute('data-state', 'none');
   await expect(banner).toHaveAttribute('data-configured', 'true');
   await expect(banner).toContainText('No valid license');
-  await showNewProjectForm(page);
-  await expect(page.getByTestId('readonly-note')).toContainText('read-only');
-  await wizardToReview(page, { repo: licensedRepo() });
-  const create = page.getByRole('button', { name: 'Create project' });
+  await openNewProject(page);
+  const dialog = page.getByTestId('new-project-dialog');
+  await expect(dialog.getByTestId('readonly-note')).toContainText('read-only');
+  await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+  await dialog.getByLabel('Folder', { exact: true }).fill(licensedRepo());
+  await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'repository');
+  const create = dialog.getByTestId('new-project-create');
   await expect(create).toBeDisabled();
   await expect(create).toHaveAttribute('title', /No valid license/);
+  await page.keyboard.press('Escape');
 
   // the core refuses it too, and its words are what the page shows as the reason
   const refused = await page.request.post(`${new URL(url).origin}/rpc/project.create`, { headers: { 'X-Drydock-Token': token }, data: { name: 'x', repoPath: licensedRepo() } });
@@ -323,11 +331,14 @@ test('licensed test harness: no license is read-only and says why; expired is re
   expect(await page.content()).not.toContain(active.slice(0, 40));
 
   await page.goto(url);
-  await showNewProjectForm(page);
-  await wizardToReview(page, { name: 'pkg-licensed', repo: licensedRepo() });
-  await expect(page.getByRole('button', { name: 'Create project' })).toBeEnabled();
-  await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  await openNewProject(page);
+  await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+  await dialog.getByLabel('Folder', { exact: true }).fill(licensedRepo());
+  await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'repository');
+  await dialog.getByLabel('Project name', { exact: true }).fill('pkg-licensed');
+  await expect(create).toBeEnabled();
+  await create.click();
+  await expect(page.getByTestId('work')).toBeVisible();
   await createAgent(page, 'lic-worker', 'backend');
 
   // an older token cannot replace the installed license: the core says so and the page shows its words
@@ -373,7 +384,6 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await expect(page.getByTestId('export-result')).toBeVisible();
   await workspaceNav(page, 'nav-support');
-  await page.getByRole('button', { name: 'Preview the bundle' }).click();
   await expect(page.getByTestId('bundle-preview')).toBeVisible();
 
   // 5. importing a license turns it back on without a restart

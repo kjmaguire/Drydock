@@ -1,22 +1,22 @@
 // Milestones: groups of tasks with a due date and progress the core computes from the tasks' states.
 
 import { css, on, type Handle } from 'remix/component';
-import { CalendarDays, Flag, Plus, Trash2 } from 'lucide';
-import type { Milestone } from '../../api/extTypes.ts';
+import { CalendarDays, Check, Flag, Plus, Trash2 } from 'lucide';
+import type { Milestone, Plan } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDateTime, plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, OriginBadge, StatusChip } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
-import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { dueISO, progressText, segments, zeroTime } from './milestones.ts';
+import { allDoneOf, dueISO, matchesFilter, progressText, segments, taskGroups, taskLabel, unfinishedOf, zeroTime } from './milestones.ts';
 
 const gridCss = css({
   display: 'grid',
@@ -103,11 +103,18 @@ const taskList = css({
     color: t.text,
   },
 });
-const addRow = css({
-  display: 'flex',
-  alignItems: 'center',
+const addPanel = css({
+  display: 'grid',
   gap: t.s2,
-  '& select': { flex: '1', minWidth: '0' },
+  padding: t.s3,
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  background: t.bgApp,
+  '& .groups': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
+  '& ul': { margin: '0', padding: '0', listStyle: 'none', maxHeight: '240px', overflowY: 'auto', display: 'grid', gap: '2px' },
+  '& li label': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textMd, minWidth: '0' },
+  '& li span': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  '& .actions': { display: 'flex', gap: t.s2, alignItems: 'center' },
 });
 const footer = css({
   display: 'flex',
@@ -118,11 +125,18 @@ const footer = css({
   borderTop: `1px solid ${t.border}`,
 });
 
-function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: () => void }>) {
+function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; plans: Plan[]; onChanged: () => void }>) {
   const s = services(handle);
   const act = action(handle);
-  let add = '';
+  // Add tasks: the open list, its filter, and the tasks ticked in it (sent in one milestone.setTasks)
+  let adding = false;
+  let filter = '';
+  let picked = new Set<string>();
   let confirm = false;
+  const set = (fn: () => void) => {
+    fn();
+    void handle.update();
+  };
   const run = async (label: string, fn: () => Promise<unknown>) => {
     await act.run(label, fn);
     handle.props.onChanged();
@@ -132,6 +146,12 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
     const ids = m.taskIds ?? [];
     const p = m.progress;
     const free = tasks.filter((x) => !ids.includes(x.id));
+    const shown = free.filter((x) => matchesFilter(x, filter));
+    const groups = taskGroups(free, handle.props.plans);
+    const chosen = [...picked].filter((id) => free.some((x) => x.id === id));
+    const unfinished = unfinishedOf(p);
+    // "All done" only when nothing failed; failed tasks still close without force, under a plain "Close milestone"
+    const allDone = allDoneOf(p);
     return (
       <article mix={cardCss} data-testid="milestone" data-title={m.title} data-status={m.status}>
         <header>
@@ -184,37 +204,106 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
           </ul>
         ) : null}
         <ErrorNote error={act.error} />
-        <div mix={addRow}>
-          <Select
-            label={`Add a task to ${m.title}`}
-            value={add}
-            options={[{ value: '', label: 'Add a task...' }, ...free.map((x) => ({ value: x.id, label: `#${x.seq} ${x.title}` }))]}
-            onChange={(v) => {
-              add = v;
-              void handle.update();
-            }}
-          />
-          <Button
-            icon={Plus}
-            disabled={!add || act.busy !== ''}
-            mix={on('click', async () => {
-              const id = add;
-              await act.run('add', () => s.client.milestoneSetTasks(m.id, [id], []));
-              add = '';
-              handle.props.onChanged();
-            })}
-          >
-            Add
-          </Button>
-        </div>
+        {adding ? (
+          <div mix={addPanel} role="group" aria-label={`Add tasks to ${m.title}`} data-testid="milestone-add">
+            <input
+              type="search"
+              aria-label={`Filter tasks for ${m.title}`}
+              placeholder="Filter by number, title or label"
+              value={filter}
+              mix={on('input', (e) => set(() => (filter = e.currentTarget.value)))}
+            />
+            {groups.length > 0 ? (
+              <div class="groups">
+                {groups.map((g) => (
+                  <Button
+                    key={g.key}
+                    size="sm"
+                    variant="ghost"
+                    mix={on('click', () => set(() => (picked = new Set([...picked, ...g.ids]))))}
+                  >
+                    {g.label} ({g.ids.length})
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+            {free.length === 0 ? <p class="summary">Every task is in this milestone already.</p> : null}
+            <ul aria-label={`Tasks to add to ${m.title}`}>
+              {shown.map((x) => (
+                <li key={x.id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={picked.has(x.id)}
+                      mix={on('change', (e) =>
+                        set(() => {
+                          picked = new Set(picked);
+                          if (e.currentTarget.checked) picked.add(x.id);
+                          else picked.delete(x.id);
+                        }),
+                      )}
+                    />
+                    <span>{taskLabel(x)}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div class="actions">
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                disabled={chosen.length === 0 || act.busy !== ''}
+                mix={on('click', async () => {
+                  const r = await act.run('add', () => s.client.milestoneSetTasks(m.id, chosen, []));
+                  if (r) set(() => ((adding = false), (picked = new Set()), (filter = '')));
+                  handle.props.onChanged();
+                })}
+              >
+                {chosen.length === 0 ? 'Add tasks' : `Add ${plural(chosen.length, 'task')}`}
+              </Button>
+              <Button size="sm" variant="ghost" mix={on('click', () => set(() => ((adding = false), (picked = new Set()), (filter = ''))))}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Button icon={Plus} size="sm" disabled={act.busy !== ''} mix={on('click', () => set(() => (adding = true)))}>
+              Add tasks…
+            </Button>
+          </div>
+        )}
         <div mix={footer}>
-          <Button
-            size="sm"
-            disabled={act.busy !== ''}
-            mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, m.status === 'open' ? 'closed' : 'open', false)))}
-          >
-            {m.status === 'open' ? 'Close milestone' : 'Reopen'}
-          </Button>
+          {m.status !== 'open' ? (
+            <Button size="sm" disabled={act.busy !== ''} mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, 'open', false)))}>
+              Reopen
+            </Button>
+          ) : unfinished > 0 ? (
+            // the core refuses to close with unfinished tasks unless told to: the person is asked, and Yes sends force
+            <ConfirmAction
+              label="Close milestone"
+              variant="secondary"
+              yes="Close anyway"
+              yesName={`Close "${m.title}" anyway`}
+              keepName={`Keep "${m.title}" open`}
+              question={`${plural(unfinished, 'task')} in "${m.title}" ${unfinished === 1 ? 'is' : 'are'} not finished. Close anyway? Reopen undoes it.`}
+              disabled={act.busy !== ''}
+              testId="milestone-close"
+              onConfirm={() => run('status', () => s.client.milestoneSetStatus(m.id, 'closed', true))}
+            />
+          ) : (
+            <Button
+              size="sm"
+              variant={allDone ? 'primary' : 'secondary'}
+              icon={allDone ? Check : undefined}
+              disabled={act.busy !== ''}
+              data-testid="milestone-close"
+              mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, 'closed', false)))}
+            >
+              {allDone ? 'All done · Close milestone' : 'Close milestone'}
+            </Button>
+          )}
           <span mix={spacer} />
           {confirm ? (
             <>
@@ -265,6 +354,13 @@ export function MilestonesScreen(handle: Handle) {
     key: pid,
     enabled: () => !!pid(),
   });
+  // the accepted plans, to add all tasks of one at once; a failed read only leaves that choice out
+  const plans = query(handle, {
+    load: () => s.client.planList(pid()!),
+    when: (e) => e.type.startsWith('plan.'),
+    key: pid,
+    enabled: () => !!pid(),
+  });
   let title = '';
   let desc = '';
   let due = '';
@@ -288,7 +384,7 @@ export function MilestonesScreen(handle: Handle) {
     const open = list.filter((m) => m.status === 'open').length;
     return (
       <Page title="Milestones" icon={Flag} subtitle={q.data ? `${open} open, ${list.length - open} closed` : undefined}>
-        <ErrorNote error={q.error} what="Milestones" />
+        <ErrorNote error={q.error} retry={q.reload} what="Milestones" />
         <TaskTotalNotice>Older tasks cannot be added to a milestone from here, and one that is already in a milestone shows by its id.</TaskTotalNotice>
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (
@@ -301,7 +397,7 @@ export function MilestonesScreen(handle: Handle) {
         {list.length > 0 ? (
           <div mix={gridCss}>
             {list.map((m) => (
-              <MilestoneCard key={m.id} m={m} tasks={tasks} onChanged={() => q.reload()} />
+              <MilestoneCard key={m.id} m={m} tasks={tasks} plans={plans.data ?? []} onChanged={() => q.reload()} />
             ))}
           </div>
         ) : null}

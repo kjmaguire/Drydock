@@ -222,11 +222,19 @@ func (c *Core) permissionPending(ctx context.Context, taskID string) []workflow.
 		// a person can change the input before approving only where the CLI can run a changed call (Claude's prompt tool)
 		// and the input shown is the whole input: a shortened or redacted copy would run without what was left out (P88)
 		editable := permissionEditable(info.Action)
-		payload, _ := json.Marshal(map[string]any{
+		pl := map[string]any{
 			"gate": PermissionGate, "tool": toolOfAction(info.Action.Tool), "input": info.Action.Command, "editable": editable, "shell": info.Action.Shell != "",
 			"targets": targets, "shortened": info.Action.Shortened,
 			"kind": info.ActionKind, "reason": info.Reason, "agentId": info.Action.AgentID, "expiresAt": info.ExpiresAt,
-		})
+		}
+		// whether the task page can offer "Allow for the rest of this task" (run.respond scope "task"), as the Inbox's approval.get
+		// says it; why not when it cannot (what is asked every time, a call that belongs to no task)
+		if _, err := gate.TaskRuleFor(id); err != nil {
+			pl["approveForTask"], pl["approveForTaskNote"] = false, strings.TrimPrefix(err.Error(), security.ErrOnlyOnce.Error()+": ")
+		} else {
+			pl["approveForTask"] = true
+		}
+		payload, _ := json.Marshal(pl)
 		out = append(out, workflow.PendingRequest{ID: workflow.RequestID(id), Spec: workflow.RequestSpec{Kind: "approval", Title: info.Title, Payload: payload, ActionHash: info.ActionHash}})
 	}
 	return out

@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { RouteLevel, RouteRule, RouteSettings, RouteSettingsPatch } from '../../api/extTypes.ts';
 import type { Provider } from '../../api/types.ts';
-import { byLabel, byText, cleanup, errorOf, fromMenu, menuItems, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, errorOf, fromMenu, menuItems, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { PRIORITY_ERROR } from './rules-panel.tsx';
 import { RoutingScreen } from './routing-screen.tsx';
 
@@ -92,13 +92,14 @@ describe('RoutingScreen', () => {
     expect(rows[0]!.textContent).toContain('disabled');
   });
 
-  it('saves a rule against its version and shows a stale-version refusal verbatim', async () => {
+  it('saves a rule against its version; a rule changed meanwhile is read again and the edit put on the newer version, and says so (F9)', async () => {
     const calls: RouteRule[] = [];
     const r = mountWith({
-      routeRulesList: async () => [rule],
+      routeRulesList: async () => [calls.length > 0 ? { ...rule, version: 4 } : rule],
       routeRulesSet: async (x) => {
         calls.push(x);
-        throw new Error('rule r1 changed since you read it (version 3 is stale): reload and retry');
+        if (x.version === 3) throw new Error('rule r1 changed since you read it (version 3 is stale): reload and retry');
+        return x;
       },
     });
     const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
@@ -106,14 +107,79 @@ describe('RoutingScreen', () => {
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     type(byLabel(ed, /^Priority/), '9');
     await r.act(() => byText(ed, 'button', 'Save rule').click());
-    await waitFor(() => expect(calls[0]).toEqual({ ...rule, priority: 9 }), r);
-    await waitFor(has(r, /version 3 is stale/), r);
+    await waitFor(() => expect(calls).toEqual([{ ...rule, priority: 9 }, { ...rule, priority: 9, version: 4 }]), r);
+    await waitFor(has(r, /had changed since you opened it\. Your edit was saved over the newer version/), r);
+  });
+
+  it('a refusal that is not about the version is shown verbatim', async () => {
+    const r = mountWith({
+      routeRulesList: async () => [rule],
+      routeRulesSet: async () => {
+        throw new Error('when: undeclared reference to task.kindd');
+      },
+    });
+    const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
+    await pick(r, row, 'Edit');
+    const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
+    await r.act(() => byText(ed, 'button', 'Save rule').click());
+    await waitFor(has(r, /undeclared reference to task\.kindd/), r);
+  });
+
+  it('picks the scope by project name, the turn kind and role, and the action, and writes the condition and JSON from them (F9)', async () => {
+    const sets: RouteRule[] = [];
+    const r = mountWith({
+      routeRulesList: async () => [rule],
+      routeRulesSet: async (x) => (sets.push(x), x),
+      routeRulesDescribe: async () => ({
+        scopes: [
+          { value: 'workspace', label: 'Workspace' },
+          { value: 'project:prj_1', label: 'gocalc' },
+        ],
+        runKinds: ['agent_task', 'review', 'room_reply'],
+        roles: ['backend', 'reviewer'],
+        tiers: ['premium', 'cheap', 'free'],
+        efforts: ['low', 'medium', 'high', 'max'],
+        actions: [],
+      }),
+    });
+    const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
+    await pick(r, row, 'Edit');
+    const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
+    await waitFor(() => expect(optionsOf(need(r, '[data-testid="rule-scope"]') as HTMLElement).map((o) => o.label)).toEqual(['Workspace', 'gocalc']), r);
+    // a plain rule opens without Advanced
+    expect((need(r, '[data-testid="rule-advanced"]') as HTMLDetailsElement).open).toBe(false);
+    await r.act(() => choose(need(r, '[data-testid="rule-scope"]') as HTMLElement, 'project:prj_1'));
+    await r.act(() => choose(need(r, '[data-testid="rule-run-kind"]') as HTMLElement, 'review'));
+    await r.act(() => choose(need(r, '[data-testid="rule-role"]') as HTMLElement, 'reviewer'));
+    await r.act(() => choose(need(r, '[data-testid="rule-prefer-tier"]') as HTMLElement, ''));
+    await r.act(() => choose(need(r, '[data-testid="rule-require-tier"]') as HTMLElement, 'premium'));
+    await r.act(() => choose(need(r, '[data-testid="rule-effort"]') as HTMLElement, 'high'));
+    expect(byLabel<HTMLTextAreaElement>(ed, /^When/).value).toBe("run.kind == 'review' && task.role == 'reviewer'");
+    await r.act(() => byText(ed, 'button', 'Save rule').click());
+    await waitFor(
+      () => expect(sets[0]).toEqual({ ...rule, scope: 'project:prj_1', when: "run.kind == 'review' && task.role == 'reviewer'", then: { require_tier: 'premium', set_effort: 'high' } }),
+      r,
+    );
+  });
+
+  it('a rule the pickers cannot say opens with Advanced and keeps its expression', async () => {
+    const custom: RouteRule = { ...rule, when: "candidate.tier == 'free' && run.kind != 'consult'" };
+    const r = mountWith({ routeRulesList: async () => [custom] });
+    const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
+    await pick(r, row, 'Edit');
+    const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
+    expect((need(r, '[data-testid="rule-advanced"]') as HTMLDetailsElement).open).toBe(true);
+    expect(r.$('[data-testid="rule-run-kind"]')).toBeNull();
+    expect(ed.querySelector('[data-testid="rule-when-custom"]')).not.toBeNull();
+    expect(byLabel<HTMLTextAreaElement>(ed, /^When/).value).toBe(custom.when);
   });
 
   it('a priority that is not a whole number is told under the field and nothing is sent; it is never saved as 0 (M25)', async () => {
     const calls: RouteRule[] = [];
     const r = mountWith({ routeRulesList: async () => [rule], routeRulesSet: async (x) => (calls.push(x), x) });
     const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
+    // the rules are folded (F8): the person opens them first
+    await r.act(() => need(r, '[data-testid="routing-rules-fold"] > summary').click());
     await pick(r, row, 'Edit');
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     const priority = () => byLabel<HTMLInputElement>(ed, /^Priority/);
@@ -266,16 +332,46 @@ describe('RoutingScreen', () => {
     expect(out.textContent).toContain('Rule r1 applied');
   });
 
-  it('the startup probe warns about cost and is only changed by a button', async () => {
+  it('the startup probe is a switch showing the core\'s state and who set it; turning it on warns about cost first (F8)', async () => {
     const calls: boolean[] = [];
-    const r = mountWith({ routeProbeStartup: async (enabled) => (calls.push(enabled), { enabled, by: 'human:kyle' }) });
-    await waitFor(() => byText(r.container, 'button', 'Change the startup probe...'), r);
-    await r.act(() => byText(r.container, 'button', 'Change the startup probe...').click());
+    let st = noSettings();
+    const r = mountWith({
+      routeSettingsGet: async () => st,
+      routeProbeStartup: async (enabled) => (calls.push(enabled), (st = { ...st, probeStartup: enabled, probeStartupBy: 'human:kyle' }), { enabled, by: 'human:kyle' }),
+    });
+    const box = await waitFor(() => need(r, '[data-testid="startup-probe"][data-on]'), r);
+    expect(box.getAttribute('data-on')).toBe('false');
+    expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('Off (the default).');
+    const sw = box.querySelector('button') as HTMLButtonElement;
+    await r.act(() => sw.click());
     await waitFor(has(r, 'every time Drydock starts. That can cost a little.'), r);
     expect(calls.length).toBe(0);
     await r.act(() => byText(r.container, 'button', 'Turn on').click());
     await waitFor(() => expect(calls).toEqual([true]), r);
-    await waitFor(has(r, 'Startup probe: on (set in this session).'), r);
+    await waitFor(() => expect(need(r, '[data-testid="startup-probe"]').getAttribute('data-on')).toBe('true'), r);
+    expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('On, turned on by kyle.');
+    expect(r.$('[data-testid="startup-probe-confirm"]')).toBeNull();
+    // turning it off needs no warning
+    await r.act(() => (need(r, '[data-testid="startup-probe"] button') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual([true, false]), r);
+    await waitFor(() => expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('Off, turned off by kyle.'), r);
+  });
+
+  it('a startup probe turned on earlier shows as on when the page opens (F8)', async () => {
+    const r = mountWith({ routeSettingsGet: async () => ({ ...noSettings(), probeStartup: true, probeStartupBy: 'human:sam' }) });
+    await waitFor(() => expect(need(r, '[data-testid="startup-probe"]').getAttribute('data-on')).toBe('true'), r);
+    expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('On, turned on by sam.');
+  });
+
+  it('folds the rules, the preview and the limits; the limits open by themselves when one is set (F8)', async () => {
+    const r = mountWith({});
+    const rules = await waitFor(() => need(r, '[data-testid="routing-rules-fold"]'), r);
+    expect((rules as HTMLDetailsElement).open).toBe(false);
+    expect((need(r, '[data-testid="routing-preview-fold"]') as HTMLDetailsElement).open).toBe(false);
+    expect((need(r, '[data-testid="routing-limits-fold"]') as HTMLDetailsElement).open).toBe(false);
+    cleanup();
+    const set = mountWith({ routeSettingsGet: async () => ({ ...noSettings(), ceilings: { levels: { balanced: 2700 }, agents: {} } }) });
+    await waitFor(() => expect((need(set, '[data-testid="routing-limits-fold"]') as HTMLDetailsElement).open).toBe(true), set);
   });
 
   it('cheap selection lists cheap private providers, shows the stored choice and probes on a button', async () => {

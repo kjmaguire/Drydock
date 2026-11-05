@@ -21,7 +21,7 @@ import { Avatar, faint, hueFor, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { actionsEnd, tableCard } from '../../ui/layout.tsx';
+import { actionsEnd, Page, tableCard } from '../../ui/layout.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
@@ -29,6 +29,10 @@ import { ConnectForm, ReportView, ServiceView } from '../integrations/service-de
 import { KINDS, serviceState, statusTone, tileState, vendors } from '../integrations/integrations.ts';
 import { ConnectorCard } from '../mcp/gallery.tsx';
 import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
+import { newProjectHref } from '../../shell/new.ts';
+import { Switch } from '../../ui/form.tsx';
+import { rereadOnFocus } from '../../lib/focus.ts';
+import { GitHubSignIn } from '../shared/github-sign-in.tsx';
 
 const innerCss = css({ display: 'grid', gap: t.s6, width: '100%', minWidth: '0' });
 const heroCss = css({
@@ -159,7 +163,7 @@ function Hero(
               <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document>
                 cli.github.com <Icon icon={ExternalLink} size={11} />
               </a>{' '}
-              and run <code>gh auth login</code>. Pull requests and GitHub repositories need it.
+              then check again and sign in here (<code>gh auth login</code>). Pull requests and GitHub repositories need it.
             </p>
           </div>
           {check}
@@ -176,12 +180,9 @@ function Hero(
             <p mix={subCss}>
               {/* the core's reason, unless it only says what the heading says */}
               {st.error && !/not signed in/i.test(st.error) ? `${st.error.replace(/\.$/, '')}. ` : ''}
-              {st.unreachable ? 'gh may well be signed in; check again in a moment.' : (
-                <>
-                  Run <code>gh auth login</code> in a terminal: gh&apos;s own credentials never pass through Drydock.
-                </>
-              )}
+              {st.unreachable ? 'gh may well be signed in; check again in a moment.' : "Sign in with gh's own sign-in: its credentials never pass through Drydock."}
             </p>
+            {st.unreachable ? null : <GitHubSignIn onDone={onCheck} />}
           </div>
           {check}
         </>
@@ -462,16 +463,47 @@ function repoCell(r: ProjectRepoRow): RemixNode {
 const onGitHub = (r: ProjectRepoRow): boolean => r.state === 'github' || r.state === 'error' || r.state === 'needs_gh';
 
 /**
+ * Keeping project folders up to date (decision P143): the background check fetches every project's remote when the project opens
+ * and every 15 minutes, so its Work page says how far behind it is; files change only with Sync now. One switch turns it off.
+ */
+function FolderSync(handle: Handle) {
+  const s = services(handle);
+  const q = query(handle, { load: () => s.client.repoSyncSettings(), when: (e) => e.type === 'repo.syncSettings' });
+  let error: unknown;
+  const set = async (auto: boolean) => {
+    error = undefined;
+    try {
+      q.set(await s.client.repoSyncSettingsSet({ auto }));
+    } catch (e) {
+      error = e;
+      void handle.update();
+    }
+  };
+  return () => (
+    <SettingsGroup title="Project folders" testId="gh-folder-sync">
+      <SettingRow
+        label="Check for new commits"
+        testId="folder-sync-auto"
+        control={q.data ? <Switch label={<span class="sr-only">Check for new commits</span>} checked={q.data.auto} onChange={(v) => void set(v)} /> : null}
+      >
+        <ErrorNote error={q.error ?? error} what="Could not change the check" />
+        <span mix={subCss}>When a project opens and every 15 minutes; files change only with Sync now on its Work page.</span>
+      </SettingRow>
+    </SettingsGroup>
+  );
+}
+
+/**
  * Repositories: one row per project with its repository, the CI state of the default branch and the open pull requests, every
  * cell drawn from the row's state (the core says what each row is). A repository opens on github.com (the system browser); Open
  * goes to the project's Pull requests when it has a GitHub repository, else to its Overview. Refresh asks GitHub again.
  */
-function Repositories(handle: Handle) {
+function Repositories(handle: Handle<{ onRunCI?: (repo: string) => void }>) {
   const s = services(handle);
   let refresh = false;
   const q = query(handle, {
     load: () => s.client.githubProjectRepos(refresh),
-    when: (e) => e.type.startsWith('project.') || e.type === 'github.cloned',
+    when: (e) => e.type.startsWith('project.') || e.type === 'github.cloned' || e.type === 'github.sign_in_finished',
     debounceMs: 300,
   });
   const again = async () => {
@@ -494,9 +526,9 @@ function Repositories(handle: Handle) {
             <Button size="sm" variant="ghost" icon={RefreshCw} disabled={q.loading} data-testid="repos-refresh" mix={on('click', () => void again())}>
               {q.loading && q.data ? 'Refreshing...' : 'Refresh'}
             </Button>
-            {/* a repository of GitHub into a folder of this PC, as a new project: the wizard's Repository step clones it with gh */}
+            {/* a repository of GitHub into a folder of this PC, as a new project: New project's Clone from GitHub, with gh (P143) */}
             <a
-              href={routes.projectNew.href()}
+              href={newProjectHref('clone')}
               mix={buttonStyle('secondary', 'sm')}
               data-testid="repos-clone"
               title="New project: pick a GitHub repository and the folder to clone it into, with your gh sign-in"
@@ -508,13 +540,13 @@ function Repositories(handle: Handle) {
         }
         bare
       >
-        <ErrorNote error={q.error} what="Could not read the repositories" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not read the repositories" />
         {q.loading && !q.data ? <Loading label="Reading your repositories" /> : null}
         {q.data && rows.length === 0 ? (
           <div mix={tableCard} data-testid="repos-empty">
             <Empty title="No projects yet" icon={FolderGit2}>
               <p>A project&apos;s repository shows here with its CI and pull requests.</p>
-              <a href={routes.projectNew.href()} mix={buttonStyle('secondary', 'sm')}>
+              <a href={newProjectHref()} mix={buttonStyle('secondary', 'sm')}>
                 New project
               </a>
             </Empty>
@@ -549,6 +581,17 @@ function Repositories(handle: Handle) {
                       <td data-testid="repo-ci">{ciCell(r)}</td>
                       <td data-testid="repo-prs">{r.state === 'github' ? (r.openPullRequests > 0 ? `${r.openPullRequests} open` : 'None open') : <span mix={faint}>—</span>}</td>
                       <td data-part="open">
+                        {gh && r.repo && r.private === true && handle.props.onRunCI ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            data-testid="repo-run-ci"
+                            aria-label={`Run the CI of ${r.repo} on this PC`}
+                            mix={on('click', () => handle.props.onRunCI?.(r.repo!))}
+                          >
+                            Run its CI on this PC
+                          </Button>
+                        ) : null}
                         <a
                           href={gh ? routes.pulls.href() : routes.home.href()}
                           mix={[buttonStyle('ghost', 'sm'), on('click', () => s.workspace.selectProject(r.projectId))]}
@@ -585,12 +628,35 @@ function syncStateText(c: IntegrationView | undefined): string {
  */
 export function GitHubDetail(handle: Handle) {
   const s = services(handle);
-  const gh = query(handle, { load: () => s.client.githubStatus() });
+  // Check again and the window's focus ask gh itself (refresh), past the few seconds the core keeps an answer; a sign-in's end
+  // (github.sign_in_finished, F4) reads the answer the core has just asked for
+  let refresh = false;
+  const gh = query(handle, {
+    load: () => s.client.githubStatus(refresh),
+    when: (e) => e.type === 'github.sign_in_finished',
+  });
   const conns = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
   const kinds = query(handle, { load: () => s.client.integrationKinds() });
   const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
   const runners = query(handle, { load: () => s.client.runnersGet(), when: (e) => e.type === 'runners.changed', debounceMs: 150 });
-  const check = () => void gh.reload();
+  const recheck = async () => {
+    refresh = true;
+    try {
+      await gh.reload();
+    } finally {
+      refresh = false;
+    }
+  };
+  const check = () => void recheck();
+  // a Repositories row's "Run its CI on this PC": Add a runner opens with that repository chosen
+  let runRequest: { repo: string; n: number } | undefined;
+  const runCI = (repo: string) => {
+    runRequest = { repo, n: (runRequest?.n ?? 0) + 1 };
+    void handle.update();
+  };
+  // a gh sign-in or install done in a terminal publishes no event: read the status again when the window gets focus back, at
+  // most once a minute and not while a check is on its way
+  rereadOnFocus({ reload: () => recheck(), busy: () => gh.loading, signal: handle.signal });
   return () => {
     const cards = vendors(KINDS, gallery.data ?? []).find((v) => v.key === 'github')?.cards ?? [];
     const conn = conns.data ? tileState(conns.data, 'github') : undefined;
@@ -616,9 +682,19 @@ export function GitHubDetail(handle: Handle) {
             Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
           </p>
         </div>
-        <Repositories />
-        <CiRunners />
+        <Repositories onRunCI={runCI} />
+        <FolderSync />
+        <CiRunners request={runRequest} />
       </div>
     );
   };
+}
+
+/** Settings > GitHub (/github, decision P140): the same detail as Integrations' GitHub row, as a section of its own. */
+export function GitHubScreen(_handle: Handle) {
+  return () => (
+    <Page title="GitHub" icon={FolderGit2} testId="github-section">
+      <GitHubDetail />
+    </Page>
+  );
 }

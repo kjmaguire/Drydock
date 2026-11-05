@@ -203,7 +203,7 @@ func TestMemoryRPCAndHumanOnlyAccept(t *testing.T) {
 	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
 	var e memory.Entry
 	token := "ghp_1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"
-	a.call("memory.propose", map[string]any{"projectId": p.ID, "kind": "convention", "title": "Use gofmt", "body": "Run gofmt. CI token " + token}, &e)
+	a.call("memory.propose", map[string]any{"projectId": p.ID, "kind": "convention", "title": "Use gofmt", "body": "Run gofmt. CI token " + token, "source": "agent:agt_1 task:tsk_1"}, &e)
 	if e.Status != memory.Proposed || strings.Contains(e.Body, token) || !strings.Contains(e.Body, "[REDACTED:") {
 		t.Fatalf("proposals are never accepted by their author and secrets never reach memory: %+v", e)
 	}
@@ -241,7 +241,7 @@ func TestMemoryRPCAndHumanOnlyAccept(t *testing.T) {
 		t.Fatalf("%+v", found)
 	}
 	var e2 memory.Entry
-	a.call("memory.propose", map[string]any{"projectId": p.ID, "kind": "rejected", "title": "No globals", "body": "Tried global state; abandoned."}, &e2)
+	a.call("memory.propose", map[string]any{"projectId": p.ID, "kind": "rejected", "title": "No globals", "body": "Tried global state; abandoned.", "source": "agent:agt_1"}, &e2)
 	a.call("memory.reject", map[string]string{"id": e2.ID}, &e2)
 	if e2.Status != memory.RejectedSt {
 		t.Fatalf("%+v", e2)
@@ -571,5 +571,53 @@ func TestWholeTeamSkillsAreGivenToTheirAgentsWhenTheAppStarts(t *testing.T) {
 	b.call("skill.plan", skills.Target{ProjectID: p.ID, AgentID: late.ID, Role: "backend", Adapter: "claude"}, &plan)
 	if len(plan.Files) != 0 {
 		t.Fatalf("a newcomer got a skill by its role: %+v", plan.Files)
+	}
+}
+
+// E10: a person's own entry is accepted at once (audited as an acceptance); Accept all accepts the proposals named and its
+// Undo makes them proposals again; neither is open to anyone but a person.
+func TestMemoryAPersonsOwnEntryAndAcceptAll(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var own memory.Entry
+	a.call("memory.propose", map[string]any{"projectId": p.ID, "kind": "convention", "title": "Tabs", "body": "Use tabs."}, &own)
+	if own.Status != memory.Accepted || own.Source != a.c.Human() {
+		t.Fatalf("a person's own entry: %+v", own)
+	}
+	var n int
+	if err := a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='memory.accept' AND subject=?`, own.ID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("audited %d (%v)", n, err)
+	}
+	var ids []string
+	for _, title := range []string{"One", "Two"} {
+		var e memory.Entry
+		a.call("memory.propose", map[string]any{"projectId": p.ID, "kind": "decision", "title": title, "body": "x", "source": "agent:agt_1"}, &e)
+		if e.Status != memory.Proposed {
+			t.Fatalf("an agent's proposal: %+v", e)
+		}
+		ids = append(ids, e.ID)
+	}
+	var done []string
+	a.call("memory.acceptMany", map[string]any{"ids": append(ids, own.ID)}, &done)
+	if strings.Join(done, ",") != strings.Join(ids, ",") {
+		t.Fatalf("accepted %v", done)
+	}
+	var list []memory.Entry
+	a.call("memory.list", map[string]any{"projectId": p.ID, "status": "accepted"}, &list)
+	if len(list) != 3 {
+		t.Fatalf("%+v", list)
+	}
+	a.call("memory.unacceptMany", map[string]any{"ids": done}, &done)
+	a.call("memory.list", map[string]any{"projectId": p.ID, "status": "proposed"}, &list)
+	if len(done) != 2 || len(list) != 2 {
+		t.Fatalf("undo %v, proposals %+v", done, list)
+	}
+	k := a.c.Knowledge()
+	if _, err := k.AcceptMemoryMany(context.Background(), "agent:agt_1", ids); err == nil {
+		t.Fatal("an agent accepted memory")
+	}
+	if _, err := k.AddMemory(context.Background(), "agent:agt_1", p.ID, "decision", "x", "y"); err == nil {
+		t.Fatal("an agent added accepted memory")
 	}
 }

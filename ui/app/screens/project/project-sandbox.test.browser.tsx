@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { SandboxStatus } from '../../api/extTypes.ts';
 import { byLabel, byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
-import { SandboxPanel, sandboxReady, sandboxSummary } from './project-sandbox.tsx';
+import { SandboxPanel, sandboxReady, sandboxSummary, sandboxTestable } from './project-sandbox.tsx';
 
 afterEach(cleanup);
 
@@ -58,11 +58,96 @@ describe('Sandbox settings', () => {
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Test the sandbox').disabled).toBe(true);
   });
 
+  it('a starter read from the compose file says which file and that its values are copied as they are (X35)', async () => {
+    const base = {
+      switch: { enabled: false },
+      engine,
+      found: false,
+      branch: 'main',
+      configPath: '.drydock/sandbox.json',
+      configError: 'no definition',
+      starter: '{\n  "image": "node:24-trixie",\n  "services": { "db": { "image": "postgres:17" } }\n}',
+    };
+    let r = panel({ sandboxStatus: async () => ({ ...base, starterFrom: ['docker-compose.yml', 'Dockerfile'] }) });
+    const from = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-starter-from"]')), r);
+    expect(from.textContent).toContain('Read from docker-compose.yml, Dockerfile.');
+    expect(from.textContent).toContain('keep secrets out of env, which the agents see');
+    cleanup();
+    r = panel({ sandboxStatus: async () => base });
+    await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-starter"]')), r);
+    expect(r.container.querySelector('[data-testid="sandbox-starter-from"]')).toBe(null);
+  });
+
   it('without a container engine it says how to get one', async () => {
     const r = panel({ sandboxStatus: async () => ({ ...ready, engine: undefined, engineError: 'no container engine is reachable: docker is not installed or not on PATH' }) });
     const e = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-engine"]')), r);
     expect(e.textContent).toContain('not installed');
     expect(e.textContent).toContain('Install Docker Desktop');
+    // a link to Docker Desktop's page, opened outside the app (A7)
+    const get = r.container.querySelector<HTMLAnchorElement>('a[data-testid="sandbox-get-docker"]')!;
+    expect(get.textContent).toBe('Get Docker Desktop');
+    expect(get.getAttribute('href')).toBe('https://www.docker.com/products/docker-desktop/');
+    expect(get.getAttribute('target')).toBe('_blank');
+    expect(get.hasAttribute('data-rmx-document')).toBe(true);
+  });
+
+  it('notices Docker starting: Check again, the window getting the focus back and a poll while the engine is missing (A7)', async () => {
+    let reads = 0;
+    let current: SandboxStatus = { ...ready, engine: undefined, engineError: 'no container engine is reachable' };
+    const r = mount(<SandboxPanel projectId="p1" enginePollMs={30} />, testServices({ sandboxStatus: async () => (reads++, current) }));
+    const box = () => byLabel<HTMLInputElement>(r.container, "Run the agents' commands in a container for each task");
+    await waitFor(() => expect(box().disabled).toBe(true), r);
+    // the poll reads again while the engine is missing
+    const before = reads;
+    await waitFor(() => expect(reads).toBeGreaterThan(before + 1), r, 3000);
+    // Check again reads now
+    const n = reads;
+    await r.act(() => need(r.container.querySelector<HTMLButtonElement>('[data-testid="sandbox-check-again"]')).click());
+    await waitFor(() => expect(reads).toBeGreaterThan(n), r);
+    // Docker started: the next read (here the window's focus) finds it and the switch can go on, with no reload of the page
+    current = ready;
+    await r.act(() => window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(r.container.querySelector('[data-testid="sandbox-engine"]')!.textContent).toContain('docker 29.8.2'), r);
+    expect(box().disabled).toBe(false);
+    expect(r.container.querySelector('[data-testid="sandbox-check-again"]')).toBe(null);
+    // and the poll stops once it is there
+    const settled = reads;
+    await new Promise((res) => setTimeout(res, 200));
+    expect(reads).toBe(settled);
+  });
+
+  it('names the agents in WSL before the switch is flipped, with a way to move them to Windows (X312)', async () => {
+    const runModes: [string, string][] = [];
+    let current: SandboxStatus = {
+      ...ready,
+      wslAgents: [
+        { id: 'agt_1', name: 'Ada', followsProject: true },
+        { id: 'agt_2', name: 'Ben' },
+      ],
+    };
+    const r = panel({
+      sandboxStatus: async () => current,
+      projectSetRunMode: async (p, mode) => {
+        runModes.push([p, mode]);
+        current = { ...ready, wslAgents: [{ id: 'agt_2', name: 'Ben' }] };
+        return { runMode: mode };
+      },
+    });
+    const note = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-wsl"]')), r);
+    expect(note.textContent).toContain('Ada, Ben run in WSL');
+    expect(byLabel<HTMLInputElement>(r.container, "Run the agents' commands in a container for each task").disabled).toBe(true);
+    // the definition can still be tried before the agents move: only the switch waits for them
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Test the sandbox').disabled).toBe(false);
+    // a chip per agent opens its editor
+    expect(r.container.querySelector('a[data-testid="sandbox-wsl-agent-agt_2"]')!.getAttribute('href')).toBe('/team?edit=agt_2');
+    await r.act(() => need(r.container.querySelector<HTMLButtonElement>('[data-testid="sandbox-wsl-native"]')).click());
+    await waitFor(() => expect(r.container.querySelector('[data-testid="sandbox-wsl"]')!.textContent).toContain('Ben runs in WSL'), r);
+    expect(runModes).toEqual([['p1', 'native']]);
+    // only Ben's own setting keeps him there: no project-wide button any more
+    expect(r.container.querySelector('[data-testid="sandbox-wsl-native"]')).toBe(null);
+    expect(sandboxReady(current)).toBe(false);
+    expect(sandboxReady({ ...current, wslAgents: [] })).toBe(true);
+    expect(sandboxTestable(current)).toBe(true);
   });
 
   it('switches on through the core and then says who did it', async () => {
@@ -124,6 +209,10 @@ describe('Sandbox settings', () => {
       expect(lines(r)).toEqual(changed.changes);
       expect(box.textContent).toContain('Tasks of this project wait, in Needs you, until you confirm this definition.');
       expect(byText<HTMLButtonElement>(box, 'button', 'Confirm this definition').disabled).toBe(false);
+      // one confirmation lets every held task go on, and the callout says so before the click (X38)
+      expect(box.querySelector('[data-testid="sandbox-confirm-note"]')?.textContent).toContain(
+        'lets every task of this project that waits for it go on',
+      );
     });
 
     it('shows a line of the definition as the text it is, never as markup', async () => {

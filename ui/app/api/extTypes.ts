@@ -158,6 +158,15 @@ export interface RouteRule {
   enabled: boolean;
   version: number;
 }
+/** What a routing rule can say, for the editor's pickers (route.rules.describe, F9). */
+export interface RuleTables {
+  scopes: { value: string; label: string }[];
+  runKinds: string[];
+  roles: string[];
+  tiers: string[];
+  efforts: string[];
+  actions: { key: string; kind: 'tier' | 'effort' | 'bool' | 'int' | 'number' | 'list' }[];
+}
 export interface RoutingOutcome {
   outcome: string;
   accepted: boolean;
@@ -265,6 +274,9 @@ export interface RouteSettings {
   /** the workspace's level: the level of every project that sets none of its own (P118) */
   level: string;
   agents: { id: string; name: string; project: string }[];
+  /** the startup probe's switch (route.probe.startup) and who last set it ("human:kyle"; absent when nobody has: off by default) */
+  probeStartup?: boolean;
+  probeStartupBy?: string;
 }
 /** route.level.get (P118): the workspace's routing level, a project's own ("" when it follows the workspace) and the result. */
 export interface RouteLevel {
@@ -315,6 +327,9 @@ export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'relevant';
 /** The context package ceiling's default and bounds in tokens (the core's ctxeng.DefaultCeiling, MinCeiling, MaxCeiling). */
 export const CONTEXT_CEILING = { default: 20000, min: 4000, max: 200000 } as const;
 
+/** The CI waits' defaults and ceiling in minutes (the core's DefaultCIGraceMinutes, DefaultCIMaxWaitMinutes, MaxCIWaitMinutes). */
+export const CI_WAITS = { grace: 5, maxWait: 60, max: 360 } as const;
+
 export interface DevSettings {
   maxParallel: number;
   autoSchedule: boolean;
@@ -333,6 +348,9 @@ export interface DevSettings {
   /** Who declared that the repository has no CI, and when (Unix ms). Set by the core when it saves `none`, never by the UI. */
   ciNoneBy?: string;
   ciNoneAt?: number;
+  /** Minutes a pushed commit may show no CI result, and CI checks may run, before the person is asked (0 or absent: CI_WAITS; C7). */
+  ciGraceMinutes?: number;
+  ciMaxWaitMinutes?: number;
   /**
    * How a Claude agent gets the project's skills: `all` puts every skill that reaches it into every turn; `relevant` puts in
    * the repository's own skills and the imported ones whose paths match the task's files, and lists the other imported ones
@@ -478,7 +496,13 @@ export interface Pack {
   manifestDrift?: boolean;
   nextRefreshAt?: string;
   attribution?: string;
-  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[] } | null;
+  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[]; refresh?: { mode?: string } } | null;
+}
+/** A ready pack manifest the core ships (pack.templates): installed as is, then refreshed and attached to the roles it names. */
+export interface PackTemplate {
+  id: string;
+  manifest: { title: string; kind: string; visibility: string; attach?: { roles?: string[] | null } } | null;
+  yaml: string;
 }
 /** One of a pack's own files (a pack made from files keeps them in packs/<id>/files). */
 export interface PackFile {
@@ -647,6 +671,16 @@ export interface RequirementTrace {
   tasksStale: number;
   verified: boolean;
 }
+/** An open task whose title or a criterion matches a passage of a requirement (requirement.suggestLinks): a text match, never a link by itself. */
+export interface LinkSuggestion {
+  taskId: string;
+  seq: number;
+  title: string;
+  /** The heading path of the passage that matched. */
+  heading: string;
+  matched: 'title' | 'criterion';
+  score: number;
+}
 export interface Milestone {
   id: string;
   projectId: string;
@@ -765,6 +799,8 @@ export interface LibrarySkill {
 export interface SkillPick {
   registryId: string;
   name: string;
+  /** The roles the skill names (the Library's), kept in the UI to tick the agents it suggests; never sent to the core. */
+  roles?: string[] | null;
 }
 /** One recommendation (decision P52): give, add or stop using a skill, give an MCP server, or assign an integration. */
 export interface RecommendItem {
@@ -927,6 +963,20 @@ export interface Plan {
   createdAt: number;
   decidedAt?: number;
   decidedBy?: string;
+  /** Per proposed task key: whether an agent on the crew has its role (the create step assigns nobody otherwise). Absent from older cores. */
+  assignable?: Record<string, boolean> | null;
+  /** The plan roles the crew has an agent for, to judge a role the person edits. Absent from older cores. */
+  crewRoles?: string[] | null;
+  /** The planner agent's name. */
+  plannedBy?: string;
+  /** plan.accept with start: the scheduler pass that followed. */
+  start?: TickResult | null;
+  /** plan.accept with start: the pass failed (the plan was accepted and its tasks exist). */
+  startError?: string;
+  /** The project's requirement documents the plan was made from: accepting it links each created task to them. */
+  requirementIds?: string[] | null;
+  /** The created tasks the accept could not link to a requirement the plan was made from (archived or removed after Propose). */
+  unlinked?: { taskId: string; requirementId: string }[] | null;
 }
 export interface SchedulerStatus {
   settings: DevSettings;
@@ -942,6 +992,19 @@ export interface TickResult {
   capacity: number;
   max: number;
 }
+/** What the responder did for one person's message (responder.Outcome, X12). */
+export interface ReplyOutcome {
+  trigger: string;
+  turns: { turnId: string; agentId: string; status: string; reason: string; messageId?: string; error?: string }[] | null;
+  bounded: boolean;
+  /** Why the chain ended early (a newer message, the hard cap, replies switched off...). */
+  stopped?: string;
+  /** The scheduler's reason when it chose nobody ("nobody addressed", "only invited speakers speak"). */
+  why?: string;
+  room?: string;
+  asked?: string;
+}
+
 export interface RoomTurn {
   turnId: string;
   roomId: string;
@@ -963,6 +1026,8 @@ export interface RoomTurn {
   /** The model the reply ran on and its routing decision (after any fallback hop); absent for a turn from before replies were routed. */
   model?: string;
   decisionId?: string;
+  /** The turn's trigger is a message the person wrote, so the agent can be asked again about it (an agent's reply in a chain cannot). */
+  askable?: boolean;
 }
 export interface PreviewInfo {
   taskId: string;
@@ -1459,6 +1524,11 @@ export interface SandboxStatus {
   hosts?: string[];
   /** A definition to start from, when the project has none. */
   starter?: string;
+  /**
+   * The project's files the starter took something from (a compose file, a dev container, a Dockerfile; X35). Their values are
+   * copied as they are. Absent when it read only the language files, or from an older core.
+   */
+  starterFrom?: string[];
   egressError?: string;
   configPath: string;
   /**
@@ -1476,6 +1546,12 @@ export interface SandboxStatus {
    * was ever confirmed. Text from the repository's definition: shown as text.
    */
   changes?: string[];
+  /**
+   * The project's agents that run in WSL (decision P41): while there is one, sandbox.set refuses to switch the sandbox on.
+   * followsProject: it runs there because of the project's default run mode (project.setRunMode moves it); otherwise its own
+   * setting does. Absent when there is none.
+   */
+  wslAgents?: { id: string; name: string; followsProject?: boolean }[];
 }
 /** A port of a task's sandbox forwarded to this computer's loopback address (decision P134). */
 export interface SandboxForward {
@@ -1495,6 +1571,13 @@ export interface SandboxForwards {
   max: number;
   /** Why the sandbox could not be asked (no container engine answers). */
   error?: string;
+  /** The ports whose window is open now: Open brings that window to the front (X314). */
+  viewing?: number[];
+  /**
+   * The ports something listens on in the sandbox, lowest first (X31): one click forwards and opens each. Read from the sandbox,
+   * so only a number and the name of a background process the sandbox checked. Absent from an older core.
+   */
+  listening?: { port: number; name?: string }[];
 }
 export interface SandboxTestStep {
   name: string;

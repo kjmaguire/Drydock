@@ -5,7 +5,7 @@ import type { AdapterInfo, Agent, AgentUpdate, Project } from '../../api/types.t
 import type { WSLStatus } from '../../api/wslClient.ts';
 import { lic } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { AgentEditor } from './agent-forms.tsx';
+import { AgentEditor } from './agent-panel.tsx';
 import { TeamScreen } from './team-screen.tsx';
 
 afterEach(cleanup);
@@ -72,6 +72,9 @@ async function openNew(r: ReturnType<typeof show>) {
     return b;
   }, r);
   await r.act(() => btn.click());
+  // New agent opens on Describe; the full form is Configure (decision P138)
+  const tab = await waitFor(() => r.$('dialog[open] [data-testid="new-agent-configure"]') ?? (() => { throw new Error('no tabs'); })(), r);
+  await r.act(() => (tab as HTMLElement).click());
   await waitFor(() => r.$('dialog[open] [data-testid="agent-form"]') ?? (() => { throw new Error('no form'); })(), r);
 }
 
@@ -94,7 +97,7 @@ function edit(a: Agent, client: Partial<Client>) {
   s.workspace.start();
   s.project.start();
   let done = 0;
-  const r = mount(<AgentEditor agent={a} adapter={claude} onDone={() => done++} onCancel={() => {}} />, s);
+  const r = mount(<AgentEditor agent={a} adapter={claude} caps="ready" onDone={() => done++} onCancel={() => {}} />, s);
   return { r, done: () => done };
 }
 
@@ -132,7 +135,7 @@ describe('where an agent runs', () => {
     const pay = agent({ runMode: 'wsl', wslDistro: 'Ubuntu' });
     const page = show([pay]);
     const card = await waitFor(() => page.$('[data-testid="agent"][data-name="Pay"]') ?? (() => { throw new Error('no card'); })(), page);
-    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · default model');
+    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · backend');
     cleanup();
     const calls: Record<string, unknown>[] = [];
     const update = async (u: AgentUpdate) => (calls.push(u as unknown as Record<string, unknown>), { ...agent(), ...u } as Agent);
@@ -148,7 +151,7 @@ describe('where an agent runs', () => {
     const first = edit(pay, { agentUpdate: update });
     const { ed, runs } = await open(first.r);
     expect(valueOf(runs)).toBe('wsl:Ubuntu');
-    await first.r.act(() => byText(ed, 'button', 'Save changes').click());
+    await first.r.act(() => byText(ed, 'button', 'Save').click());
     await waitFor(() => expect(calls.length).toBe(1), first.r);
     expect('runMode' in calls[0]!).toBe(false);
     cleanup();
@@ -156,7 +159,7 @@ describe('where an agent runs', () => {
     const two = await open(second.r);
     type(two.runs, 'native');
     second.r.root.flush();
-    await second.r.act(() => byText(two.ed, 'button', 'Save changes').click());
+    await second.r.act(() => byText(two.ed, 'button', 'Save').click());
     await waitFor(() => expect(calls.length).toBe(2), second.r);
     expect(calls[1]).toMatchObject({ id: 'agt_1', runMode: 'native', wslDistro: '' });
   });

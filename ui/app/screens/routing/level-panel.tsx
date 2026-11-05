@@ -3,7 +3,7 @@
 
 import { css, type Handle } from 'remix/component';
 import type { RouteLevel } from '../../api/extTypes.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { faint } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
@@ -32,7 +32,7 @@ export function WorkspaceLevelPanel(handle: Handle) {
         testId="workspace-level"
         description="How the router weighs cost against quality for agent turns. Every project runs at this level unless it chooses its own in its settings."
       >
-        <ErrorNote error={act.error ?? q.error} what="Level not changed" />
+        <ErrorNote error={act.error ?? q.error} retry={retryFor(act, q)} what="Level not changed" />
         {!rl ? (
           q.error ? null : <Loading />
         ) : (

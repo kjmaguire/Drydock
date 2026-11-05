@@ -5,7 +5,7 @@ import type { Evidence, PendingRequest, TaskDetail } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, type, waitFor } from '../../test/render.tsx';
 import { verdictGate } from './merge-gate.tsx';
-import { ReviewPanel, SpecGate } from './review-panel.tsx';
+import { AllowRules, ReviewPanel, SpecGate } from './review-panel.tsx';
 import { detail as baseDetail, recorder, svc, task } from './testing.ts';
 
 afterEach(cleanup);
@@ -28,6 +28,8 @@ describe('Review panel', () => {
     const card = r.$('[data-testid="pending-request"]')!;
     expect(card.getAttribute('data-request-id')).toBe('req-42');
     expect(card.getAttribute('data-kind')).toBe('review');
+    // the kind is an attribute, not a line of jargon (decision P144)
+    expect(card.textContent).not.toContain('Request kind');
     expect(card.textContent).toContain('drydock/t1');
     expect(card.textContent).toContain('calc.go');
     await r.act(() => byText(r.container, 'button', 'Approve').click());
@@ -92,16 +94,39 @@ describe('Review panel', () => {
     expect(card.textContent).not.toMatch(/[\u202E\u200B\u2066]/);
   });
 
-  it('Request changes needs feedback and sends decision rejected with it', async () => {
+  it('Request changes with no criteria starts empty and sends back without comment', async () => {
     const runRespond = recorder(() => undefined);
     const r = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc({ runRespond }));
     await r.act(() => byText(r.container, 'button', 'Request changes').click());
-    const send = byText<HTMLButtonElement>(r.container, 'button', 'Send feedback');
-    expect(send.disabled).toBe(true);
+    expect(byLabel<HTMLTextAreaElement>(r.container, 'Feedback for the worker').value).toBe('');
+    expect(r.$('[data-testid="changes-criteria"]')).toBeNull();
+    // an empty send is allowed: the core tells the worker it was sent back without comment
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Send back without comment').disabled).toBe(false);
     await r.act(() => type(byLabel<HTMLTextAreaElement>(r.container, 'Feedback for the worker'), 'add a doc comment'));
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Send feedback').disabled).toBe(false);
-    await r.act(() => byText(r.container, 'button', 'Send feedback').click());
+    await r.act(() => byText(r.container, 'button', 'Send back with these points').click());
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback: 'add a doc comment' }]]), r);
+  });
+
+  it('Request changes starts from the criteria not met or still open, and their chips add a line once', async () => {
+    const runRespond = recorder(() => undefined);
+    const criteria = [
+      { index: 0, id: 'AC1', text: 'AC1: Given a, when b, then c', status: 'met' as const, why: '', claim: '', personal: false, check: '', findings: [] },
+      { index: 1, id: 'AC2', text: 'AC2: Given d, when e, then f', status: 'open' as const, why: '', claim: '', personal: false, check: '', findings: [] },
+      { index: 2, id: 'AC3', text: 'AC3: Given g, when h, then i', status: 'not_met' as const, why: '', claim: '', personal: false, check: '', findings: [] },
+    ];
+    const r = mount(<ReviewPanel detail={detail()} criteria={criteria} onChanged={() => undefined} />, svc({ runRespond }));
+    await r.act(() => byText(r.container, 'button', 'Request changes').click());
+    const box = () => byLabel<HTMLTextAreaElement>(r.container, 'Feedback for the worker');
+    expect(box().value).toBe('- Not met: AC3: Given g, when h, then i\n- Not confirmed yet: AC2: Given d, when e, then f');
+    const chips = () => Array.from(r.$('[data-testid="changes-criteria"]')!.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(chips()).toEqual(['AC2', 'AC3']);
+    await r.act(() => type(box(), ''));
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Send back without comment').disabled).toBe(false);
+    await r.act(() => byText(r.$('[data-testid="changes-criteria"]')!, 'button', 'AC3').click());
+    await r.act(() => byText(r.$('[data-testid="changes-criteria"]')!, 'button', 'AC3').click());
+    expect(box().value).toBe('- Not met: AC3: Given g, when h, then i');
+    await r.act(() => byText(r.container, 'button', 'Send back with these points').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback: '- Not met: AC3: Given g, when h, then i' }]]), r);
   });
 
   it('a question gets a free-text answer with decision answered', async () => {
@@ -175,13 +200,21 @@ describe('Merge gates of a pull request', () => {
       expect(gate.getAttribute('data-reason')).toBe('none');
       expect(gate.textContent).toContain('no CI tested');
       expect(gate.textContent).toContain('recorded with your name');
-      expect(buttons(r.container)).toEqual(['Check CI again', 'Merge without CI this time', 'Stop']);
+      expect(buttons(r.container)).toEqual(['Check CI again', 'Merge without CI this time', 'No CI in this repository, remember it', 'Stop']);
       expect(Array.from(r.$$('a')).map((a) => a.getAttribute('href'))).toEqual(['https://github.test/o/r/pull/7']);
       expect(() => byLabel(r.container, 'Your answer')).toThrow(); // not the free-text question
       await r.act(() => byText(r.container, 'button', label).click());
       await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'ci-1', decision, data]]), r);
       cleanup();
     }
+  });
+
+  it("the CI gate's primary is Keep waiting for the project's wait (C7), the same answer as checking again", async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={ciQuestion({ ...noCI, reason: 'running', running: ['e2e'], waitMinutes: 60 })} onChanged={() => undefined} />, svc({ runRespond }));
+    expect(buttons(r.container)).toEqual(['Keep waiting another 60 minutes', 'Merge without CI this time', 'Stop']);
+    await r.act(() => byText(r.container, 'button', 'Keep waiting another 60 minutes').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'ci-1', 'answered', {}]]), r);
   });
 
   it('the CI gate names the missing required checks, the running ones, and what Drydock did not accept', () => {
@@ -203,7 +236,30 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Check CI again').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Merge without CI this time').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'No CI in this repository, remember it').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop').disabled).toBe(false);
+  });
+
+  // H13: "this repository has no CI, remember it" is asked a second time, says what changes, and only Yes answers
+  it('the CI gate remembers that the repository has no CI only after a second click', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={ciQuestion(noCI)} onChanged={() => undefined} />, svc({ runRespond }));
+    await r.act(() => byText(r.container, 'button', 'No CI in this repository, remember it').click());
+    const ask = r.$('[data-testid="ci-gate-remember-confirm"]')!;
+    expect(ask.textContent).toContain('set this project to no CI');
+    expect(ask.textContent).toContain('recorded with your name');
+    expect(runRespond.calls).toEqual([]);
+    await r.act(() => byText(ask, 'button', 'Go back').click());
+    expect(r.$('[data-testid="ci-gate-remember-confirm"]')).toBe(null);
+    expect(runRespond.calls).toEqual([]);
+    await r.act(() => byText(r.container, 'button', 'No CI in this repository, remember it').click());
+    await r.act(() => byText(r.container, 'button', 'Yes, this repository has no CI').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'ci-1', 'approved', { waive_ci: true, ci_none: true }]]), r);
+  });
+
+  it('the CI gate offers to remember no CI only when no CI ran at all', () => {
+    const r = mount(<ReviewPanel detail={ciQuestion({ ...noCI, reason: 'missing', missing: ['deploy'] })} onChanged={() => undefined} />, svc());
+    expect(buttons(r.container)).toEqual(['Check CI again', 'Merge without CI this time', 'Stop']);
   });
 
   it('the merge gate explains the GitHub state and offers check again or stop', async () => {
@@ -232,7 +288,156 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-1', 'answered', {}]]), r);
   });
 
-  const repoConfig = (changed: unknown = ['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
+  it('a change request posted on GitHub while the review waited is sent back with its words in one click (H12)', async () => {
+    const runRespond = recorder(() => undefined);
+    const feedback = 'A repository collaborator reviewed the pull request and asked for changes. Their text is below as quoted data.\n\n> from kyle:\n> Please handle negative numbers.';
+    const d = detail({ prReview: { summary: '1 change request(s) from kyle on GitHub while the pull request waits for your approval', author: 'kyle', feedback } });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ runRespond }));
+    const note = r.$('[data-testid="review-pr-changes"]')!;
+    expect(note.textContent).toContain('1 change request(s) from kyle on GitHub');
+    expect(note.querySelector('pre')!.textContent).toBe(feedback);
+    // Approve and Request changes stay: the person decides
+    expect(buttons(r.container)).toEqual(['Send back with the GitHub review', 'Approve', 'Request changes']);
+    await r.act(() => byText(r.container, 'button', 'Send back with the GitHub review').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback }]]), r);
+    cleanup();
+    const plain = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc());
+    expect(plain.$('[data-testid="review-pr-changes"]')).toBeNull();
+  });
+
+  it('a pull request behind its base is brought up to date from the merge gate (C8)', async () => {
+    const runRespond = recorder(() => undefined);
+    const gateFor = (state: string) =>
+      detail({
+        pending: [
+          {
+            id: 'm-2',
+            nodeId: 'merge',
+            step: 12,
+            spec: { kind: 'question', title: 'Not merged', payload: { gate: 'merge', pr: 7, url: 'https://github.test/o/r/pull/7', state, reason: 'pull request #7 is behind main', sync: true } },
+          },
+        ],
+      });
+    const r = mount(<ReviewPanel detail={gateFor('behind')} onChanged={() => undefined} />, svc({ runRespond }));
+    expect(buttons(r.container)).toEqual(['Bring the branch up to date and check again', 'Check again', 'Stop']);
+    const gate = r.$('[data-testid="merge-gate"]')!;
+    // a sync is offered, so the old dead end ("will not merge it unseen") is not what it says
+    expect(gate.textContent).not.toContain('not merge it unseen');
+    expect(r.$('[data-testid="merge-gate-sync-note"]')!.textContent).toContain('your approval then run again');
+    expect(gate.textContent).toContain('never asks GitHub to bypass branch protection');
+    await r.act(() => byText(r.container, 'button', 'Bring the branch up to date and check again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'm-2', 'answered', { sync: true }]]), r);
+    cleanup();
+    const c = mount(<ReviewPanel detail={gateFor('dirty')} onChanged={() => undefined} />, svc());
+    expect(c.$('[data-testid="merge-gate"]')!.textContent).toContain('conflicts with the base branch');
+    expect(buttons(c.container)[0]).toBe('Bring the branch up to date and check again');
+  });
+
+  it('a GitHub failure is Try again with its fix and Stop, not a free-text answer (C4)', async () => {
+    const runRespond = recorder(() => undefined);
+    const d = detail({
+      pending: [
+        {
+          id: 'gh-1',
+          nodeId: 'push_pr',
+          step: 9,
+          spec: {
+            kind: 'question',
+            title: 'Could not open the pull request on GitHub: github 401 on /pulls: Bad credentials. Fix the cause, then try again, or stop.',
+            payload: { gate: 'github', step: 'open the pull request', error: 'github 401 on /pulls: Bad credentials', fix: 'gh_signin' },
+          },
+        },
+      ],
+    });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ runRespond }));
+    const gate = r.$('[data-testid="github-trouble"]')!;
+    expect(gate.getAttribute('data-fix')).toBe('gh_signin');
+    expect(gate.textContent).toContain('Could not open the pull request: github 401 on /pulls: Bad credentials');
+    expect(r.$('[data-testid="github-trouble-fix"]')!.textContent).toContain('gh auth login');
+    expect(r.$('[data-testid="github-trouble-signin"]')!.getAttribute('href')).toBe('/github');
+    expect(r.container.querySelector('textarea')).toBeNull();
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+    await r.act(() => byText(r.container, 'button', 'Try again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'gh-1', 'answered', {}]]), r);
+  });
+
+  const sandboxQuestion = (payload: Record<string, unknown>) =>
+    detail({
+      pending: [
+        {
+          id: 'sb-1',
+          nodeId: 'work',
+          step: 2,
+          spec: { kind: 'question', title: "The task's sandbox could not start: x. Fix it, then try again.", payload: { gate: 'sandbox', step: 'sandbox', error: 'x', projectId: 'p1', ...payload } },
+        },
+      ],
+    });
+
+  it('a sandbox that could not start is Try again, Open sandbox settings and Stop, not a typed answer (X38)', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={sandboxQuestion({ reason: 'engine' })} onChanged={() => undefined} />, svc({ runRespond }));
+    const gate = r.$('[data-testid="sandbox-gate"]')!;
+    expect(gate.getAttribute('data-reason')).toBe('engine');
+    expect(r.$('[data-testid="sandbox-gate-fix"]')!.textContent).toContain('Start Docker Desktop');
+    expect(r.container.querySelector('textarea')).toBeNull();
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+    expect(r.$('[data-testid="sandbox-gate-settings"]')!.getAttribute('href')).toBe('/project');
+    await r.act(() => byText(r.container, 'button', 'Try again').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'sb-1', 'answered', {}]]), r);
+  });
+
+  it('a changed sandbox definition lists what changed and confirms the definition shown, saying it is for the whole project (X38)', async () => {
+    const sandboxTrust = recorder(async () => ({ enabled: true }));
+    const runRespond = recorder(() => undefined);
+    let changed = 0;
+    const r = mount(
+      <ReviewPanel detail={sandboxQuestion({ reason: 'unconfirmed', fingerprint: 'fp9', changes: ['network "none" -> "open"', '<b>x</b>'] })} onChanged={() => changed++} />,
+      svc({ sandboxTrust, runRespond }),
+    );
+    const items = Array.from(r.container.querySelectorAll('[aria-label="What changed in the sandbox definition"] li')).map((li) => li.textContent);
+    expect(items).toEqual(['network "none" -> "open"', '<b>x</b>']);
+    expect(r.container.querySelector('b')).toBeNull();
+    expect(r.$('[data-testid="sandbox-gate-note"]')!.textContent).toContain('every task of it that waits for this confirmation goes on');
+    expect(buttons(r.container)).toEqual(['Confirm this definition and try again', 'Try again', 'Stop']);
+    await r.act(() => (r.$('[data-testid="sandbox-gate-confirm"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(sandboxTrust.calls).toEqual([['p1', 'fp9']]), r);
+    // the core answers the question itself: the panel does not answer it a second time
+    await waitFor(() => expect(changed).toBe(1), r);
+    expect(runRespond.calls).toEqual([]);
+  });
+
+  it('an older core\'s sandbox question (no gate, no reason) still gets the panel (X38)', async () => {
+    const d = detail({ pending: [{ id: 'sb-2', nodeId: 'work', step: 2, spec: { kind: 'question', title: "The task's sandbox could not start: x.", payload: { step: 'sandbox', error: 'x' } } }] });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({}));
+    expect(r.$('[data-testid="sandbox-gate"]')!.getAttribute('data-reason')).toBe('');
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+  });
+
+  it('the GitHub fix says only what is true: no tries claimed, and a changed branch leads to Stop and a new run (C4 review)', async () => {
+    const trouble = (fix: string) =>
+      detail({
+        pending: [
+          {
+            id: 'gh-2',
+            nodeId: 'merge',
+            step: 9,
+            spec: { kind: 'question', title: 'Could not merge the pull request on GitHub.', payload: { gate: 'github', step: 'merge the pull request', error: 'github 502', fix } },
+          },
+        ],
+      });
+    let r = mount(<ReviewPanel detail={trouble('network')} onChanged={() => undefined} />, svc({}));
+    const net = r.$('[data-testid="github-trouble-fix"]')!.textContent!;
+    expect(net).toContain('did not answer');
+    expect(net).not.toContain('tries');
+    cleanup();
+    r = mount(<ReviewPanel detail={trouble('review_again')} onChanged={() => undefined} />, svc({}));
+    const again = r.$('[data-testid="github-trouble-fix"]')!.textContent!;
+    expect(again).toContain('Stop, then run the task again so the new commits are reviewed');
+    expect(again).not.toContain('Look at the new commits');
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+  });
+
+  const repoConfig = (changed: unknown =['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
     detail({
       pending: [
         {
@@ -625,6 +830,26 @@ describe('Permission request', () => {
     await waitFor(() => expect(json.calls).toEqual([['run-7', 'apr_1', 'approved', { input: { file_path: 'b.txt', content: 'y' } }]]), w);
   });
 
+  it('offers Allow for the rest of this task first where the core allows it, and answers through the task rule (P97)', async () => {
+    const runRespond = recorder(() => undefined);
+    const runApproveForTask = recorder(() => undefined);
+    let changed = 0;
+    const r = mount(<ReviewPanel detail={permission({ ...bash, approveForTask: true })} onChanged={() => changed++} />, svc({ runRespond, runApproveForTask }));
+    expect(buttons(r.container)).toEqual(['Allow for the rest of this task', 'Allow once', 'Refuse']);
+    expect(byText(r.container, 'button', 'Allow for the rest of this task').getAttribute('data-variant')).toBe('primary');
+    expect(r.$('[data-testid="permission-prompt"]')!.textContent).toContain('until the task ends; any other call still asks you');
+    await r.act(() => byText(r.container, 'button', 'Allow for the rest of this task').click());
+    await waitFor(() => expect(runApproveForTask.calls).toEqual([['run-7', 'apr_1']]), r);
+    expect(runRespond.calls).toEqual([]);
+    await waitFor(() => expect(changed).toBe(1), r);
+    cleanup();
+
+    // what is asked every time is offered once only, with the core's reason
+    const once = mount(<ReviewPanel detail={permission({ ...bash, approveForTask: false, approveForTaskNote: 'it deletes files, which is asked every time' })} onChanged={() => undefined} />, svc());
+    expect(buttons(once.container)).toEqual(['Allow once', 'Refuse']);
+    expect(once.$('[data-testid="permission-prompt-once-note"]')!.textContent).toBe('This call can only be allowed once: it deletes files, which is asked every time.');
+  });
+
   it('read-only allows refusing, not allowing', async () => {
     const r = mount(<ReviewPanel detail={permission(bash)} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
@@ -679,5 +904,62 @@ describe('Spec gate', () => {
     const r = mount(<SpecGate payload={{ ...payload, criteria: [{ id: 'AC-1', given: 'a', when: 'b', then: 'c' }] }} busy={false} readOnly onRespond={async () => undefined} />);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Accept spec').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Reject with feedback').disabled).toBe(false);
+  });
+});
+
+describe('Calls allowed for the rest of the task (P97)', () => {
+  const rule = { id: 'par_1', projectId: 'p1', taskId: 't1', agentId: 'agt_1', tool: 'claude:Bash', summary: 'npm install left-pad', approvalId: 'apr_1', createdBy: 'human:kyle', createdAt: 0 };
+
+  it('lists each rule with Stop allowing, which removes that rule', async () => {
+    const approvalRuleRemove = recorder(() => undefined);
+    let changed = 0;
+    const r = mount(<AllowRules rules={[rule, { ...rule, id: 'par_2', summary: 'go test ./...' }]} onChanged={() => changed++} />, svc({ approvalRuleRemove }));
+    const rows = Array.from(r.container.querySelectorAll('[data-testid="allow-rule"]'));
+    expect(rows.map((x) => x.querySelector('code')!.textContent)).toEqual(['npm install left-pad', 'go test ./...']);
+    await r.act(() => (rows[1]!.querySelector('button') as HTMLButtonElement).click());
+    await waitFor(() => expect(approvalRuleRemove.calls).toEqual([['par_2']]), r);
+    await waitFor(() => expect(changed).toBe(1), r);
+  });
+
+  it('renders nothing without rules', () => {
+    const r = mount(<AllowRules rules={[]} onChanged={() => undefined} />, svc());
+    expect(r.$('[data-testid="allow-rules"]')).toBeNull();
+  });
+});
+
+describe('A turn cut off by Drydock stopping (gate "interrupted", X513)', () => {
+  const cut = (payload: Record<string, unknown>) =>
+    detail({
+      pending: [{ id: 'req-9', nodeId: 'code', step: 3, spec: { kind: 'approval', title: 'The code turn was cut off 2 times because Drydock stopped while it ran. Approve to run it again (it is paid for again) or reject to stop the run.', payload } }],
+    });
+
+  it('says what was cut off and shows the crash report of that moment, with two plain answers bound to the request', async () => {
+    for (const [label, decision] of [
+      ['Run the step again (paid for again)', 'approved'],
+      ['Stop the run', 'rejected'],
+    ] as const) {
+      const runRespond = recorder(() => undefined);
+      const payload = { gate: 'interrupted', node: 'code', step: 3, interruptions: 2, crashReport: { name: 'crash-1.txt', time: Date.UTC(2026, 10, 2, 10, 15), summary: 'fatal error: concurrent map writes' } };
+      const r = mount(<ReviewPanel detail={cut(payload)} onChanged={() => undefined} />, svc({ runRespond }));
+      const panel = r.$('[data-testid="interrupted-gate"]')!;
+      expect(panel.textContent).toContain('The code step was cut off 2 times because Drydock stopped while it ran.');
+      // the engine's title ("Approve to run it again ... or reject") is not shown above buttons that say something else
+      expect(r.$('[data-testid="pending-request"] h3')!.textContent).toBe('Run the code step again?');
+      expect(r.container.textContent).not.toContain('Approve to run it again');
+      expect(r.$('[data-testid="interrupted-crash"]')!.textContent).toContain('fatal error: concurrent map writes');
+      expect(r.$('[data-testid="interrupted-crash"] a')!.getAttribute('href')).toBe('/support');
+      expect(buttons(r.container)).toEqual(['Run the step again (paid for again)', 'Stop the run']);
+      await r.act(() => byText(r.container, 'button', label).click());
+      await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-9', decision, undefined]]), r);
+      cleanup();
+    }
+  });
+
+  it('says when no crash report was kept, and read-only allows stopping only', async () => {
+    const r = mount(<ReviewPanel detail={cut({ gate: 'interrupted', node: 'code', step: 3, interruptions: 2 })} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
+    expect(r.$('[data-testid="interrupted-crash"]')).toBeNull();
+    expect(r.$('[data-testid="interrupted-gate"]')!.textContent).toContain('No crash report was kept for this run');
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Run the step again (paid for again)').disabled).toBe(true), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop the run').disabled).toBe(false);
   });
 });

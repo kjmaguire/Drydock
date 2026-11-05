@@ -1,8 +1,10 @@
 // The project folder's field (decision P58), used by the new-project wizard and by Project settings (attach a repository):
 // type the path or press "Choose folder..." for the window's own folder dialog, see what is there (a repository, a folder
 // that is not one, a folder that does not exist yet, one inside another repository), and, when there is no repository yet,
-// tick "Create a Git repository here" so Drydock makes one (the folder if needed, branch main, a first commit). On Windows
-// the hint recommends a Dev Drive and names the ones found.
+// "Create a Git repository here" so Drydock makes one (the folder if needed, branch main, a first commit): for a folder that does
+// not exist yet or is empty the box comes ticked (nothing of the person's is there), for a folder with files in it the choice is
+// a button in the status line (B6). The dialog opens at the folder in the field (B5). On Windows the hint recommends a Dev Drive
+// while the path is not on one.
 
 import { css, on, type Handle } from 'remix/component';
 import { FolderOpen } from 'lucide';
@@ -12,7 +14,7 @@ import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
-import { currentCheck, folderHint } from './wizard.ts';
+import { autoInit, currentCheck, folderHint } from './wizard.ts';
 
 const rowCss = css({ display: 'flex', gap: t.s2, alignItems: 'center', minWidth: '0', '& input': { flex: '1', minWidth: '0' }, '& button': { flex: 'none' } });
 const checkCss = css({
@@ -23,6 +25,8 @@ const checkCss = css({
   '&[data-state="repository"]': { color: t.success },
   '&[data-state="inside"], &[data-state="no_branch"], &[data-state="not_folder"], &[data-state="invalid"]': { color: t.danger },
 });
+
+const clean = (path: string) => path.trim().replace(/^"+|"+$/g, '').trim();
 
 const noHints: FolderHints = { canPick: false, windows: false, devDrives: [] };
 
@@ -49,6 +53,9 @@ export function FolderField(
     },
   });
   let checked = '';
+  // the folder whose answer last set the choice: a check of the same folder again (the dialog opened anew) keeps the person's
+  // tick or untick; a parent that kept the check across a remount keeps it too
+  let applied = handle.props.check?.path ?? '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
 
@@ -64,16 +71,31 @@ export function FolderField(
         .then(() => s.client.repoCheck(path))
         .then(
         (c) => {
-          if (!handle.signal.aborted && c.path === handle.props.value.trim().replace(/^"+|"+$/g, '').trim()) handle.props.onCheck(c);
+          if (!handle.signal.aborted && c.path === clean(handle.props.value)) {
+            handle.props.onCheck(c);
+            // a new folder's answer sets the choice afresh: ticked where nothing of the person's is, else left to them
+            if (c.path !== applied) {
+              applied = c.path;
+              handle.props.onInitRepo(autoInit(c));
+            }
+          }
         },
         () => undefined,
       );
     }, wait);
   };
 
+  // another path: an earlier tick never carries over, not even in the moment before the new folder's check answers
+  const moved = (path: string) => {
+    if (clean(path) === clean(handle.props.value)) return;
+    applied = '';
+    if (handle.props.initRepo) handle.props.onInitRepo(false);
+  };
+
   const pick = async () => {
-    const path = await act.run('pick', () => s.client.fsPickFolder("Choose the project's folder"));
+    const path = await act.run('pick', () => s.client.fsPickFolder("Choose the project's folder", handle.props.value.trim()));
     if (path) {
+      moved(path);
       checked = path;
       handle.props.onChange(path);
       schedule(path, 0);
@@ -90,7 +112,7 @@ export function FolderField(
     const check = currentCheck({ localPath: value, localCheck: handle.props.check });
     return (
       <div style={{ display: 'grid', gap: 'var(--space-2)', minWidth: '0' }} data-testid="folder-field">
-        <Field label={label} hint={<span data-testid="folder-hint">{folderHint(h)}</span>}>
+        <Field label={label} hint={<span data-testid="folder-hint" title={h?.devDriveReason ? `No Dev Drive was found: ${h.devDriveReason}.` : undefined}>{folderHint(h, value)}</span>}>
           {(id) => (
             <div mix={rowCss}>
               <input
@@ -99,7 +121,11 @@ export function FolderField(
                 placeholder={h?.canPick ? 'or type the full path, for example D:\\src\\my-app' : 'D:\\src\\my-app'}
                 spellcheck={false}
                 autocomplete="off"
-                mix={on('input', (e) => onChange(e.currentTarget.value))}
+                mix={on('input', (e) => {
+                  const v = e.currentTarget.value;
+                  moved(v);
+                  onChange(v);
+                })}
               />
               {h?.canPick ? (
                 <Button type="button" variant="secondary" size="sm" icon={FolderOpen} data-testid="folder-choose" disabled={!!act.busy} mix={on('click', () => void pick())}>
@@ -113,9 +139,17 @@ export function FolderField(
         {check ? (
           <p mix={checkCss} role="status" data-testid="folder-check" data-state={check.state}>
             {check.message}
+            {check.canInit && !initRepo && !autoInit(check) ? (
+              <>
+                {' '}
+                <Button type="button" variant="secondary" size="sm" data-testid="folder-init-button" mix={on('click', () => onInitRepo(true))}>
+                  Create a Git repository here
+                </Button>
+              </>
+            ) : null}
           </p>
         ) : null}
-        {check?.canInit ? (
+        {check?.canInit && (initRepo || autoInit(check)) ? (
           <div data-testid="folder-init">
             <Checkbox
               label="Create a Git repository here"

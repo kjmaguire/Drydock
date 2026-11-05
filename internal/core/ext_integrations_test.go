@@ -59,10 +59,15 @@ func TestIntegrationsThroughTheUIMethods(t *testing.T) {
 	var out struct {
 		Connection integrations.ConnectionView `json:"connection"`
 		Test       integrations.TestReport     `json:"test"`
+		Verify     *integrations.VerifyReport  `json:"verify"`
 	}
 	a.call("integration.connect", map[string]any{"kind": "linear", "projectId": p.ID, "token": itLinearToken, "baseUrl": lurl, "config": map[string]string{"team": "ENG"}}, &out)
 	if !out.Test.OK || out.Connection.Status != integrations.StatusOK || !out.Connection.HasCredential || len(out.Test.Steps) != 3 || out.Connection.Identity.Workspace != "Fixture Org" || len(out.Connection.Assignments) != 1 {
 		t.Fatalf("%+v", out)
+	}
+	// a connection that tested well is checked against the account in the same Connect (F10): read-only, kept on the connection
+	if out.Verify == nil || !out.Verify.OK || out.Connection.Verified == nil || !out.Connection.Verified.OK || lin.Calls("commentCreate") != 0 {
+		t.Fatalf("connect did not verify: %+v / %+v", out.Verify, out.Connection.Verified)
 	}
 	id := out.Connection.ID
 	var sr integrations.SyncResult

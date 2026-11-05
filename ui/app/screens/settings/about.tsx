@@ -42,7 +42,11 @@ export function versionWords(version: string | undefined, build: string | undefi
   return build?.trim() ? `${words}, build ${build.trim()}` : words;
 }
 
-export function AboutDrydock(handle: Handle) {
+/**
+ * About Drydock. `keymap: false` leaves the keyboard map out: Settings > Help & about shows the version and the licenses, and
+ * the map is under Settings > Shortcuts beside the keys a person changes (decision P140).
+ */
+export function AboutDrydock(handle: Handle<{ keymap?: boolean }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.ui); // the keys in use (decision P132)
@@ -58,7 +62,7 @@ export function AboutDrydock(handle: Handle) {
   return () => {
     const info = s.workspace.info.data;
     return (
-      <Group title="About Drydock" icon={BadgeInfo} label="About Drydock" testId="about-section" description="The version, the licenses of the software inside, and the keyboard shortcuts.">
+      <Group title="About Drydock" icon={BadgeInfo} label="About Drydock" testId="about-section" description={handle.props.keymap === false ? "The version and the licenses of the software inside." : "The version, the licenses of the software inside, and the keyboard shortcuts."}>
         <div mix={panel}>
           <dl mix={kv}>
             <dt>Version</dt>
@@ -72,31 +76,7 @@ export function AboutDrydock(handle: Handle) {
           </dl>
           <ErrorNote error={act.error} what="The notices could not be read" />
         </div>
-        <div mix={tableWrap}>
-          <table aria-label="Keyboard shortcuts" data-testid="about-keymap">
-            <thead>
-              <tr>
-                <th scope="col">Keys</th>
-                <th scope="col">What they do</th>
-                <th scope="col">Where</th>
-              </tr>
-            </thead>
-            <tbody>
-              {KEYMAP.map((k) => (
-                <tr key={k.keys.join(' ') + k.where}>
-                  <td>
-                    <Keys keys={keysOf(k)} />
-                  </td>
-                  <td>{k.action}</td>
-                  <td>{k.where}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p mix={muted} style={{ margin: '0' }}>
-          The keys in use: change them under Keyboard shortcuts. None acts inside the terminal or the diff editor, which keep their own keys.
-        </p>
+        {handle.props.keymap === false ? null : <KeymapTable />}
         <Dialog open={open} wide title="Third-party licenses" onClose={() => ((open = false), void handle.update())}>
           {!licenses ? (
             <Loading />
@@ -111,4 +91,39 @@ export function AboutDrydock(handle: Handle) {
       </Group>
     );
   };
+}
+
+/** The keyboard map, read-only, with the keys in use (a bound shortcut shows the person's keys). */
+export function KeymapTable(handle: Handle) {
+  const s = services(handle);
+  watch(handle, s.ui); // the keys in use (decision P132)
+  return () => (
+    <>
+      <div mix={tableWrap}>
+        <table aria-label="Keyboard shortcuts" data-testid="about-keymap">
+          <thead>
+            <tr>
+              <th scope="col">Keys</th>
+              <th scope="col">What they do</th>
+              <th scope="col">Where</th>
+            </tr>
+          </thead>
+          <tbody>
+            {KEYMAP.map((k) => (
+              <tr key={k.keys.join(' ') + k.where}>
+                <td>
+                  <Keys keys={keysOf(k)} />
+                </td>
+                <td>{k.action}</td>
+                <td>{k.where}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p mix={muted} style={{ margin: '0' }}>
+        The keys in use: change them under Keyboard shortcuts. None acts inside the terminal or the diff editor, which keep their own keys.
+      </p>
+    </>
+  );
 }

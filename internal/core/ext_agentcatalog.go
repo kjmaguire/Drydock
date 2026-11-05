@@ -100,8 +100,23 @@ type PrebuiltApplied struct {
 	Agent  Agent           `json:"agent"`
 	MCP    MCPGrantResult  `json:"mcp"`
 	Skills SkillsInstalled `json:"skills"`
-	// Notes are things the human should know (an MCP server still needs a sign-in, a CLI that gets MCP only when allowed, ...).
-	Notes []string `json:"notes"`
+	// Notes are things the human should know (an MCP server still needs a sign-in, a CLI that gets MCP only when allowed, ...),
+	// each with where it is fixed.
+	Notes []Note `json:"notes"`
+}
+
+// Note is one thing the person should know after an apply, and the page that fixes it (nil when there is none).
+type Note struct {
+	Text string `json:"text"`
+	Fix  *Fix   `json:"fix,omitempty"`
+}
+
+// Fix names the page where something still missing is put right (effort review E9): "integration" (Settings > Integrations,
+// Key the library server's id, "" for the list), "mcp" (the CLI's page in Settings > Agent CLIs, with its MCP gateway switch;
+// Key the CLI) or "skills" (the project's Skills page, Key the skill).
+type Fix struct {
+	Kind string `json:"kind"`
+	Key  string `json:"key,omitempty"`
 }
 
 // MCPGrantResult lists the library servers granted to the agent and the catalog servers that were not.
@@ -128,6 +143,8 @@ type Skipped struct {
 	ID     string `json:"id,omitempty"`
 	Name   string `json:"name,omitempty"`
 	Reason string `json:"reason"`
+	// Fix is the page where it is put right, when there is one.
+	Fix *Fix `json:"fix,omitempty"`
 }
 
 // PrebuiltApplyManyReq applies several entries into one project (the new-project wizard).
@@ -326,13 +343,13 @@ func (c *Core) prebuiltApply(ctx context.Context, p PrebuiltApplyReq) (PrebuiltA
 	if err != nil {
 		return PrebuiltApplied{}, err
 	}
-	res := PrebuiltApplied{ID: e.ID, Agent: ag, MCP: MCPGrantResult{Granted: []string{}, Skipped: []Skipped{}}, Skills: newSkillsInstalled(), Notes: []string{}}
+	res := PrebuiltApplied{ID: e.ID, Agent: ag, MCP: MCPGrantResult{Granted: []string{}, Skipped: []Skipped{}}, Skills: newSkillsInstalled(), Notes: []Note{}}
 	if len(e.MCP) > 0 {
 		if p.ConnectMCP {
 			res.MCP, res.Notes = c.grantCatalogServers(ctx, ag, e.MCP, res.Notes)
 		} else {
 			for _, id := range e.MCP {
-				res.MCP.Skipped = append(res.MCP.Skipped, Skipped{ID: id, Reason: "not connected: you chose not to connect MCP servers"})
+				res.MCP.Skipped = append(res.MCP.Skipped, Skipped{ID: id, Reason: "not connected: you chose not to connect MCP servers", Fix: &Fix{Kind: "integration"}})
 			}
 		}
 	}
@@ -341,7 +358,7 @@ func (c *Core) prebuiltApply(ctx context.Context, p PrebuiltApplyReq) (PrebuiltA
 			res.Skills = c.installSkillsFor(ctx, ag, e.Skills, "prebuilt agent "+e.ID)
 		} else {
 			for _, s := range e.Skills {
-				res.Skills.Pending = append(res.Skills.Pending, Skipped{Name: s.Name, Reason: "not installed: you chose not to install skills"})
+				res.Skills.Pending = append(res.Skills.Pending, Skipped{Name: s.Name, Reason: "not installed: you chose not to install skills", Fix: &Fix{Kind: "skills", Key: s.Name}})
 			}
 		}
 	}
@@ -373,7 +390,7 @@ func (c *Core) prebuiltApplyMany(ctx context.Context, p PrebuiltApplyManyReq) ([
 }
 
 // grantCatalogServers adds each catalog server to the library (or finds it there) and grants it to the agent in its project.
-func (c *Core) grantCatalogServers(ctx context.Context, ag Agent, ids []string, notes []string) (MCPGrantResult, []string) {
+func (c *Core) grantCatalogServers(ctx context.Context, ag Agent, ids []string, notes []Note) (MCPGrantResult, []Note) {
 	res := MCPGrantResult{Granted: []string{}, Skipped: []Skipped{}}
 	svc := c.mcpServerSvc()
 	for _, id := range ids {
@@ -383,20 +400,21 @@ func (c *Core) grantCatalogServers(ctx context.Context, ag Agent, ids []string, 
 		}
 		added, err := c.addMCPFromCatalog(ctx, id)
 		if err != nil {
-			res.Skipped = append(res.Skipped, Skipped{ID: id, Reason: err.Error()})
+			res.Skipped = append(res.Skipped, Skipped{ID: id, Reason: err.Error(), Fix: &Fix{Kind: "integration"}})
 			continue
 		}
 		if _, err := svc.grant(ctx, ag.ProjectID, added.Server.ID, ag.ID, true); err != nil {
-			res.Skipped = append(res.Skipped, Skipped{ID: id, Reason: err.Error()})
+			res.Skipped = append(res.Skipped, Skipped{ID: id, Reason: err.Error(), Fix: &Fix{Kind: "integration", Key: added.Server.ID}})
 			continue
 		}
 		res.Granted = append(res.Granted, added.Server.ID)
 		if added.Next != "" {
-			notes = append(notes, added.Next)
+			notes = append(notes, Note{Text: added.Next, Fix: &Fix{Kind: "integration", Key: added.Server.ID}})
 		}
 	}
 	if len(res.Granted) > 0 && ag.Adapter != "claude" && !c.mcpTryAllowed(ctx, ag.Adapter) {
-		notes = append(notes, fmt.Sprintf("%s reaches MCP servers only after you allow MCP for that CLI (Settings, MCP); the grants are in place for when you do", ag.Adapter))
+		notes = append(notes, Note{Text: fmt.Sprintf("%s reaches MCP servers only after you allow MCP for it; the grants are in place for when you do", ag.Adapter),
+			Fix: &Fix{Kind: "mcp", Key: ag.Adapter}})
 	}
 	return res, notes
 }
@@ -474,11 +492,11 @@ func (c *Core) installSkillsFor(ctx context.Context, ag Agent, refs []agentcatal
 		case skills.StatusAccepted:
 			res.Assigned = append(res.Assigned, ref.Name)
 		case skills.StatusBlocked:
-			res.Pending = append(res.Pending, Skipped{Name: ref.Name, Reason: "blocked: " + cur.BlockReason + "; it stays blocked until you review it on the Skills page"})
+			res.Pending = append(res.Pending, Skipped{Name: ref.Name, Reason: "blocked: " + cur.BlockReason + "; it stays blocked until you review it on the Skills page", Fix: &Fix{Kind: "skills", Key: ref.Name}})
 		case skills.StatusRejected:
-			res.Pending = append(res.Pending, Skipped{Name: ref.Name, Reason: "you rejected this skill earlier; accept it on the Skills page to use it"})
+			res.Pending = append(res.Pending, Skipped{Name: ref.Name, Reason: "you rejected this skill earlier; accept it on the Skills page to use it", Fix: &Fix{Kind: "skills", Key: ref.Name}})
 		default:
-			res.Pending = append(res.Pending, Skipped{Name: ref.Name, Reason: "waiting for your decision on the Skills page (" + cur.Status + ")"})
+			res.Pending = append(res.Pending, Skipped{Name: ref.Name, Reason: "waiting for your decision on the Skills page (" + cur.Status + ")", Fix: &Fix{Kind: "skills", Key: ref.Name}})
 		}
 	}
 	return res

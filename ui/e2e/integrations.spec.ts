@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { appUrl, createProject, projectNav, workspaceNav } from './helpers';
+import { appUrl, choose, createProject, projectNav, workspaceNav } from './helpers';
 
 // Decision P42 against the real Go core: a service is connected once, without a project, on the workspace's Integrations page
 // (a list and the chosen row's detail, decision P98), then assigned to a project and unassigned again on that project's own
@@ -88,7 +88,8 @@ test("integrations: connect Linear without a project, see its fixed name and log
 
   // Check against your account (P59): the same read-only checks as the live tests, with the key Drydock already holds
   // (nothing is typed or shown), here against the fixture standing in for the account
-  await expect(card.getByTestId('integration-verified')).toContainText('Not checked against your account yet');
+  // Connect already ran it once its test passed (effort review F10); the button checks again
+  await expect(card.getByTestId('integration-verified')).toContainText('Verified against your account on');
   await card.getByRole('button', { name: 'Check against your account' }).click();
   const check = card.getByTestId('verify-report');
   await expect(check).toHaveAttribute('data-ok', 'true');
@@ -111,9 +112,8 @@ test("integrations: connect Linear without a project, see its fixed name and log
   await expect(page.locator('[data-testid=project-integration-tile][data-kind=linear]').getByTestId('row-status')).toHaveText('not assigned');
   await mine.getByRole('button', { name: 'Assign to gocalc-linear' }).click();
   const form = mine.getByTestId('assign-form');
-  await form.getByRole('button', { name: 'List the Team choices from Linear' }).click();
-  await expect(form.locator('datalist option')).toHaveCount(2);
-  await form.getByLabel('Team (optional)').fill('ENG');
+  // the team list is read from Linear as the form opens (effort review F10)
+  await choose(form.getByTestId('assign-choice-team'), 'ENG');
   await form.getByRole('button', { name: 'Assign', exact: true }).click();
   const assignment = mine.locator('[data-testid=assignment]');
   await expect(assignment).toHaveCount(1);

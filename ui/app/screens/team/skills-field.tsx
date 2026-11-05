@@ -63,7 +63,7 @@ export function SkillsField(handle: Handle<SkillsFieldProps>) {
           <Icon icon={Cpu} size={14} />
           Skills
         </legend>
-        <ErrorNote error={q.error} what="Skills" />
+        <ErrorNote error={q.error} retry={q.reload} what="Skills" />
         {q.data && accepted.length === 0 ? (
           <p>
             No skill is accepted in this project yet. Skills come from the repository or a registry on the <a href={routes.skills.href()}>Skills</a> page.

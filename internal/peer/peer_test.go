@@ -94,8 +94,11 @@ func TestParseProcNetTCP(t *testing.T) {
 		t.Fatalf("%+v %v", rows, err)
 	}
 	r, ok := match(rows, netip.MustParseAddrPort("127.0.0.1:44444"), netip.MustParseAddrPort("127.0.0.1:8080"))
-	if !ok || r.Inode != 123456 {
+	if !ok || r.Inode != 123456 || r.Listen {
 		t.Fatalf("%+v", rows)
+	}
+	if !rows[1].Listen || rows[1].Local.Port() != 8080 {
+		t.Fatalf("the listening socket (state 0A) is not marked: %+v", rows[1])
 	}
 	v6 := "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n" +
 		"   0: 00000000000000000000000001000000:AD9C 00000000000000000000000001000000:1F90 01 00000000:00000000 00:00000000 00000000  1000        0 777 1 0000000000000000 20 4 30 10 -1\n"

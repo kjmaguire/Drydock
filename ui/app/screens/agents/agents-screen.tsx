@@ -16,6 +16,7 @@ import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
 import { AddCustomCLI, CustomCLIPanel } from './custom-cli.tsx';
+import { ChatDefaultRules } from '../chats/default-rules.tsx';
 import { adapterLabel, cliName } from '../shared/cli-name.ts';
 import { supportsWSL } from '../team/run-mode.ts';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
@@ -30,6 +31,7 @@ import { Page } from '../../ui/layout.tsx';
 import { DetailHeader, FactGrid, MasterDetail, SettingRow, SettingsGroup, type ListItem } from '../../ui/master-detail.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t, tone } from '../../ui/tokens.ts';
+import { rereadOnFocus } from '../../lib/focus.ts';
 import {
   agentGroups,
   agentNotice,
@@ -39,6 +41,7 @@ import {
   agentSub,
   cellText,
   connectionKey,
+  withCheckedConnections,
   defaultAgent,
   distroBrand,
   gatewayState,
@@ -288,6 +291,14 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
 }
 
 /**
+ * The command of an install hint without its display label: the core shows which shell a line is for ("powershell: ...",
+ * "cmd: ...", "inside the distro: ..."), and no shell runs that label as typed, so the clipboard gets the command alone.
+ */
+export function commandOnly(hint: string): string {
+  return hint.replace(/^\s*(?:powershell|pwsh|cmd|sh|bash|inside the distro):\s+/i, '').trim();
+}
+
+/**
  * A command to copy: Drydock shows install guidance, it never runs it. The window may refuse the clipboard (a page that is not
  * focused, a WebView2 without the permission): the button then says to copy the command by hand, which stays on the page.
  */
@@ -297,7 +308,7 @@ export function CopyCommand(handle: Handle<{ text: string }>) {
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(handle.props.text);
+      await navigator.clipboard.writeText(commandOnly(handle.props.text));
       state = 'copied';
     } catch {
       state = 'refused';
@@ -433,6 +444,32 @@ function AgentDetail(handle: Handle<DetailProps>) {
       upd(() => (signingIn = false));
     }
   };
+  // Install and update's "Open in a terminal here" (A5): a shell of no project with the install command typed at its prompt and
+  // not run (D9: the person presses Enter); when the shell ends the install is checked again
+  let installTerm: string | undefined;
+  let installOpening = false;
+  let installEnded: number | undefined;
+  const openInstall = async () => {
+    upd(() => ((installOpening = true), (error = undefined)));
+    try {
+      const c = handle.props.c;
+      const term = await s.client.connectionInstallTerminal(c.adapter, isWSL(c) ? c.distro : undefined);
+      installTerm = term.id;
+      installEnded = undefined;
+    } catch (e) {
+      error = e as Error;
+    } finally {
+      upd(() => (installOpening = false));
+    }
+  };
+  const closeInstall = async () => {
+    const id = installTerm;
+    upd(() => ((installTerm = undefined), (installEnded = undefined)));
+    if (id) await s.client.terminalClose(id).catch(() => {}); // already gone: nothing to stop
+  };
+  handle.signal.addEventListener('abort', () => {
+    if (installTerm) void s.client.terminalClose(installTerm).catch(() => {});
+  });
   const closeSignIn = async () => {
     const id = signInTerm;
     upd(() => {
@@ -584,6 +621,8 @@ function AgentDetail(handle: Handle<DetailProps>) {
           </SettingRow>
         </SettingsGroup>
         <ErrorNote error={p.gatewayError} what="MCP gateway" />
+        {/* allow rules every new Claude Code chat starts with (D9); one list for every install of it */}
+        {c.adapter === 'claude' && !inWSL ? <ChatDefaultRules readOnly={p.readOnly} /> : null}
         <SettingsGroup
           title="Used by"
           testId="used-by"
@@ -701,6 +740,18 @@ function AgentDetail(handle: Handle<DetailProps>) {
               </span>
             </SettingRow>
           ) : null}
+          {c.installHint && !p.readOnly ? (
+            <SettingRow
+              label="Terminal"
+              control={
+                <Button size="sm" variant="secondary" icon={Terminal} disabled={installOpening || (!!installTerm && installEnded === undefined)} data-testid="install-open" mix={on('click', () => void openInstall())}>
+                  {installOpening ? 'Opening...' : 'Open in a terminal here'}
+                </Button>
+              }
+            >
+              <span mix={muted}>The command is typed for you and not run: read it, then press Enter yourself.</span>
+            </SettingRow>
+          ) : null}
           <SettingRow label="Who runs it">
             <span mix={muted}>
               {`Drydock never runs this for you: install or update ${product} yourself${inWSL ? ` inside the distro (wsl -d ${c.distro ?? ''})` : ''} the way its vendor documents, then check again.`}
@@ -712,6 +763,31 @@ function AgentDetail(handle: Handle<DetailProps>) {
             </SettingRow>
           ) : null}
         </SettingsGroup>
+        {installTerm ? (
+          <div mix={signInBox} data-testid="install-terminal">
+            <div mix={signInHead}>
+              <Icon icon={Terminal} size={14} />
+              <span mix={faint} data-testid="install-state">
+                {installEnded === undefined
+                  ? 'The command is typed at the prompt. Press Enter there to run it.'
+                  : checking
+                    ? 'The terminal closed. Checking the CLI again...'
+                    : `The terminal closed. ${isInstalled(checked ?? c) ? 'The CLI is found now.' : 'The CLI is still not found.'}`}
+              </span>
+              <Button size="sm" variant="ghost" icon={X} data-testid="install-close" mix={on('click', () => void closeInstall())} title="Close: ends the shell if it still runs">
+                Close
+              </Button>
+            </div>
+            <TerminalHost
+              key={installTerm}
+              id={installTerm}
+              onExit={(code) => {
+                installEnded = code;
+                void check(false);
+              }}
+            />
+          </div>
+        ) : null}
         {prereqs.length > 0 ? (
           <SettingsGroup title="Prerequisites" testId="prereqs">
             <ul mix={noteListCss}>
@@ -721,6 +797,13 @@ function AgentDetail(handle: Handle<DetailProps>) {
                   <span>
                     {prereqText(x)}
                     {x.guide ? <div mix={faint}>{x.guide}</div> : null}
+                    {x.link && !x.ok ? (
+                      <div>
+                        <a href={x.link} target="_blank" rel="noreferrer" data-rmx-document data-testid="prereq-link">
+                          Open the download page
+                        </a>
+                      </div>
+                    ) : null}
                   </span>
                 </li>
               ))}
@@ -841,7 +924,15 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   watch(handle, s.workspace);
   // connection.list probes every CLI and distro afresh ("Check all again" reads it again); a started sign-in changes nothing
   // yet, its end (connection.sign_in_finished) does
-  const q = query(handle, { load: () => s.client.connectionList(), when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started' });
+  // connection.checked is Drydock's own background check (A2): it changes the cached read below, not this one
+  // a background check newer than a row of this read overrides it (withCheckedConnections, by the core's check numbers)
+  const q = query(handle, {
+    load: () => s.client.connectionList(),
+    when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started' && e.type !== 'connection.checked',
+  });
+  // the last check of each CLI (Drydock's own, every half hour and after a sign-in or a failed start), answered at once: the page
+  // opens on it, "checked N min ago", while the fresh probe above runs (it can take up to half a minute), then swaps it in (A2)
+  const cached = query(handle, { load: () => orElse(() => s.client.connectionList(true), [] as Connection[]), when: (e) => e.type === 'connection.checked' });
   const gateway = query(handle, { load: () => s.client.mcpStatus(), when: (e) => e.type.startsWith('mcp.') });
   const gwAct = action(handle);
   // every project's agents, and where each project runs them, for "Used by"
@@ -849,7 +940,8 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // the adapters with the run modes each declares. No fallback here: a first read that fails leaves no answer, so the detail
   // says so while "Used by" goes by the installs found; a re-read that fails keeps the last answer (the query does), and the
   // note says the re-read failed
-  const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // (the run modes do not change with a check: Drydock's own background check, connection.checked, does not read them again)
+  const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => (e.type.startsWith('connection.') && e.type !== 'connection.checked') || e.type.startsWith('adapter.') });
   // the person's own CLIs (decision P115): the folder, and a file that did not load with why; an older core has none
   const customs = query(handle, { load: () => orElse(() => s.client.connectionCustomList(), { dir: '', files: [] } as CustomCLIs), when: (e) => e.type.startsWith('connection.custom') });
   let adding = false;
@@ -879,6 +971,10 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     checkingAll = false;
     void handle.update();
   };
+
+  // a CLI installed or signed in in another window publishes no event: read again when the window gets focus back, at most
+  // once a minute (the read probes every CLI) and not while a read is on its way
+  rereadOnFocus({ reload: () => q.reload(), busy: () => q.loading || checkingAll, signal: handle.signal });
 
   let selected = handle.props.initial ?? '';
   let lastInitial = handle.props.initial;
@@ -945,7 +1041,10 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
       checkedAt = Date.now();
       now = checkedAt;
     }
-    const list = q.data ?? [];
+    // until the fresh probe answers, the last check (A2), with when it was made
+    const fromCache = !q.data && (cached.data?.length ?? 0) > 0;
+    const list = q.data ? withCheckedConnections(q.data, cached.data)! : fromCache ? cached.data! : [];
+    const cachedAt = fromCache ? Math.min(...list.map((c) => (c.at ? Date.parse(c.at) : Date.now()))) : 0;
     const { installed, missing } = agentGroups(list);
     // the chosen row; until one is chosen (or when the chosen one is gone) the first that needs attention, else the first. It
     // stays chosen: accepting its notice does not move the selection to the next one that needs attention.
@@ -986,7 +1085,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
           key={key}
           c={open}
           name={cliName(open, list)}
-          checkedAt={checkedAt}
+          checkedAt={open.at ? Date.parse(open.at) : fromCache ? cachedAt : checkedAt}
           now={now}
           gateway={gwRows.find((r) => r.adapter === open.adapter)}
           gatewayError={gateway.error ?? gwAct.error}
@@ -1010,9 +1109,9 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
 
     return (
       <Page
-        title="Agents"
+        title="Agent CLIs"
         icon={Terminal}
-        subtitle={q.data ? readyLine(list) : 'The agent CLIs your crew runs on'}
+        subtitle={q.data || fromCache ? readyLine(list) : 'The agent CLIs your crew runs on'}
         guide="connect-cli"
         flush
         testId="agents-page"
@@ -1054,15 +1153,20 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
         ) : null}
         {q.error && !q.data ? (
           <div mix={padCss}>
-            <ErrorNote error={q.error} what="Could not list the agent CLIs" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not list the agent CLIs" />
           </div>
         ) : null}
-        {q.loading && !q.data ? (
+        {q.loading && !q.data && !fromCache ? (
           <div mix={padCss}>
             <Loading label="Looking for agent CLIs..." />
           </div>
         ) : null}
-        {q.data && list.length === 0 ? (
+        {fromCache ? (
+          <p mix={[padCss, faint]} role="status" data-testid="agents-cached">
+            {`Last checked ${agoWords(cachedAt, now)}. Checking again...`}
+          </p>
+        ) : null}
+        {q.data && list.length === 0 && !fromCache ? (
           <div mix={padCss} data-testid="agents-empty">
             <Empty title="No agent CLIs found" icon={ShieldAlert}>
               <p>Install an agent CLI and sign in with it, then check again. It appears here.</p>
@@ -1078,9 +1182,9 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
             search="Filter agents"
             detail={
               <>
-                {q.error ? <ErrorNote error={q.error} what="Could not check the agent CLIs again" /> : null}
-                {adapters.error ? <ErrorNote error={adapters.error} what="Could not read the adapters' run modes" /> : null}
-                {runModes.error ? <ErrorNote error={runModes.error} what="Could not read where the projects' agents run" /> : null}
+                {q.error ? <ErrorNote error={q.error} retry={q.reload} what="Could not check the agent CLIs again" /> : null}
+                {adapters.error ? <ErrorNote error={adapters.error} retry={adapters.reload} what="Could not read the adapters' run modes" /> : null}
+                {runModes.error ? <ErrorNote error={runModes.error} retry={runModes.reload} what="Could not read where the projects' agents run" /> : null}
                 {detail}
               </>
             }

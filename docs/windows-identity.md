@@ -50,7 +50,7 @@ the FileVersion and ProductVersion strings. CI builds the default version (there
 
 ## 3. The title bar and the taskbar (what Wails needed)
 
-Read from Wails v3.0.0-beta.34 (`pkg/application/webview_window_windows.go`, `application_windows.go`):
+Read from Wails v3.0.0-beta.34 and checked again in v3.1.0 (`pkg/application/webview_window_windows.go`, `application_windows.go`):
 
 - Every window gets the icon group with **resource ID 3** of the executable (`NewIconFromResource(GetModuleHandle(""), 3)`),
   falling back to the bytes of `application.Options.Icon` only when there is no such resource. That is why the group is ID 3
@@ -128,7 +128,16 @@ once released). The app sets it on its process before the first window (`SetCurr
 NSIS's System plug-in, since NSIS has no command for it). The two must match, or a pinned Drydock and a running one show as
 two taskbar buttons; a Linux test keeps them equal, a Windows test reads the process's ID back, and the release workflow's
 install-test reads the installed shortcut's ID. A sandbox app's window (`sandbox-view`, P134) sets none, so it keeps a
-taskbar button of its own. The ID is what Windows desktop notifications and a jump list need; neither is built yet. **Not
+taskbar button of its own. **Windows notifications (G1, `app/notify_windows.go`):** Wails's notifications service sends them under the app's Name,
+"Drydock" (`app.AppName`), not under `Drydock.Drydock`: the service takes `application.Options.Name` as the toast identity and
+registers it per user (HKCU, no administrator rights) as `Software\Classes\AppUserModelId\Drydock` (DisplayName "Drydock",
+IconUri, the app's icon written to `%TEMP%\Drydock{GUID}.png`, and CustomActivator, a GUID made once) with the activation class
+`Software\Classes\CLSID\{GUID}\LocalServer32` = drydock.exe, so a click on a notification left in the notification centre
+starts Drydock. go-toast v2.0.3 (under the service) also writes drydock.exe to go-toast's built-in class,
+`Software\Classes\CLSID\{0F82E845-CB89-4039-BDBF-67CA33254C76}\LocalServer32`, when that has no value yet. The uninstaller
+removes these (`TOAST_KEY` in `drydock.nsi`; a test keeps it equal to the Name and to Wails's own constants), go-toast's class
+only while it names this install's drydock.exe (`TOAST_DEFAULT_CLSID`; a test keeps it equal to go-toast's). A jump list is not built. **Not verified:** the notification showing with Drydock's name and icon, and its
+entry in Windows Settings > Notifications being named Drydock. **Not
 verified:** a pinned shortcut grouping with the running window on a real taskbar (the CI checks read the IDs, not the
 taskbar); a shortcut a person pinned from an older install, before the ID, may show as its own button until it is pinned again.
 

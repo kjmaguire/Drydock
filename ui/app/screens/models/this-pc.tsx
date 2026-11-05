@@ -16,7 +16,7 @@ import type { LocalBackend, LocalJob, LocalModel, LocalSettingsEdit, LocalView, 
 import { formatDate } from '../../lib/format.ts';
 import { typing } from '../../lib/keys.ts';
 import { routes } from '../../routes.ts';
-import { action, services } from '../../state/services.tsx';
+import { action, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -852,7 +852,7 @@ export function ThisPcDetail(
             </SettingRow>
             {server.error ? (
               <div mix={blockCss}>
-                <ErrorNote error={server.error} what="Server" />
+                <ErrorNote error={server.error} retry={retryFor(server)} what="Server" />
               </div>
             ) : null}
             {serverOn && server.note ? (
@@ -1030,7 +1030,7 @@ export function ThisPcDetail(
                     </>
                   ) : job.state === 'failed' ? (
                     <>
-                      <ErrorNote error={job.error} what={`${job.target} failed`} />
+                      <ErrorNote error={job.error} retry={retryFor(job)} what={`${job.target} failed`} />
                       <span>
                         <Button
                           size="sm"
@@ -1102,7 +1102,7 @@ export function ThisPcDetail(
               </SettingRow>
               {embed.error ? (
                 <div mix={blockCss}>
-                  <ErrorNote error={embed.error} what="Embeddings" />
+                  <ErrorNote error={embed.error} retry={retryFor(embed)} what="Embeddings" />
                 </div>
               ) : null}
               <div mix={blockCss}>

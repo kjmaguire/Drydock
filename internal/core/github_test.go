@@ -14,6 +14,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
+	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -119,5 +120,63 @@ func TestIssueImportAndPullRequestViewAndModeSwitch(t *testing.T) {
 	a.call("github.pullRequest", map[string]any{"taskId": task.ID}, &st)
 	if st.PR.Number != 7 || !st.CI.Passed || len(st.Reviews) != 1 || !st.Reviews[0].Trusted {
 		t.Fatalf("pr state %+v", st)
+	}
+}
+
+// C11: "Import and start" imports an issue, assigns it and starts it in one call; a risky issue is still refused before
+// anything is made, and a plain import stays a BACKLOG task nobody is working on.
+func TestImportIssueAndStartInOneCall(t *testing.T) {
+	var mu sync.Mutex
+	merged := false
+	srv := githubServer(t, &mu, &merged)
+	dir := t.TempDir()
+	script, _ := json.Marshal(fakeagent.Script{
+		Rules:   []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
+		Default: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: impl}}, {Say: "implemented Subtract"}},
+	})
+	sp := filepath.Join(dir, "script.json")
+	os.WriteFile(sp, script, 0o644)
+	t.Setenv("DRYDOCK_FAKE_AGENT", "1")
+	t.Setenv("DRYDOCK_FAKE_SCRIPT", sp)
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "d"), User: "kyle", LeaseTTL: 3 * time.Second,
+		Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}},
+		GitHub: func(ctx context.Context, p core.Project) (pipeline.PRConfig, error) {
+			return pipeline.PRConfig{GitHub: host.GitHub{API: host.HTTPAPI{BaseURL: srv.URL}, Owner: "o", Repo: "r"}, BaseBranch: p.DefaultBranch, MergeStrategy: host.MergeSquash}, nil
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Ada", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Rex", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+
+	// a risky issue is refused before a task is made, start or not
+	if _, err := c.Call(context.Background(), "github.importIssue", mustJSON(map[string]any{"projectId": p.ID, "number": 14, "assignee": worker.ID, "start": true})); err == nil || !strings.Contains(err.Error(), "high injection risk") {
+		t.Fatalf("a risky issue was imported and started: %v", err)
+	}
+	var started core.CreateTaskResult
+	a.call("github.importIssue", map[string]any{"projectId": p.ID, "number": 12, "assignee": worker.ID, "reviewer": reviewer.ID, "start": true}, &started)
+	if started.IssueRef != "#12" || started.Assignee != worker.ID || started.Reviewer != reviewer.ID || started.RunID == "" || started.StartError != "" {
+		t.Fatalf("import and start = %+v", started)
+	}
+	a.waitFor("the review request", func() bool {
+		var d core.TaskDetail
+		a.call("task.get", map[string]string{"id": started.ID}, &d)
+		return len(d.Pending) == 1
+	})
+	// a plain import is the backlog task it always was
+	var plain core.CreateTaskResult
+	a.call("github.importIssue", map[string]any{"projectId": p.ID, "number": 12}, &plain)
+	if plain.Status != tasks.Backlog || plain.Assignee != "" || plain.RunID != "" {
+		t.Fatalf("plain import = %+v", plain)
+	}
+	var list []tasks.Task
+	a.call("task.list", map[string]any{"projectId": p.ID}, &list)
+	if len(list) != 2 {
+		t.Fatalf("%d tasks, want 2 (the risky issue makes none)", len(list))
 	}
 }

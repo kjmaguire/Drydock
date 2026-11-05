@@ -4,7 +4,7 @@
 
 import type { Handle } from 'remix/component';
 import type { ProjectRunMode, WSLStatus } from '../../api/wslClient.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Select } from '../../ui/select.tsx';
 import { distroLabel, parseRunMode, runModeValue, WSL_HELP } from '../team/run-mode.ts';
@@ -48,7 +48,7 @@ export function RunModePanel(handle: Handle<{ projectId: string }>) {
       >
         {act.error || q.error ? (
           <div mix={errorPad}>
-            <ErrorNote error={act.error ?? q.error} what="Not changed" />
+            <ErrorNote error={act.error ?? q.error} retry={retryFor(act, q)} what="Not changed" />
           </div>
         ) : null}
         <SettingRow label="Agents run" for={id}>

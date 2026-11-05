@@ -6,6 +6,7 @@
 import { css, navigate, type Handle } from 'remix/component';
 import { ChevronsUpDown, FolderClosed, House, Plus, Settings } from 'lucide';
 import { routes } from '../routes.ts';
+import { newProjectHref } from './new.ts';
 import { services, watch } from '../state/services.tsx';
 import { initials } from '../ui/data.tsx';
 import { Icon } from '../ui/icon.tsx';
@@ -90,7 +91,7 @@ export function ProjectSwitcher(handle: Handle<{ workspace?: boolean; onNavigate
       s.workspace.selectProject(id);
       go(routes.home.href());
     } else if (name === 'home') go(routes.workspace.href());
-    else if (name === 'new') go(routes.projectNew.href());
+    else if (name === 'new') go(newProjectHref());
     else if (name === 'settings') go(routes.settings.href());
   };
 

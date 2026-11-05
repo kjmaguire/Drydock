@@ -39,13 +39,15 @@ test('Models on this PC: the Models page opens it; set up the engine, find and d
   test.setTimeout(300_000);
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(appUrl());
-  // the sidebar's Workspace link opens the page; it is the page's link there, and no project is open in the sidebar
-  const link = sidebar(page).getByTestId('nav-side-models');
+  // Settings > Models opens the page (decision P140); it is the section's link there, and no project is open in the sidebar
+  await sidebar(page).getByTestId('nav-settings').click();
+  const link = page.getByRole('navigation', { name: 'Settings' }).getByTestId('nav-side-models');
   await expect(link).toHaveAttribute('href', '/models');
   await link.click();
   await expect(page).toHaveURL(/\/models(\?|$)/);
   await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
+  await expect(sidebar(page).getByTestId('nav-settings')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('nav-overview')).toHaveCount(0);
   await expect(page.getByTestId('models-page').getByRole('heading', { level: 1 })).toHaveText('Models');
   const thisPc = page.locator('[data-testid=models-row][data-key=this-pc]');
   await expect(thisPc).toHaveAttribute('aria-current', 'true');
@@ -197,7 +199,7 @@ test('Models on this PC: the Models page opens it; set up the engine, find and d
   // the old address of Providers leads here
   await page.goto(at('/providers'));
   await expect(page).toHaveURL(/\/models(\?|$)/);
-  await expect(sidebar(page).getByTestId('nav-side-models')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByTestId('nav-side-models')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('local-runtime')).toBeVisible();
 
   // the choices survive a reload

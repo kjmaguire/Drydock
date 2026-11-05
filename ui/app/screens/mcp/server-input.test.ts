@@ -12,6 +12,15 @@ function inputFrom(v: FormValues, initial?: McpLibraryServer): McpServerInput {
 }
 
 describe('MCP server form helpers', () => {
+  it('asks the core to list the tools on save only for a new web server at an https address without OAuth (F12, M24)', () => {
+    const web = (url: string, auth: FormValues['auth'] = 'none') => ({ ...formValues(), id: 'w', display: 'W', transport: 'http' as const, url, auth });
+    expect(inputFrom(web('https://mcp.example.com/mcp')).discover).toBe(true);
+    expect(inputFrom(web('http://127.0.0.1:9/mcp')).discover).toBe(undefined);
+    expect(inputFrom(web('https://mcp.example.com/mcp', 'oauth')).discover).toBe(undefined);
+    expect(inputFrom(web('https://mcp.example.com/mcp'), libServer()).discover).toBe(undefined);
+    expect(inputFrom({ ...formValues(), id: 'p', display: 'P', transport: 'stdio', argv: 'srv.exe' }).discover).toBe(undefined);
+  });
+
   it('reads one argument per line and NAME=value lines', () => {
     expect(parseLines('npx\r\n-y\n\n  @x/y@1.0.0 \n')).toEqual(['npx', '-y', '  @x/y@1.0.0 ']);
     expect(parseEnv('A=1\nB=two=three')).toEqual({ ok: true, env: { A: '1', B: 'two=three' } });

@@ -109,7 +109,7 @@ test('smoke: every page opens on the real core without an error, a failed call o
   await page.getByLabel('Task title').fill('Fix Subtract');
   await page.getByLabel('Description').fill('Subtract returns 0; make it return a - b.');
   await page.getByLabel('Acceptance criteria').fill('Given 5 and 3 When Subtract is called Then 2');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Fix Subtract/ })).toBeVisible();
   const taskUrl = new URL(page.url());
   await choose(page.getByLabel('Worker', { exact: true }), { label: 'Worker One (backend)' });
@@ -155,7 +155,9 @@ test('smoke: every page opens on the real core without an error, a failed call o
 
   // moving around without reloading (how the app is used): the sidebar's pages twice over, then the heap, the DOM and the
   // listeners against what they were after the first round; a page that leaves a subscription or a timer behind grows them
-  const nav = ['nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', 'nav-needs-you', 'nav-chats', 'nav-library', 'nav-library-skills', 'nav-crew', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-security-scan', 'nav-settings'];
+  // (a workspace page shows the projects as lines: the round opens the project first; the Agents library's pills and the
+  // Settings sections follow their hub's link, decision P140)
+  const nav = ['nav-project-item', 'nav-overview', 'nav-rooms', 'nav-overview', 'nav-tasks', 'nav-team', 'nav-project-settings', 'nav-knowledge', 'nav-needs-you', 'nav-chats', 'nav-library', 'nav-library-starters', 'nav-library-skills', 'nav-crew', 'nav-settings', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-security-scan'];
   await page.goto(appUrl());
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');

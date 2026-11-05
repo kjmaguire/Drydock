@@ -428,7 +428,60 @@ func (s *Service) Post(ctx context.Context, p PostParams) (Posted, error) {
 			out.Message = m
 		}
 	}
+	s.noteDecisions(ctx, room, append([]Message{out.Message}, out.Derived...))
 	return out, nil
+}
+
+// DecisionsChannel is the project channel that lists the decisions taken in every room (X110).
+const DecisionsChannel = "decisions"
+
+// noteDecisions posts one quiet SYSTEM line in the project's #decisions channel for each DECISION recorded in another room
+// (X110), so #decisions is where decisions show up instead of staying empty. The line names the room and the decision's title
+// (or its first line) and carries the source message; it is not conversation (a SYSTEM line counts as no unread message and
+// wakes no agent). A room without a #decisions channel, or an archived one, gets none; a failure is reported, never the post's.
+func (s *Service) noteDecisions(ctx context.Context, from Room, msgs []Message) {
+	if from.Kind == KindChannel && from.Name == DecisionsChannel {
+		return
+	}
+	var target *Room
+	for _, m := range msgs {
+		if m.Type != TypeDecision || m.PayloadString("status") == "superseded" {
+			continue
+		}
+		if target == nil {
+			rs, err := s.ListRooms(ctx, from.ProjectID, false)
+			if err != nil {
+				s.report(fmt.Errorf("decisions channel: %w", err))
+				return
+			}
+			for i := range rs {
+				if rs[i].Kind == KindChannel && rs[i].Name == DecisionsChannel {
+					target = &rs[i]
+				}
+			}
+			if target == nil {
+				return
+			}
+		}
+		verb := "recorded"
+		if m.PayloadString("status") == "accepted" {
+			verb = "accepted"
+		}
+		// a direct message or group is private to the people in it, and agents that are members of #decisions read this
+		// channel: the line says only that a decision was taken there, never its title
+		body := fmt.Sprintf("A decision was %s in #%s: %s", verb, from.Name, firstNonEmpty(m.PayloadString("title"), firstLine(m.Body, 120)))
+		switch from.Kind {
+		case KindDM:
+			body = fmt.Sprintf("A decision was %s in a direct message.", verb)
+		case KindGroup:
+			body = fmt.Sprintf("A decision was %s in a group conversation.", verb)
+		}
+		if _, err := s.Post(ctx, PostParams{RoomID: target.ID, Type: TypeSystem, Author: System,
+			Body:    body,
+			Payload: map[string]any{"event": "decision_elsewhere", "room": from.ID, "message_id": m.ID, "status": m.PayloadString("status")}}); err != nil {
+			s.report(fmt.Errorf("decisions channel: %w", err))
+		}
+	}
 }
 
 func mustJSON(v any) json.RawMessage {

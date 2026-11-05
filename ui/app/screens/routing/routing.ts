@@ -175,3 +175,47 @@ export function ceilingWords(seconds: number): string {
   if (h === 0) return `${m} min`;
   return m % 60 === 0 ? `${h} h` : `${h} h ${m % 60} min`;
 }
+
+// --- the rule editor's pickers (F9): When from a turn kind and a role, Then from the action keys; the raw text stays under
+// Advanced, and a rule the pickers cannot say is edited there ---
+
+/** The turn kind and role a When matches, when it is one the pickers make: "true", run.kind == 'x', task.role == 'y', or both
+ * joined by &&. Anything else is null (the editor opens Advanced). */
+export function pickersOf(when: string): { kind: string; role: string } | null {
+  const w = when.trim();
+  if (w === '' || w === 'true') return { kind: '', role: '' };
+  let kind = '';
+  let role = '';
+  for (const part of w.split(/\s*&&\s*/)) {
+    const m = /^(run\.kind|task\.role)\s*==\s*'([A-Za-z0-9_ -]*)'$/.exec(part.trim());
+    if (!m) return null;
+    if (m[1] === 'run.kind') {
+      if (kind) return null;
+      kind = m[2]!;
+    } else {
+      if (role) return null;
+      role = m[2]!;
+    }
+  }
+  return { kind, role };
+}
+
+/** The When the pickers make: "true" for any turn, else the kind and the role joined by &&. */
+export function whenOf(kind: string, role: string): string {
+  const parts = [kind ? `run.kind == '${kind}'` : '', role ? `task.role == '${role.replace(/'/g, '')}'` : ''].filter(Boolean);
+  return parts.length ? parts.join(' && ') : 'true';
+}
+
+/** The action with one key set from a picker: an empty value or false takes the key out. */
+export function withAction(then: RouteAction, key: keyof RouteAction, value: string | boolean): RouteAction {
+  const out: RouteAction = { ...then };
+  if (value === '' || value === false) delete out[key];
+  else (out as Record<string, unknown>)[key] = value;
+  return out;
+}
+
+/** What the editor offers when route.rules.describe could not be read: the turn kinds and tiers it knows. */
+export const RULE_TABLES_FALLBACK = { scopes: [{ value: 'workspace', label: 'Workspace' }], runKinds: RUN_KINDS, roles: [] as string[], tiers: ['premium', 'cheap', 'free'], efforts: ['low', 'medium', 'high', 'max'] };
+
+/** Whether a save was refused because the rule changed since it was read (the core's words for a stale version). */
+export const staleVersion = (err: unknown): boolean => /changed since you read it/.test(String((err as Error)?.message ?? err));

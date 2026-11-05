@@ -57,6 +57,8 @@ export interface Chat {
   importedFrom?: string;
   /** The Claude Code session id it was imported from. */
   importedSession?: string;
+  /** On chat.create's answer only: what the new chat took from the person's last choice (D2). */
+  fromLast?: ('model' | 'effort' | 'permissionMode')[];
 }
 
 /** A Claude Code session chat.importList found (decision P109). */
@@ -121,6 +123,23 @@ export interface ChatListItem extends Chat {
   /** The start of the latest user or assistant message (at most 160 characters). */
   preview: string;
   messageCount: number;
+  /** The newest message the person has seen (chat.markRead, D8); absent from an older core. */
+  lastReadSeq?: number;
+  /** The answers after it. */
+  unread?: number;
+}
+
+/** chat.unread: the chats (not archived) with answers the person has not seen, and how many answers. */
+export interface ChatUnread {
+  chats: number;
+  messages: number;
+}
+
+/** chat.lastChoice: what a new chat of a scope and CLI starts with ('' = the CLI's own default). */
+export interface ChatLastChoice {
+  model: string;
+  effort: string;
+  permissionMode: string;
 }
 
 export interface ChatMessage {
@@ -305,6 +324,16 @@ export interface ChatClient {
    * as chatAllowTool does. Claude chats only: for any other agent it is refused with the reason, and the request keeps waiting.
    */
   chatAllowAndRemember(id: string, askId: string): Promise<{ answered: boolean; rule: string }>;
+  /** Moves the chat's read cursor up to seq (never back); only while the person sees the chat's newest message (D8). */
+  chatMarkRead(id: string, seq: number): Promise<{ chatId: string; lastReadSeq: number }>;
+  /** The chats with answers the person has not seen (projectId '' = every chat). */
+  chatUnread(projectId?: string): Promise<ChatUnread>;
+  /** What a new chat of the scope and CLI starts with: the person's last choice (D2). */
+  chatLastChoice(projectId: string, adapter: string): Promise<ChatLastChoice>;
+  /** The allow rules every new chat starts with (D9). */
+  chatDefaultRules(): Promise<string[]>;
+  /** Adds (allow) or removes a rule for every new chat; chats that exist keep their own. */
+  chatSetDefaultRule(tool: string, allow: boolean): Promise<string[]>;
   /** The Claude Code sessions that can be imported (decision P109), and those imported already. It only reads. */
   chatImportList(): Promise<ImportList>;
   /** Imports the sessions named, each as a chat that continues its session; one imported before is skipped. */
@@ -354,6 +383,17 @@ export function createChatClient(t: Transport): ChatClient {
       await t.call('chat.answer', { id, askId, allow });
     },
     chatAllowAndRemember: (id, askId) => t.call('chat.answer', { id, askId, allow: true, remember: true }),
+    chatMarkRead: (id, seq) => t.call('chat.markRead', { id, seq }),
+    chatUnread: async (projectId = '') => {
+      const r = await t.call<ChatUnread | null>('chat.unread', { projectId });
+      return { chats: r?.chats ?? 0, messages: r?.messages ?? 0 };
+    },
+    chatLastChoice: async (projectId, adapter) => {
+      const r = await t.call<ChatLastChoice | null>('chat.lastChoice', { projectId, adapter });
+      return { model: r?.model ?? '', effort: r?.effort ?? '', permissionMode: r?.permissionMode ?? '' };
+    },
+    chatDefaultRules: async () => arr((await t.call<{ rules: string[] | null } | null>('chat.defaultRules', {}))?.rules),
+    chatSetDefaultRule: async (tool, allow) => arr((await t.call<{ rules: string[] | null } | null>('chat.setDefaultRule', { tool, allow }))?.rules),
     chatImportList: async () => {
       const r = await t.call<ImportList | null>('chat.importList', {});
       return { sources: arr(r?.sources), sessions: arr(r?.sessions) };

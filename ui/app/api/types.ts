@@ -24,6 +24,30 @@ export interface AppInfo {
   /** The build's version and build id, as the release set them (decision P129); "0.0.0-dev" for a build from the source tree. Absent from older cores. */
   version?: string;
   build?: string;
+  /** What this start found the last one left behind (X511); absent from older cores. */
+  startReport?: StartReport;
+}
+
+/** A workflow run a start resumed or could not resume. */
+export interface StartRun {
+  runId: string;
+  taskId?: string;
+  projectId?: string;
+  title?: string;
+}
+
+/** What the core found when it started (X511): said once on Home, until the person dismisses it. */
+export interface StartReport {
+  /** Names this start (ms since the epoch), so a dismissal is remembered for it and not the next. */
+  startedAt: number;
+  /** The last process ended without closing (a crash, a kill, a power cut). */
+  unexpected: boolean;
+  crashes?: number;
+  agentRunsClosed?: number;
+  resumed: StartRun[];
+  notResumed: StartRun[];
+  /** Runs the last process still held when this one started (killed and started again quickly): resumed once its hold runs out. Absent from older cores. */
+  resuming?: StartRun[];
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';
@@ -159,11 +183,46 @@ export interface GitHubRepo {
   defaultBranch: string;
   htmlUrl: string;
   pushedAt: string;
+  /** The project whose origin remote this repository already is (B7): the picker offers it instead of a second clone. */
+  projectId?: string;
+  project?: string;
 }
 
 export interface CloneResult {
   path: string;
   defaultBranch: string;
+}
+
+/** What Sync now did (internal/git/sync.go SyncOutcome). */
+export type SyncOutcome = 'updated' | 'up_to_date' | 'ahead' | 'local_changes' | 'diverged' | 'other_branch' | 'no_remote_branch' | 'agent_busy';
+
+/** A project's folder against its origin remote (repo.syncState, repo.sync; internal/core/ext_reposync.go, P143). */
+export interface RepoSync {
+  projectId: string;
+  /** "origin", or "" when there is nothing to sync with (no repository, no origin remote). */
+  remote: string;
+  /** The remote is on github.com. */
+  github: boolean;
+  branch: string;
+  /** The branch checked out in the project's folder. */
+  current: string;
+  /** False while the remote's copy of the branch is not known. */
+  tracked: boolean;
+  ahead: number;
+  behind: number;
+  /** When the remote was last fetched since the app started (ms); 0: not checked yet. */
+  checkedAt: number;
+  checking: boolean;
+  outcome?: SyncOutcome | '';
+  /** Why the last fetch or Sync now failed (scrubbed). */
+  error?: string;
+  /** Which step failed: opening the folder's repository, reaching the remote, updating the folder, or the git configuration awaiting a person's trust. */
+  errorKind?: 'folder' | 'fetch' | 'update' | 'config' | '';
+}
+
+export interface RepoSyncSettings {
+  /** The background fetch: on opening a project and every 15 minutes. */
+  auto: boolean;
 }
 
 // ---- project.setup (internal/core/project_setup.go) ----
@@ -180,6 +239,18 @@ export interface SetupRepo {
   github?: string;
   /** github: the parent folder (default github.cloneDir) */
   cloneDir?: string;
+  /** github: make the project at once and attach the clone when it lands (B12); the answer carries `landing`. */
+  later?: boolean;
+}
+
+/** core.LandingClone: the clone a project made before its clone landed waits for, or why it was not attached (B12). */
+export interface LandingClone {
+  projectId: string;
+  repo: string;
+  /** git runs, or the clone is being attached */
+  running: boolean;
+  /** why the clone was not attached (failed, cancelled, refused); empty while running */
+  error?: string;
 }
 
 /** One agent of the wizard: a prebuilt catalog entry, a saved template, or a custom agent (name, role, adapter). */
@@ -219,8 +290,21 @@ export interface SetupResult {
   project: Project;
   agents: Agent[];
   clone?: CloneResult;
+  /** repo.later: the clone the project waits for, attached when it lands (B12). */
+  landing?: LandingClone;
   /** What did not work after the project was created (the project exists). */
   warnings: string[];
+  /** The same, one line each with what kind of thing failed (B2); an older core sends none. */
+  problems?: SetupWarning[];
+}
+
+/** core.SetupWarning: one thing that failed after the project was made, and what kind (the action on Work follows from it). */
+export interface SetupWarning {
+  /** cli: an agent's CLI is not usable here (adapter, status); decision: waits for the person; connector; other. */
+  kind: 'cli' | 'decision' | 'connector' | 'other' | string;
+  text: string;
+  adapter?: string;
+  status?: string;
 }
 
 /** core.MaxSetupAgents */
@@ -310,10 +394,42 @@ export interface PrebuiltApplyReq {
   confirmSkipsApprovals?: boolean;
 }
 
+/** agentcatalog.applyMany: several catalog agents into one project; an entry without an adapter takes the catalog's preferred CLI. */
+export interface PrebuiltApplyManyReq {
+  projectId: string;
+  items: { id: string; name?: string; adapter?: string; model?: string; effort?: string }[];
+  installSkills: boolean;
+  connectMcp: boolean;
+  confirmSkipsApprovals?: boolean;
+}
+
+/** One entry's outcome in applyMany: applied, or its error. */
+export interface PrebuiltApplyManyResult {
+  id: string;
+  applied?: PrebuiltApplied;
+  error?: string;
+}
+
+/**
+ * Where something still missing is put right (E9): "integration" (Settings > Integrations; key the library server, none for the
+ * list), "mcp" (the CLI's page in Settings > Agent CLIs, with its MCP gateway switch; key the CLI), "skills" (the project's Skills).
+ */
+export interface ApplyFix {
+  kind: 'integration' | 'mcp' | 'skills' | string;
+  key?: string;
+}
+
 export interface SkippedItem {
   id?: string;
   name?: string;
   reason: string;
+  fix?: ApplyFix;
+}
+
+/** One thing the person should know after an apply, with where it is fixed. */
+export interface AppliedNote {
+  text: string;
+  fix?: ApplyFix;
 }
 
 export interface PrebuiltApplied {
@@ -321,7 +437,7 @@ export interface PrebuiltApplied {
   agent: Agent;
   mcp: { granted: string[]; skipped: SkippedItem[] };
   skills: { assigned: string[]; shared: string[]; pending: SkippedItem[]; failed: SkippedItem[] };
-  notes: string[];
+  notes: AppliedNote[];
 }
 
 export interface Agent {
@@ -344,6 +460,8 @@ export interface Agent {
   /** Where the CLI runs: '' follows the project, 'native' on Windows, 'wsl' inside the distro `wslDistro`. */
   runMode?: string;
   wslDistro?: string;
+  /** The agent template it was made from (decision P137); absent for none. */
+  templateId?: string;
 }
 
 export interface RouteModel {
@@ -390,6 +508,13 @@ export interface AgentUpdate {
   wslDistro?: string;
   /** The person's confirmation of a change into a permission mode that lets the agent act without asking (see SetupAgent). */
   confirmSkipsApprovals?: boolean;
+  /** Also save the change to the agent's template and the other agents made from it (decision P137). */
+  everywhere?: boolean;
+}
+
+/** agent.update's answer with `everywhere`: the agent, and where the change went beyond this project. */
+export interface UpdatedAgent extends Agent {
+  everywhere?: { templateId: string; templateName: string; created: boolean; agents: number; skipped: string[] };
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */
@@ -425,6 +550,8 @@ export interface Detection {
   status: ConnectionStatus | string;
   problems?: string[];
   installHint?: string;
+  /** Which of Drydock's checks this answer came from: of two answers about one install, the larger is the newer (A2). */
+  checkSeq?: number;
 }
 
 export interface AdapterInfo {
@@ -501,6 +628,16 @@ export interface TaskCreateReq {
   priority?: number;
   /** Trimmed, lower-cased and deduplicated by the core; too many or too long is refused. */
   labels?: string[];
+  /** The worker: the task is assigned as it is made (core.CreateTaskReq); a missing reviewer is chosen as task.assign chooses one. */
+  assignee?: string;
+  reviewer?: string;
+  /** Starts the task too ("Create and start"), under task.start's checks, made before the task is: a refused start makes no task. */
+  start?: boolean;
+}
+
+/** task.create's answer (core.CreateTaskResult): startError when the task was made but its assignment or start then failed. */
+export interface TaskCreateResult extends Task {
+  startError?: string;
 }
 
 /** tasks.MaxLabels and tasks.MaxLabelLen */
@@ -607,6 +744,14 @@ export interface RunInfo {
   version: number;
 }
 
+/** core.PRReviewNote: a collaborator's change request that arrived while a review and merge waited, framed as feedback. */
+export interface PRReviewNote {
+  summary: string;
+  author?: string;
+  /** The words Send back with the GitHub review sends: the request quoted as data. */
+  feedback: string;
+}
+
 export interface TaskDetail {
   task: Task;
   evidence: Evidence[];
@@ -622,6 +767,27 @@ export interface TaskDetail {
   criteria?: CriterionStatus[];
   /** A person paused the task's run (taskPause); absent otherwise. The run's status is then PAUSED. */
   paused?: TaskPause;
+  /** A failed or cancelled task can be run again as a new task (taskRunAgain), runAgainWhy why not; absent before it ended. */
+  runAgain?: boolean;
+  runAgainWhy?: string;
+  /** The task's project runs its commands in a sandbox: the preview on demand does not run on this machine there. Absent otherwise. */
+  sandboxed?: boolean;
+  /**
+   * How the last start of the task's sandbox went while Drydock runs (X39): the steps so far in plain words ("pulling node:24",
+   * "running setup (1 of 2)"), then ready or failed. Absent when the sandbox was not created since Drydock started.
+   */
+  sandboxStart?: SandboxStart;
+  /** A collaborator's change request on GitHub that arrived while the review and merge waited (H12, core.PRReviewNote). */
+  prReview?: PRReviewNote;
+  /** The task names a worktree whose folder is not there any more (removed after the merge): nothing offers to open it outside Drydock (X26). Absent otherwise. */
+  worktreeGone?: boolean;
+}
+
+/** core.SandboxStart: the steps of creating a task's sandbox; neither ready nor failed while it goes on. */
+export interface SandboxStart {
+  steps: string[];
+  ready?: boolean;
+  failed?: boolean;
 }
 
 /**
@@ -672,6 +838,8 @@ export interface SummaryCheck {
   reason?: string;
   /** What failed (tests, findings), at most 10. */
   failing?: string[];
+  /** The Logs tab's id of the result's output ("ev:<evidence id>"), when it wrote one: ui.openLogs(taskId, logId) opens it. */
+  logId?: string;
 }
 
 /** A request waiting for a person; answer it with runRespond(runId, requestId, ...). */
@@ -834,9 +1002,20 @@ export type NeedsKind =
   // decision P130
   | 'task_waiting'
   | 'mention'
+  /** An agent's answer to the person not read yet, one per room (X18): opens the room, goes when the room is read. */
+  | 'reply'
   | 'join_request'
   | 'agent'
-  | 'connection';
+  | 'connection'
+  // what the core knows went wrong in the background, each with its fix (lane B batch B6, F14 and H7); subject names the thing
+  | 'integration'
+  | 'provider'
+  | 'mcp_sign_in'
+  | 'adapter_drift'
+  | 'tool_install'
+  | 'crash'
+  | 'security_findings'
+  | 'pr_review';
 
 export interface NeedsYouItem {
   key: string;
@@ -852,6 +1031,8 @@ export interface NeedsYouItem {
   agentId?: string;
   /** A chat whose CLI waits for the person to allow a tool call (kind chat_permission). */
   chatId?: string;
+  /** The workflow run an agent item is about (its task's latest run): Report this picks it on the Support page (X56). */
+  runId?: string;
   createdAt: string;
   /** What a task's item is about (UI review P1-1): the assignee, the newest diff's size, the checks and the reviewer's verdict. */
   context?: NeedsContext;
@@ -871,6 +1052,8 @@ export interface NeedsYouItem {
   /** An agent CLI that is not ready (kind connection, P130): the Agents page opens on adapter. */
   adapter?: string;
   connectionKey?: string;
+  /** A background problem's subject: the service's kind, the provider's id, the MCP server's id, the adapter, the tool, the crash report. */
+  subject?: string;
 }
 
 export interface NeedsContext {
@@ -991,6 +1174,8 @@ export interface Prereq {
   ok: boolean;
   /** Plain-language guidance, never a command to run. */
   guide?: string;
+  /** The tool's own download page (A5). */
+  link?: string;
 }
 
 export interface GateStatus {
@@ -1026,6 +1211,8 @@ export interface Connection extends Detection {
   account?: string;
   /** The adapter of a custom manifest (a CLI you described, not a vendor's): listed after the vendors' CLIs. */
   custom?: boolean;
+  /** When this answer was made (connection.list {cached}: the last check of each, A2); absent on a fresh check. */
+  at?: string;
 }
 
 /** connection.custom.list (decision P115): where a person's own CLIs are kept, and every manifest file there. */

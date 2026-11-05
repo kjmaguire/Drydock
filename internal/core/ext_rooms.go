@@ -115,9 +115,14 @@ func (c *Core) stateItems(ctx context.Context, projectID string) []room.NeedsYou
 			if act := strings.TrimSpace(ps.Activity); act != "" && act != "needs attention" {
 				title += ": " + act
 			}
+			runID := ""
+			if ps.TaskID != "" {
+				// the task's latest workflow run, for Report this (X56); none when the task never ran
+				_ = c.DB.Reader().QueryRowContext(ctx, `SELECT id FROM workflow_runs WHERE task_id=? ORDER BY created_at DESC, id DESC LIMIT 1`, ps.TaskID).Scan(&runID)
+			}
 			out = append(out, room.NeedsYouItem{Key: fmt.Sprintf("agent:%s:%s:%d", a.id, word, ps.Since.UnixMilli()), Kind: room.NeedsAgent, Severity: 1,
 				Title: inboxLine(title, 160), Detail: "Open the agent to see what happened. This goes when it next starts.", ProjectID: a.project, AgentID: a.id,
-				AgentName: a.name, TaskID: ps.TaskID, CreatedAt: ps.Since})
+				AgentName: a.name, TaskID: ps.TaskID, RunID: runID, CreatedAt: ps.Since})
 		}
 		// one the person marked done stays out; a later failure has another key (its time)
 		keys := make([]string, len(out))

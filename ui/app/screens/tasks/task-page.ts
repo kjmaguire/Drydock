@@ -2,7 +2,7 @@
 // "Paused by kyle"), a criterion's state and its own status with what showed it (P125), the check kinds of the Checks grid,
 // "This run"'s time and test runs, and the labels a person types. Pure: no DOM and no client.
 
-import type { CriterionState, CriterionStatus, Evidence, SummaryCheck, Task, TaskPause } from '../../api/types.ts';
+import type { CriterionState, CriterionStatus, Evidence, SandboxStart, SummaryCheck, Task, TaskPause } from '../../api/types.ts';
 import { TASK_LABEL_LEN, TASK_LABELS_MAX } from '../../api/types.ts';
 import { statusLabel } from '../../lib/format.ts';
 import { toMs } from './tasks.ts';
@@ -31,6 +31,13 @@ export function statusPill(task: Pick<Task, 'status' | 'iteration' | 'started'>,
   const words = statusWords(task, paused, checks);
   const n = runNumber(task);
   return n ? `${words} · run ${n}` : words;
+}
+
+/** The step the task's sandbox is at while it is being created (X39), for the pill: "Starting the sandbox: pulling node:24". */
+export function sandboxStartWords(start?: SandboxStart): string | undefined {
+  if (!start || start.ready || start.failed) return undefined;
+  const last = start.steps[start.steps.length - 1];
+  return last ? `Starting the sandbox: ${last}` : 'Starting the sandbox';
 }
 
 /** The tone of the status dot: accent while it works, warning while it waits on you or is paused, success done, danger failed. */
@@ -138,6 +145,19 @@ export function criteriaRows(
     const check = c.check ? checkName(c.check) : '';
     return { index, id: c.id, text, status, why: criterionWhy(c, status, nameOf), claim: c.claim ? claimLine(c.claim, nameOf) : '', personal: c.source === 'person', check, findings };
   });
+}
+
+/** A criterion still to meet as a line of "Request changes" feedback; '' for one that is met or waived. */
+export function changeLine(row: Pick<CriterionRow, 'text' | 'status'>): string {
+  const text = row.text.trim();
+  if (!text) return '';
+  return row.status === 'not_met' ? `- Not met: ${text}` : row.status === 'open' ? `- Not confirmed yet: ${text}` : '';
+}
+
+/** What "Request changes" starts from: a line per criterion not met (first), then per one still open. */
+export function changesDraft(rows: readonly Pick<CriterionRow, 'text' | 'status'>[]): string {
+  const order = [...rows].filter((r) => r.status === 'not_met').concat(rows.filter((r) => r.status === 'open'));
+  return order.map(changeLine).filter(Boolean).join('\n');
 }
 
 const sentence = (s: string | undefined): string => {

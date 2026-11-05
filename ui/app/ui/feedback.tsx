@@ -1,5 +1,6 @@
-import { css, type Handle, type RemixNode } from 'remix/component';
+import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { CircleAlert, Info, TriangleAlert, CircleCheck } from 'lucide';
+import { Button } from './button.tsx';
 import { Icon } from './icon.tsx';
 import { t, tone, type Tone } from './tokens.ts';
 
@@ -17,19 +18,79 @@ const errorCss = css({
   overflowWrap: 'anywhere',
 });
 
-/** An error, shown verbatim (role="alert"). Renders nothing without one. */
-export function ErrorNote(handle: Handle<{ error: unknown; what?: string }>) {
+/**
+ * Whether the shell has said, once, that Drydock's core is not answering (its banner, shell/core-banner.tsx, decision G4).
+ * While it has, a read that failed for that same reason (a network error) says nothing more on its own: the banner says it once
+ * with Try now, instead of every panel in a red note of its own.
+ */
+class CoreDown extends EventTarget {
+  #down = false;
+  get down(): boolean {
+    return this.#down;
+  }
+  set(down: boolean): void {
+    if (down === this.#down) return;
+    this.#down = down;
+    this.dispatchEvent(new Event('change'));
+  }
+}
+export const coreDown = new CoreDown();
+
+/** A call that never completed (the transport's RpcError kind "network"): the core did not answer at all. */
+export function isNetworkError(error: unknown): boolean {
+  return error instanceof Error && (error as { kind?: unknown }).kind === 'network';
+}
+
+/** What a failed call says: the core's own words, or, when it did not answer at all, that. */
+export function errorText(error: unknown): string {
+  if (isNetworkError(error)) return "Drydock's core did not answer.";
+  return error instanceof Error ? error.message : String(error);
+}
+
+const errorBody = css({ flex: '1', minWidth: '0' });
+const errorActions = css({ display: 'flex', gap: t.s2, flex: 'none', alignItems: 'center', marginTop: '-3px', marginBottom: '-3px' });
+
+/**
+ * An error (role="alert"). Renders nothing without one. `retry` (a read's reload) adds Retry, which reads again; `action` is
+ * another button of the caller's. A network error says the core did not answer, and nothing while the shell's banner says so.
+ */
+export function ErrorNote(handle: Handle<{ error: unknown; what?: string; retry?: () => unknown; action?: RemixNode }>) {
+  coreDown.addEventListener('change', () => void handle.update(), { signal: handle.signal });
+  let retrying = false;
+  const runRetry = async (retry: () => unknown) => {
+    if (retrying) return;
+    retrying = true;
+    void handle.update();
+    try {
+      await retry();
+    } catch {
+      /* the read shows its own new error */
+    } finally {
+      retrying = false;
+      if (!handle.signal.aborted) void handle.update();
+    }
+  };
   return () => {
-    const { error, what } = handle.props;
+    const { error, what, retry, action } = handle.props;
     if (!error) return null;
-    const msg = error instanceof Error ? error.message : String(error);
+    if (coreDown.down && isNetworkError(error)) return null;
     return (
       <div mix={errorCss} role="alert">
         <Icon icon={CircleAlert} size={15} />
-        <div>
+        <div mix={errorBody}>
           {what ? <strong>{what}: </strong> : null}
-          {msg}
+          {errorText(error)}
         </div>
+        {retry || action ? (
+          <div mix={errorActions}>
+            {retry ? (
+              <Button size="sm" variant="secondary" disabled={retrying} mix={on('click', () => void runRetry(retry))}>
+                {retrying ? 'Retrying...' : 'Retry'}
+              </Button>
+            ) : null}
+            {action}
+          </div>
+        ) : null}
       </div>
     );
   };

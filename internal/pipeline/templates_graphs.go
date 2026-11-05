@@ -72,6 +72,7 @@ func (b graphBuilder) prTail(extraBeforeApprove []workflow.NodeID) {
 		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
 		workflow.Route("changes", Changes(td.Deps)),
 		workflow.Route("merge", MergePR(td.Deps, td.PR)).Effect(EffectMergePR),
+		workflow.Route("sync_pr", SyncPR(td.Deps, td.PR)),
 		workflow.Route(NodeAbort, Abort(td.Deps)),
 	)
 	next := workflow.NodeID("approve")
@@ -88,6 +89,7 @@ func (b graphBuilder) prTail(extraBeforeApprove []workflow.NodeID) {
 		EdgeWhen("approve", "changes", "rejected").
 		Loop("changes", "work", "", n, esc).
 		Loop("merge", "merge", "answered", 3, esc)
+	syncPRSteps(g, n)
 	b.back["merge"] = "approve"
 }
 

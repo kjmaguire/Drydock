@@ -35,8 +35,8 @@ export const HOWTO: readonly Topic[] = [
       {
         ol: [
           'Install `gh` from [cli.github.com](https://cli.github.com).',
-          'Run `gh auth login` in a terminal and sign in.',
-          'Open [GitHub](/github) and press **Check again**.',
+          'Open [GitHub](/github) and press **Sign in**. `gh auth login` runs in a terminal there; answer it and choose GitHub.com.',
+          'When it ends, the page checks `gh` again by itself. **Check again** asks once more.',
         ],
       },
       { p: 'The sign-in is checked by asking GitHub who it is (`gh api /user`). Scopes are not checked: `gh` asks for `repo` and `read:org` when you sign in, and that is what Drydock needs. Until `gh` is signed in a project can still work on a local folder; pull requests and GitHub repositories need it.' },
@@ -171,7 +171,7 @@ export const HOWTO: readonly Topic[] = [
       { p: 'A support bundle is a zip of diagnostics for a bug report: versions, connection states, settings, recent logs, event types and a scrub report. Secrets are redacted and your name, computer name and folders are replaced. Event payloads are dropped (only event types and ids are listed).' },
       {
         ol: [
-          'Open [Support bundle](/support) and press **Preview the bundle**. Nothing is written yet; you see every file and what was scrubbed.',
+          'Open [Support bundle](/support). The preview is made for you; nothing is written yet, and you see every file and what was scrubbed.',
           'Check the file list and the report. Scrubbing reduces but does not eliminate leakage.',
           'Press **Create the bundle**. It is written on this computer and has not been uploaded anywhere. You send it yourself.',
         ],
@@ -208,7 +208,7 @@ export const HOWTO: readonly Topic[] = [
         ul: [
           '**Maximum parallel agent turns:** how many agent turns may run at the same time in this project. Start with 3 to 5.',
           '**Team lead stall time:** minutes without progress before the lead checks a task. Empty or 0 means 15; at most 1440 (a day).',
-          '**CI before merge:** a pull request is merged only after CI passed on the reviewed commit. When no CI reports within 2 minutes you are asked to check again, merge without CI this time, or stop.',
+          '**CI before merge:** a pull request is merged only after CI passed on the reviewed commit. When no CI reports within 5 minutes, or checks still run after 60 minutes, you are asked to keep waiting, merge without CI this time, or stop (both waits are set per project in Development flow).',
           '**Repository has no CI:** only for a repository that really has none. A pull request nothing reports on is merged after the review and your approval; checks that do report still have to pass, and GitHub’s branch protection still applies. Your name and the time are recorded.',
           '**Skills for Claude agents:** *relevant only* loads the repository’s own skills and path-matched imports into each turn and lists the rest; *all* loads every skill into every turn. See [Skills](guide:skills).',
         ],

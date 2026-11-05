@@ -137,6 +137,30 @@ describe('Task view: header, properties and content', () => {
     expect(taskAssignPreview.calls[0]).toEqual(['t1', 'a1']);
   });
 
+  it('Runs on says a sandboxed project runs its commands in a sandbox, with the Guide linked, and the preview is not offered (X33)', async () => {
+    const d = detail({ task: task({ status: 'IN_PROGRESS', iteration: 1, worktree: '/w/t1' }), sandboxed: true });
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d }));
+    await waitFor(() => expect(r.$('[data-testid="task-runs-on"]')!.textContent).toBe('Claude Code · in a sandbox'), r);
+    expect(r.$('a[data-testid="task-runs-in-sandbox"]')!.getAttribute('href')).toBe('/guide/project-settings');
+    expect(r.$('section[aria-label="Preview"]')).toBe(null);
+  });
+
+  it('says the step the sandbox is at while it starts, and keeps the steps as one folded line (X39)', async () => {
+    let d = detail({ task: task({ status: 'IN_PROGRESS', iteration: 0, started: Date.now(), worktree: '/w/t1' }), sandboxed: true, sandboxStart: { steps: ['pulling node:24'] } });
+    const s = svc({ taskGet: async () => d });
+    const r = mount(<TaskDetailScreen id="t1" />, s);
+    await waitFor(() => expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Starting the sandbox: pulling node:24'), r);
+    const line = r.$('[data-testid="sandbox-start"]') as HTMLDetailsElement;
+    expect(line.open).toBe(false);
+    expect(line.querySelector('summary')!.textContent).toBe('Starting the sandbox · 1 step');
+    // the core says the next step, then that it is ready: the pill goes back to the task's status
+    d = { ...d, sandboxStart: { steps: ['pulling node:24', 'running setup (1 of 1)'], ready: true } };
+    await r.act(() => s.emit({ type: 'sandbox.ready', taskId: 't1' }));
+    await waitFor(() => expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Building · run 1'), r);
+    expect(r.$('[data-testid="sandbox-start"] summary')!.textContent).toBe('Sandbox started · 2 steps');
+    expect(Array.from(r.container.querySelectorAll('[data-testid="sandbox-start"] li')).map((li) => li.textContent)).toEqual(['pulling node:24', 'running setup (1 of 1)']);
+  });
+
   it('the Checks grid shows the check kinds of the task with their state, from task.summaries', async () => {
     const taskSummaries = recorder(async () => ({
       summaries: [
@@ -145,7 +169,7 @@ describe('Task view: header, properties and content', () => {
           checks: [
             { kind: 'test', status: 'running' },
             { kind: 'lint', status: 'passed' },
-            { kind: 'typecheck', status: 'failed', reason: 'calc.go:3: undefined: x' },
+            { kind: 'typecheck', status: 'failed', reason: 'calc.go:3: undefined: x', logId: 'ev:7' },
             { kind: 'ci', status: 'not_run' },
           ],
         } as never,
@@ -154,16 +178,21 @@ describe('Task view: header, properties and content', () => {
       partial: false,
     }));
     const d = detail({ task: task({ status: 'IN_PROGRESS', iteration: 1 }) });
-    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskSummaries }));
+    const s = svc({ taskGet: async () => d, taskSummaries });
+    const r = mount(<TaskDetailScreen id="t1" />, s);
     await waitFor(() => expect(r.$$('[data-testid="task-checks"] li').length).toBe(4), r);
     const items = Array.from(r.$$('[data-testid="task-checks"] li'));
     expect(items.map((li) => [li.getAttribute('data-state'), li.textContent])).toEqual([
       ['running', 'tests, running'],
       ['passed', 'lint, passed'],
-      ['failed', 'types, failed'],
+      ['failed', 'types, failed, open its logcalc.go:3: undefined: x'],
       ['not_run', 'ci, not run yet'],
     ]);
-    expect(items[2]!.getAttribute('title')).toBe('failed: calc.go:3: undefined: x');
+    // a failed check says why on a line of its own, and its name opens its own log in the dock (X24)
+    expect(items[2]!.querySelector('[data-testid="check-reason"]')!.textContent).toBe('calc.go:3: undefined: x');
+    await r.act(() => items[2]!.querySelector('button')!.click());
+    expect(s.ui.dock).toMatchObject({ open: true, tab: 'logs' });
+    expect(s.ui.dockView('t1').log).toBe('ev:7');
     // the page reads its task's summary (the sidebar's Running count reads the workspace's, projectId "")
     expect(taskSummaries.calls.filter((c) => ((c as unknown[])[0] as { projectId: string }).projectId !== '')[0]).toEqual([{ projectId: 'prj_1', ids: ['t1'] }]);
     // a check that runs is in the pill's words
@@ -261,18 +290,6 @@ describe('Task view: header, properties and content', () => {
     expect(s.ui.dock.tab).toBe('diff');
   });
 
-  it('shows the raw patch on request, as text lines classed by kind', async () => {
-    const taskDiff = recorder((_id: string, _evidenceId?: number) => 'diff --git a/calc.go b/calc.go\n@@ -1 +1 @@\n-return 0\n+return a - b\n');
-    const d = detail({ evidence: [{ id: 1, taskId: 't1', attempt: 1, kind: 'diff', passed: null, summary: '1 file', created: 0 }] });
-    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskDiff }));
-    await ready(r);
-    await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
-    await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+return a - b'), r);
-    expect(r.$('.diff-del')!.textContent).toBe('-return 0');
-    // the request names the evidence the card is keyed on (L36)
-    expect(taskDiff.calls).toEqual([['t1', 1]]);
-  });
-
   it("has one patch viewer: the review card's See the patch brings the Diff section into view (UI review P1-1)", async () => {
     const ev: Evidence = { id: 3, taskId: 't1', attempt: 1, kind: 'diff', passed: null, summary: '1 file', data: { Files: 1, Insertions: 2, Deletions: 0 }, created: 0 };
     const d = detail({
@@ -282,7 +299,9 @@ describe('Task view: header, properties and content', () => {
     });
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d }));
     await waitFor(() => need(byText(r.container, 'button', 'See the patch')), r);
-    expect(buttonNames(r.container).filter((n) => n === 'Show the raw patch').length).toBe(1);
+    // the raw patch is the Diff viewer's Raw view, not a second button on the page (X212)
+    expect(buttonNames(r.container)).not.toContain('Show the raw patch');
+    expect(r.$$('[data-testid="task-diff"]').length).toBe(1);
     const section = r.$('[data-testid="task-diff"]')!;
     let scrolled = 0;
     section.scrollIntoView = () => void scrolled++;
@@ -290,110 +309,60 @@ describe('Task view: header, properties and content', () => {
     expect(scrolled).toBe(1);
   });
 
-  describe('the raw patch is the one the card is about (L36)', () => {
-    const ev = (id: number, kind: string): Evidence => ({ id, taskId: 't1', attempt: 1, kind, passed: null, summary: kind, created: id });
-    const PATCHES: Record<number, string> = {
-      3: 'diff --git a/a.go b/a.go\n-old\n+FIRST PATCH\n',
-      9: 'diff --git a/a.go b/a.go\n-old\n+SECOND PATCH\n',
-    };
-
-    it('asks for the newest diff evidence by id, drops the text when a newer patch is recorded, says so, and shows the new one only when asked', async () => {
-      let d = detail({ evidence: [ev(2, 'test'), ev(3, 'diff'), ev(4, 'test')] });
-      const taskDiff = recorder((_id: string, evidenceId?: number) => PATCHES[evidenceId ?? 0] ?? 'the core would refuse this id');
-      const s = svc({ taskGet: async () => d, taskDiff });
-      const r = mount(<TaskDetailScreen id="t1" />, s);
-      await ready(r);
-      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
-      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+FIRST PATCH'), r);
-      // the newest evidence of kind diff is asked for, not the newest evidence
-      expect(taskDiff.calls).toEqual([['t1', 3]]);
-      expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
-
-      // the task goes round again and a second patch is recorded: the first is no longer on the page, the page says why
-      d = detail({ evidence: [ev(2, 'test'), ev(3, 'diff'), ev(4, 'test'), ev(8, 'test'), ev(9, 'diff')] });
-      s.emit({ type: 'task.evidence', taskId: 't1' });
-      const note = await waitFor(() => need(r.$('[data-testid="raw-diff-changed"]')), r);
-      expect(note.textContent).toBe('The patch changed since you opened it. Show it again.');
-      expect(note.getAttribute('role')).toBe('status');
-      expect(r.container.textContent).not.toContain('FIRST PATCH');
-      expect(r.$('.diff-add')).toBeNull();
-      // nothing was fetched or swapped in on its own
-      expect(taskDiff.calls).toEqual([['t1', 3]]);
-      expect(r.container.textContent).not.toContain('SECOND PATCH');
-
-      // asked again, it is the new patch, by its id, and the note goes
-      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
-      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+SECOND PATCH'), r);
-      expect(taskDiff.calls).toEqual([['t1', 3], ['t1', 9]]);
-      expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
-    });
-
-    it('does not show a patch that was read while a newer one was recorded', async () => {
-      let d = detail({ evidence: [ev(3, 'diff')] });
-      let release: (text: string) => void = () => undefined;
-      const calls: [string, number | undefined][] = [];
-      const taskDiff = async (id: string, evidenceId?: number) => {
-        calls.push([id, evidenceId]);
-        return evidenceId === 3 ? new Promise<string>((res) => (release = res)) : (PATCHES[evidenceId ?? 0] ?? '');
-      };
-      const s = svc({ taskGet: async () => d, taskDiff });
-      const r = mount(<TaskDetailScreen id="t1" />, s);
-      await ready(r);
-      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
-      await waitFor(() => expect(calls).toEqual([['t1', 3]]), r);
-      // the first patch is still being read when the second is recorded
-      d = detail({ evidence: [ev(3, 'diff'), ev(9, 'diff')] });
-      s.emit({ type: 'task.evidence', taskId: 't1' });
-      await waitFor(() => expect(r.$$('[data-testid="evidence"]').length).toBe(2), r);
-      release(PATCHES[3]!);
-      await waitFor(() => need(r.$('[data-testid="raw-diff-changed"]')), r);
-      expect(r.container.textContent).not.toContain('FIRST PATCH');
-      expect(r.$('.diff-add')).toBeNull();
-      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
-      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+SECOND PATCH'), r);
-      expect(calls).toEqual([['t1', 3], ['t1', 9]]);
-    });
-
-    it('keeps its text through changes that are not a new patch', async () => {
-      let d = detail({ evidence: [ev(3, 'diff')] });
-      const taskDiff = recorder((_id: string, evidenceId?: number) => PATCHES[evidenceId ?? 0] ?? '');
-      const s = svc({ taskGet: async () => d, taskDiff });
-      const r = mount(<TaskDetailScreen id="t1" />, s);
-      await ready(r);
-      await r.act(() => byText(r.container, 'button', 'Show the raw patch').click());
-      await waitFor(() => expect(r.$('.diff-add')!.textContent).toBe('+FIRST PATCH'), r);
-      d = detail({ evidence: [ev(3, 'diff'), ev(10, 'test')] }); // evidence of another kind is not a new patch
-      s.emit({ type: 'task.evidence', taskId: 't1' });
-      await waitFor(() => expect(r.$$('[data-testid="evidence"]').length).toBe(2), r);
-      expect(r.$('.diff-add')!.textContent).toBe('+FIRST PATCH');
-      expect(r.$('[data-testid="raw-diff-changed"]')).toBeNull();
-      expect(taskDiff.calls).toEqual([['t1', 3]]);
-    });
-  });
-
-  it('offers no raw patch when no diff has been recorded', async () => {
-    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail() }));
-    await ready(r);
+  it('embedded in Work, the Diff section lists the changed files with their counts, and a row opens the dock on that file (X212)', async () => {
+    const taskDiffFiles = recorder(async (_id: string, _live?: boolean) => ({
+      source: 'recorded' as const,
+      liveAvailable: false,
+      diffId: 3,
+      files: [
+        { path: 'calc.go', status: 'modified' as const, additions: 2, deletions: 1 },
+        { path: 'docs/notes.md', status: 'added' as const, additions: 4, deletions: 0 },
+      ],
+    }));
+    const s = svc({ taskGet: async () => detail(), taskDiffFiles });
+    const r = mount(<TaskDetailScreen id="t1" embedded />, s);
+    await waitFor(() => expect(r.$$('[data-testid="task-diff"] li').length).toBe(2), r);
+    const section = r.$('[data-testid="task-diff"]')!;
+    expect(section.querySelector('[data-testid="diff-totals"]')!.textContent).toBe('2 files+6-1');
+    // one way in: no "Open in the dock", no raw patch button, no editor
+    expect(buttonNames(r.container)).not.toContain('Open in the dock');
     expect(buttonNames(r.container)).not.toContain('Show the raw patch');
+    expect(r.$('[data-testid="monaco-diff"]')).toBeNull();
+    await r.act(() => byText(section, 'button', /notes\.md/).click());
+    expect(s.ui.dock).toMatchObject({ open: true, tab: 'diff' });
+    expect(s.ui.dockView('t1').file).toBe('docs/notes.md');
   });
 });
 
 describe('Task view: assignment and control', () => {
-  it('Assign sends the worker and a different reviewer; Start waits until the assignment is saved', async () => {
+  it('Assign sends the worker and a different reviewer; an unassigned task has the pair chosen for it', async () => {
     const taskAssign = recorder(() => task());
     const d = detail({ task: task({ assignee: undefined, reviewer: undefined }) });
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskAssign }));
     await waitFor(() => expect(optionsOf(byLabel<HTMLElement>(r.container, 'Worker')).some((o) => o.value === 'a1')).toBe(true), r);
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Assign').disabled).toBe(true);
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(true);
-    expect(byText(r.container, 'button', 'Start').getAttribute('title')).toBe('Assign a worker and a reviewer first');
-    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Worker'), 'a1'));
+    // C1: the builder works, the reviewer-role agent reviews; Start assigns them and starts
+    await waitFor(() => expect(valueOf(byLabel<HTMLElement>(r.container, 'Worker'))).toBe('a1'), r);
+    expect(valueOf(byLabel<HTMLElement>(r.container, 'Reviewer'))).toBe('a2');
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(false);
+    expect(byText(r.container, 'button', 'Start').getAttribute('title')).toBe('Assign the worker and reviewer shown, then start');
     await r.act(() => type(byLabel<HTMLElement>(r.container, 'Reviewer'), 'a1'));
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Assign').disabled).toBe(true); // same agent twice
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(true);
     await r.act(() => type(byLabel<HTMLElement>(r.container, 'Reviewer'), 'a2'));
     expect(optionsOf(byLabel<HTMLElement>(r.container, 'Worker')).find((o) => o.value === 'a1')!.label).toBe('Dana (backend)');
     await r.act(() => byText(r.container, 'button', 'Assign').click());
     await waitFor(() => expect(taskAssign.calls).toEqual([['t1', 'a1', 'a2']]), r);
+  });
+
+  it('one Start assigns the pair chosen for an unassigned task, then starts it (C1)', async () => {
+    const calls: string[] = [];
+    const taskAssign = recorder((id: string, w: string, rv: string) => (calls.push(`assign ${id} ${w} ${rv}`), task()));
+    const taskStart = recorder((id: string) => (calls.push(`start ${id}`), 'run0'));
+    const d = detail({ task: task({ assignee: undefined, reviewer: undefined }) });
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskAssign, taskStart }));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Start').click());
+    await waitFor(() => expect(calls).toEqual(['assign t1 a1 a2', 'start t1']), r);
   });
 
   it('Start with a template calls task.startTemplate and shows what the template needs', async () => {

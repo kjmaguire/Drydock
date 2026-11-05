@@ -34,6 +34,9 @@ type SetupRepo struct {
 	Init     bool   `json:"init"`
 	GitHub   string `json:"github"`   // github: owner/name
 	CloneDir string `json:"cloneDir"` // github: parent folder (default DefaultCloneDir)
+	// Later makes the project at once and attaches the clone when it lands (github only, B12): the answer carries Landing
+	// instead of Clone, and the project has no repository until then (project_clone_landing.go).
+	Later bool `json:"later"`
 }
 
 // SetupAgent is one team member: a prebuilt agent, a saved template, or a custom agent.
@@ -57,10 +60,25 @@ type SetupAgent struct {
 
 // SetupResult is the new project and what happened.
 type SetupResult struct {
-	Project  Project      `json:"project"`
-	Agents   []Agent      `json:"agents"`
-	Clone    *CloneResult `json:"clone,omitempty"`
-	Warnings []string     `json:"warnings"`
+	Project Project      `json:"project"`
+	Agents  []Agent      `json:"agents"`
+	Clone   *CloneResult `json:"clone,omitempty"`
+	// Landing is the clone the project waits for (repo.later): it is attached when it lands.
+	Landing  *LandingClone `json:"landing,omitempty"`
+	Warnings []string      `json:"warnings"`
+	// Problems are the same warnings, one each, with what kind of thing failed, so the project's Work page can show each as
+	// its own line with the action that fixes it (B2). Warnings stays for older readers.
+	Problems []SetupWarning `json:"problems"`
+}
+
+// SetupWarning is one thing that failed after the project was made.
+type SetupWarning struct {
+	// Kind is cli (an agent's CLI is not usable: Adapter and Status say which and why), decision (something waits for the
+	// person's decision), connector (a connector was not added or granted) or other.
+	Kind    string `json:"kind"`
+	Text    string `json:"text"`
+	Adapter string `json:"adapter,omitempty"`
+	Status  string `json:"status,omitempty"`
 }
 
 // MaxSetupAgents bounds one wizard run.
@@ -68,7 +86,7 @@ const MaxSetupAgents = 20
 
 // SetupProject runs the wizard's request.
 func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, error) {
-	res := SetupResult{Agents: []Agent{}, Warnings: []string{}}
+	res := SetupResult{Agents: []Agent{}, Warnings: []string{}, Problems: []SetupWarning{}}
 	if err := c.RequireLicensed(ctx, "create_project"); err != nil {
 		return res, err
 	}
@@ -90,6 +108,7 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 		}
 	}
 	repoPath := ""
+	var later struct{ repo, parent string }
 	switch r.Repo.Kind {
 	case "", "none":
 		if strings.TrimSpace(r.Name) == "" {
@@ -106,6 +125,17 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 			}
 		}
 	case "github":
+		if r.Repo.Later {
+			repo, parent, err := c.checkLaterClone(r.Repo.GitHub, r.Repo.CloneDir)
+			if err != nil {
+				return res, err
+			}
+			later.repo, later.parent = repo, parent
+			if strings.TrimSpace(r.Name) == "" {
+				r.Name = repo[strings.IndexByte(repo, '/')+1:]
+			}
+			break
+		}
 		cl, err := c.GitHubClone(ctx, r.Repo.GitHub, r.Repo.CloneDir)
 		if err != nil {
 			return res, err
@@ -123,7 +153,16 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 		return res, err
 	}
 	res.Project = p
-	warn := func(format string, a ...any) { res.Warnings = append(res.Warnings, fmt.Sprintf(format, a...)) }
+	if r.Repo.Kind == "local" && r.Repo.Init {
+		c.rememberCodeDir(ctx, repoPath)
+	}
+	warnAs := func(w SetupWarning, format string, a ...any) {
+		w.Text = fmt.Sprintf(format, a...)
+		res.Warnings = append(res.Warnings, w.Text)
+		res.Problems = append(res.Problems, w)
+	}
+	warn := func(format string, a ...any) { warnAs(SetupWarning{Kind: "other"}, format, a...) }
+	connWarn := func(format string, a ...any) { warnAs(SetupWarning{Kind: "connector"}, format, a...) }
 	if strings.TrimSpace(r.Brief) != "" {
 		if p2, err := c.SetBrief(ctx, p.ID, r.Brief); err != nil {
 			warn("brief not saved: %v", err)
@@ -162,7 +201,7 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 			return "", err
 		}
 		if out.Next != "" {
-			warn("connector %s: %s", id, out.Next)
+			connWarn("connector %s: %s", id, out.Next)
 		}
 		libraryID[id] = out.Server.ID
 		return out.Server.ID, nil
@@ -173,12 +212,12 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 			err = call("mcpserver.add", map[string]string{"projectId": p.ID, "serverId": lid}, nil)
 		}
 		if err != nil {
-			warn("connector %s not added: %v", id, err)
+			connWarn("connector %s not added: %v", id, err)
 		}
 	}
 	for _, id := range r.LibraryServers {
 		if err := call("mcpserver.add", map[string]string{"projectId": p.ID, "serverId": id}, nil); err != nil {
-			warn("connector %s not added: %v", id, err)
+			connWarn("connector %s not added: %v", id, err)
 		} else {
 			libraryID[id] = id
 		}
@@ -202,13 +241,13 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 				"effort": a.Effort, "permissionMode": a.PermissionMode, "installSkills": r.InstallSkills, "connectMcp": true, "confirmSkipsApprovals": a.ConfirmSkipsApprovals}, &out)
 			made = out.Agent
 			for _, s := range out.MCP.Skipped {
-				warn("%s: connector %s not granted: %s", made.Name, s.ID, s.Reason)
+				connWarn("%s: connector %s not granted: %s", made.Name, s.ID, s.Reason)
 			}
 			for _, s := range out.Skills.Failed {
 				warn("%s: skill %s not installed: %s", made.Name, s.Name, s.Reason)
 			}
 			for _, s := range out.Skills.Pending {
-				warn("%s: skill %s waits for your decision: %s", made.Name, s.Name, s.Reason)
+				warnAs(SetupWarning{Kind: "decision"}, "%s: skill %s waits for your decision: %s", made.Name, s.Name, s.Reason)
 			}
 		case a.Template != "":
 			var out AppliedTemplate
@@ -227,13 +266,13 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 						if c.isLibraryServer(ctx, sid) {
 							lid = sid
 						} else if lid, err = addCatalog(sid); err != nil {
-							warn("%s: connector %s not granted: %v", made.Name, sid, err)
+							connWarn("%s: connector %s not granted: %v", made.Name, sid, err)
 							err = nil
 							continue
 						}
 					}
 					if gerr := call("mcpserver.grant", map[string]any{"projectId": p.ID, "serverId": lid, "agentId": made.ID, "on": true}, nil); gerr != nil {
-						warn("%s: connector %s not granted: %v", made.Name, sid, gerr)
+						connWarn("%s: connector %s not granted: %v", made.Name, sid, gerr)
 					}
 				}
 			}
@@ -263,7 +302,11 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 		if len(conn.Problems) > 0 {
 			why = conn.Problems[0]
 		}
-		warn("%s cannot work yet: the %s CLI is not usable on this machine (%s). Set it up on the Connections page: install it, sign in and accept its notice", strings.Join(byAdapter[ad], ", "), ad, why)
+		warnAs(SetupWarning{Kind: "cli", Adapter: ad, Status: string(conn.Status)}, "%s cannot work yet: the %s CLI is not usable on this machine (%s). Set it up in Settings > Agent CLIs: install it, sign in and accept its notice", strings.Join(byAdapter[ad], ", "), ad, why)
+	}
+	if later.repo != "" {
+		l := c.landClone(p.ID, later.repo, later.parent)
+		res.Landing = &l
 	}
 	c.publish(ctx, "project.setup", p.ID, map[string]any{"agents": len(res.Agents), "warnings": len(res.Warnings), "repo": r.Repo.Kind})
 	return res, nil

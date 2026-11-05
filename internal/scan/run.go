@@ -18,6 +18,8 @@ type Options struct {
 	ID        string
 	ProjectID string
 	By        string
+	// Trigger is the rule that started the scan (Report.Trigger); empty for a person's own.
+	Trigger string
 	// Dir is the working tree to scan.
 	Dir string
 	// Procs starts the external tools (default proc.New()).
@@ -125,7 +127,7 @@ func Start(ctx context.Context, o Options) *Run {
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	r := &Run{o: o, cancel: cancel, done: make(chan struct{})}
-	r.rep = Report{ID: o.ID, ProjectID: o.ProjectID, Dir: o.Dir, Status: StatusRunning, By: o.By, StartedAt: time.Now().UnixMilli(), Findings: []Finding{}}
+	r.rep = Report{ID: o.ID, ProjectID: o.ProjectID, Dir: o.Dir, Status: StatusRunning, By: o.By, Trigger: o.Trigger, StartedAt: time.Now().UnixMilli(), Findings: []Finding{}}
 	for _, e := range Engines {
 		if o.runs(e.ID) {
 			r.rep.Engines = append(r.rep.Engines, EngineResult{ID: e.ID, Name: e.Name, Tool: e.Tool, Status: Pending})

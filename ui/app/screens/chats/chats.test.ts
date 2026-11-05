@@ -24,6 +24,7 @@ import {
   askHead,
   chatPlaceWords,
   chatRowLine,
+  folderChipText,
   folderText,
   inOwnFolder,
   listWhen,
@@ -43,6 +44,14 @@ import {
   startsGroup,
   toolInputText,
   wslUnavailable,
+  chatToReopen,
+  cliRefusal,
+  isFolderRefusal,
+  readChatFilter,
+  readLastChat,
+  turnPhaseText,
+  writeChatFilter,
+  writeLastChat,
 } from './chats.ts';
 
 const adapter = (id: string, status: string, installed = status !== 'not_installed', version = ''): AdapterInfo => ({
@@ -124,6 +133,11 @@ describe('chats helpers', () => {
     expect(folderText({ cwd: '\\\\wsl$\\Debian\\srv\\app', wslDistro: 'Debian' })).toBe('/srv/app');
     expect(folderText({ cwd: '/home/kyle/notes', wslDistro: 'Ubuntu' })).toBe('~/notes');
     expect(folderText({ cwd: 'C:\\repos\\gocalc', wslDistro: '' })).toBe('C:\\repos\\gocalc');
+    // the header's chip (decision P144): the project, else "Own folder" for the private folder, else the folder chosen
+    expect(folderChipText(own, 'gocalc')).toBe('gocalc');
+    expect(folderChipText(own)).toBe('Own folder');
+    expect(folderChipText({ ...own, wslDistro: 'Ubuntu', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\kyle\\.drydock\\chats\\chat_a' })).toBe('Own folder');
+    expect(folderChipText({ ...own, cwd: 'C:\\work\\notes' })).toBe('C:\\work\\notes');
     expect(moveEffect({ projectId: '' }, 'p1', 'gocalc')).toContain('It joins gocalc and runs in the project\'s folder.');
     expect(moveEffect({ projectId: 'p1' }, 'p2', 'shop')).toContain('It moves to shop');
     expect(moveEffect({ projectId: 'p1' }, OUT_OF_PROJECT, '')).toBe('It leaves the project and keeps the folder it runs in, so its session continues.');
@@ -257,6 +271,8 @@ describe('chats routes and palette', () => {
     expect(routes.chat.href({ id: 'chat_1' })).toBe('/chats/chat_1');
     expect(parseRoute('/chats')).toEqual({ name: 'chats' });
     expect(parseRoute('/chats/chat_1')).toEqual({ name: 'chat', id: 'chat_1' });
+    // the reopen guard (D7) asks the router, so an address with a trailing slash is Chats too
+    expect(parseRoute('/chats/')).toEqual({ name: 'chats' });
     expect(parseRoute('/chats/a/b')).toEqual({ name: 'not-found' });
     expect(isWorkspaceRoute({ name: 'chats' })).toBe(true);
     expect(isWorkspaceRoute({ name: 'chat', id: 'x' })).toBe(true);
@@ -641,6 +657,71 @@ describe('ChatFeed', () => {
   });
 });
 
+describe('Batch B3: next steps, first seconds, coming back', () => {
+  const mem = () => {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), m };
+  };
+  const refusing = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
+
+  it('names the first seconds of a turn: starting the CLI, then thinking, then the step; slow starts say how long (D12)', () => {
+    expect(turnPhaseText('Claude Code', undefined, 0)).toEqual({ text: 'Working…', slow: false });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: false, step: '' }, 5000)).toEqual({ text: 'Starting Claude Code…', slow: false });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: false, step: '' }, 25_500)).toEqual({ text: 'Still starting', slow: true, seconds: 24 });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: true, step: '' }, 60_000)).toEqual({ text: 'Thinking…', slow: false });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: true, step: 'Read' }, 60_000)).toEqual({ text: 'Using Read…', slow: false });
+  });
+
+  it("knows the core's refusal of a chat whose folder is gone (D4)", () => {
+    expect(isFolderRefusal(new Error("this chat's folder cannot be used any more: C:\\gone does not exist"))).toBe(true);
+    expect(isFolderRefusal(new Error('the message is empty'))).toBe(false);
+    expect(isFolderRefusal(undefined)).toBe(false);
+  });
+
+  it('reopens the last chat while it is listed, else the most recently active one, else none (D7)', () => {
+    const list = [{ id: 'a', updatedAt: 5 }, { id: 'b', updatedAt: 9 }, { id: 'c', updatedAt: 1 }];
+    expect(chatToReopen(list, 'c')).toBe('c');
+    expect(chatToReopen(list, 'gone')).toBe('b');
+    expect(chatToReopen(list, '')).toBe('b');
+    expect(chatToReopen([], 'a')).toBe('');
+  });
+
+  it('keeps the last chat and the list filter per viewer, and survives storage that refuses (D7)', () => {
+    const st = mem();
+    expect(readLastChat(st)).toBe('');
+    writeLastChat('chat_x', st);
+    expect(readLastChat(st)).toBe('chat_x');
+    expect(readChatFilter(st)).toEqual({ all: true, archived: false });
+    writeChatFilter({ all: false, archived: true }, st);
+    expect(readChatFilter(st)).toEqual({ all: false, archived: true });
+    st.m.set('drydock.chat.filter', '{not json');
+    expect(readChatFilter(st)).toEqual({ all: true, archived: false });
+    expect(readLastChat(refusing)).toBe('');
+    expect(readChatFilter(refusing)).toEqual({ all: true, archived: false });
+    writeLastChat('x', refusing);
+    writeChatFilter({ all: true, archived: false }, refusing);
+  });
+
+  it("the feed follows a turn's first seconds: started here, the CLI up (agent.started for this chat), a step; ends with the turn (D12)", async () => {
+    const store = new EventStore(new FakeTransport());
+    const f = new ChatFeed({ chatGet: async () => ({ chat: chat(), messages: [], hasMore: false }), chatMessages: async () => ({ messages: [], hasMore: false }) }, store, 'c1').start();
+    await new Promise((r) => setTimeout(r, 0));
+    let seq = 1;
+    const emit = (type: string, extra: Partial<Parameters<typeof ev>[2]>) => store.ingest(ev(++seq, type, extra));
+    expect(f.phase).toBeUndefined();
+    emit('chat.turn_started', { data: { chatId: 'c1', turnId: 't1', attach: [] } });
+    expect(f.phase?.cli).toBe(false);
+    emit('agent.started', { agentId: 'other', data: {} });
+    expect(f.phase?.cli).toBe(false);
+    emit('agent.started', { agentId: 'c1', data: { adapter: 'claude' } });
+    expect([f.phase?.cli, f.phase?.step]).toEqual([true, '']);
+    emit('chat.tool', { data: { chatId: 'c1', turnId: 't1', name: 'Bash', summary: 'Bash: ls', messageId: 'm9' } });
+    expect(f.phase?.step).toBe('Bash');
+    emit('chat.turn', { data: { chatId: 'c1', turnId: 't1', status: 'done' } });
+    expect(f.phase).toBeUndefined();
+  });
+});
+
 describe('Tool cards', () => {
   it('names MCP tools as server and tool, Drydock\'s own as Drydock', () => {
     expect(toolLabel('mcp__drydock__skills')).toBe('Drydock · skills');
@@ -675,5 +756,18 @@ describe('Tool cards', () => {
     ]);
     expect(editLines({ command: 'ls' })).toBeUndefined();
     expect(editLines(undefined)).toBeUndefined();
+  });
+});
+
+describe('cliRefusal (A9)', () => {
+  it("offers the CLI's fix only for the core's own CLI refusals", () => {
+    expect(cliRefusal(new Error('claude needs your acknowledgement first (notice): read the terms'))).toBe(true);
+    expect(cliRefusal(new Error('Claude Code is not signed in'))).toBe(true);
+    expect(cliRefusal(new Error('Claude Code is not installed'))).toBe(true);
+    // a project or folder refusal: the CLI's fix would not help
+    expect(cliRefusal(new Error('project not found'))).toBe(false);
+    expect(cliRefusal(new Error('the folder C:\\work was not found'))).toBe(false);
+    expect(cliRefusal(new Error('sign in to GitHub first'))).toBe(false);
+    expect(cliRefusal(undefined)).toBe(false);
   });
 });

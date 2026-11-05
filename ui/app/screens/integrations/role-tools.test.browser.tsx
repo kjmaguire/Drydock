@@ -64,6 +64,9 @@ describe('Agent tools by role (P115)', () => {
     const f = fakeCore();
     const r = mount(<RoleToolsPanel projectId="prj_1" />, testServices(f.client));
     const cell = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'PM: Read files'), r);
+    // the table is behind "Change what each role may use", closed while it is Drydock's (decision P144)
+    const more = r.$('[data-testid="role-tools-more"]') as HTMLDetailsElement;
+    expect([more.open, more.querySelector('summary')!.textContent]).toEqual([false, 'Change what each role may use']);
     expect(cell.checked).toBe(false);
     expect(byLabel<HTMLInputElement>(r.container, 'QA: Read files').checked).toBe(true);
     // the act column says it gives nothing while agents may not act
@@ -72,6 +75,8 @@ describe('Agent tools by role (P115)', () => {
     await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'PM: Read files').checked).toBe(true), r);
     expect(f.calls).toEqual(['pm:read_range:true']);
     expect(r.$('tr[data-role="pm"] td[data-column="read_range"]')!.getAttribute('data-changed')).toBe('true');
+    // a changed cell opens it, so the change is in sight
+    await waitFor(() => expect((r.$('[data-testid="role-tools-more"]') as HTMLDetailsElement).open).toBe(true), r);
     // clicking it again sends the default back as null
     await r.act(() => byLabel<HTMLInputElement>(r.container, 'PM: Read files').click());
     await waitFor(() => expect(f.calls).toEqual(['pm:read_range:true', 'pm:read_range:null']), r);

@@ -272,8 +272,24 @@ func runningWork(ctx context.Context, tx *sql.Tx, projectID string) ([]string, e
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	turns, err := runningTurns(ctx, tx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, turns...), nil
+}
+
+// rowQuerier is a *sql.Tx or a *sql.DB.
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// runningTurns names the agent turns running in the project outside a workflow run: agents answering in its rooms and a
+// recommendation turn (Sync now, ext_reposync.go, also waits for these).
+func runningTurns(ctx context.Context, q rowQuerier, projectID string) ([]string, error) {
+	var out []string
 	var turns int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_turns WHERE project_id=? AND status='running'`, projectID).Scan(&turns); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_turns WHERE project_id=? AND status='running'`, projectID).Scan(&turns); err != nil {
 		return nil, err
 	}
 	if turns > 0 {
@@ -282,7 +298,7 @@ func runningWork(ctx context.Context, tx *sql.Tx, projectID string) ([]string, e
 	// a recommendation turn writes its result into the project when it ends (recommend.go); a row left running by a crash
 	// is marked failed at start, so this never refuses for one that is not running
 	var recs int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM recommendations WHERE project_id=? AND status='running'`, projectID).Scan(&recs); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM recommendations WHERE project_id=? AND status='running'`, projectID).Scan(&recs); err != nil {
 		return nil, err
 	}
 	if recs > 0 {

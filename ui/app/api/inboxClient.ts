@@ -3,13 +3,15 @@
 // Timestamps are unix milliseconds.
 
 import type { Transport } from './transport.ts';
-import type { Agent, ReviewPhase, TaskAllowRule, TaskStatus } from './types.ts';
+import type { Agent, PRReviewNote, ReviewPhase, TaskAllowRule, TaskStatus } from './types.ts';
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
 /** core.ApprovalDetail (approval.get): one request as the inbox's right pane shows it. */
 export interface ApprovalDetail {
   id: string;
+  /** A collaborator's change request on GitHub that arrived while this review and merge waited (H12). */
+  prReview?: PRReviewNote;
   /** approval | question | review */
   kind: string;
   /** The security kind of a security-service approval: shell_command, agent_tool, permission_mode_escalation, ... */
@@ -130,6 +132,8 @@ export interface InboxClient {
   approvalRuleRemove(id: string): Promise<void>;
   /** Marks an inbox item done (a failed check, a watchdog pause, a question): it leaves the inbox. A request is answered instead. */
   needsYouAck(key: string): Promise<void>;
+  /** Marks several inbox items done at once ("Mark N done"); refused whole when any is a request. Returns how many left the inbox. */
+  needsYouAckMany(keys: string[]): Promise<number>;
   /** Every project's agents, each with its projectId (the workspace's Crew page). */
   agentListAll(): Promise<Agent[]>;
   /** Each agent's runs and waits overlapping [since, until] (until omitted: now); projectId '' or omitted: every project. */
@@ -153,6 +157,7 @@ export function createInboxClient(t: Transport): InboxClient {
     needsYouAck: async (key) => {
       await t.call('needsyou.ack', { key });
     },
+    needsYouAckMany: async (keys) => (await t.call<{ done?: number }>('needsyou.ack', { keys }))?.done ?? 0,
     agentListAll: async () => arr(await t.call<Agent[] | null>('agent.listAll', {})),
     agentTimeline: async (since, until = 0, projectId = '') => {
       const tl = await t.call<CrewTimeline>('agent.timeline', { projectId, since, until });

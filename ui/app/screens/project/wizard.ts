@@ -120,6 +120,23 @@ export function cloneTarget(cloneDir: string, repo: Pick<GitHubRepo, 'name'> | u
   return dir.replace(/[\\/]+$/, '') + sep + repo.name;
 }
 
+/**
+ * A repository the person typed (W9): owner/name, or its github.com address (https://github.com/owner/name, with or without
+ * ".git"; git@github.com:owner/name.git), as owner/name; undefined when it is neither. The core reads it the same way.
+ */
+export function typedRepo(text: string): string | undefined {
+  let s = text.trim();
+  const m = /^(?:(?:https?:\/\/)?(?:www\.)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)(.*)$/i.exec(s);
+  if (m) {
+    const parts = (m[1] ?? '').split(/[?#]/)[0]!.replace(/^\/+|\/+$/g, '').split('/');
+    if (parts.length < 2) return undefined;
+    s = `${parts[0]}/${parts[1]!.replace(/\.git$/, '')}`;
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/.test(s)) return undefined;
+  const name = s.slice(s.indexOf('/') + 1);
+  return name === '.' || name === '..' || name.endsWith('.git') ? undefined : s;
+}
+
 /** The delivery mode that can apply: pull requests need a GitHub repository; no repository delivers nothing. */
 export function effectiveMode(s: Pick<WizardState, 'repo' | 'mode'>): ProjectMode {
   return s.repo === 'github' && s.mode === 'pr_flow' ? 'pr_flow' : 'local_merge';
@@ -129,6 +146,22 @@ export function effectiveMode(s: Pick<WizardState, 'repo' | 'mode'>): ProjectMod
 export function currentCheck(s: Pick<WizardState, 'localPath' | 'localCheck'>): RepoFolder | undefined {
   const c = s.localCheck;
   return c && c.path === s.localPath.trim().replace(/^"+|"+$/g, '').trim() ? c : undefined;
+}
+
+/**
+ * Whether Drydock makes the Git repository without asking (B6): a folder that does not exist yet or is empty holds nothing of
+ * the person's, so the box comes ticked; a folder with files in it waits for the person's click.
+ */
+export function autoInit(check: RepoFolder | undefined): boolean {
+  return !!check?.canInit && (check.state === 'missing' || (check.state === 'folder' && check.entries === 0));
+}
+
+/**
+ * Whether the request asks Drydock to make the repository: only when the person's choice stands and the check of the folder as
+ * typed now says one can be made there (a choice left from another path, before its check answers, does not count).
+ */
+export function initChosen(s: Pick<WizardState, 'localPath' | 'localCheck'>, initRepo: boolean): boolean {
+  return initRepo && !!currentCheck(s)?.canInit;
 }
 
 /**
@@ -142,22 +175,27 @@ export function folderProblem(check: RepoFolder | undefined, initRepo: boolean):
       return undefined;
     case 'folder':
     case 'missing':
-      return initRepo ? undefined : `${check.state === 'missing' ? 'This folder does not exist yet' : 'This folder is not a Git repository'}: tick "Create a Git repository here", or choose another folder.`;
+      if (initRepo) return undefined;
+      return autoInit(check)
+        ? `${check.state === 'missing' ? 'This folder does not exist yet' : 'This folder is empty'}: tick "Create a Git repository here", or choose another folder.`
+        : 'This folder is not a Git repository: press "Create a Git repository here", or choose another folder.';
     default:
       return check.message;
   }
 }
 
-/** The hint under the path: the Dev Drive advice on Windows (with the Dev Drives found), else what the field takes. */
-export function folderHint(h: FolderHints | undefined): string {
+/**
+ * The hint under the path (B4): what the field takes, and on Windows one more line only while the path is not on a Dev Drive:
+ * that projects build faster on one, naming the ones found.
+ */
+export function folderHint(h: FolderHints | undefined, path = ''): string {
   const base = 'A folder with a Git repository, or a new folder: Drydock can make the repository.';
   if (!h || (!h.windows && h.devDrives.length === 0)) return base;
-  const found = h.devDrives.length
-    ? ` Dev Drive ${h.devDrives.map((d) => d.letter).join(', ')} found.`
-    : h.devDriveReason
-      ? ` No Dev Drive was found on this PC: ${h.devDriveReason}.`
-      : ' No Dev Drive was found on this PC.';
-  return `${base} Keeping projects on a Windows Dev Drive is recommended: faster builds, and Microsoft Defender's performance mode.${found}`;
+  const p = path.trim().replace(/^"+|"+$/g, '').toUpperCase();
+  if (p && h.devDrives.some((d) => p.startsWith(d.letter.toUpperCase()))) return base;
+  return h.devDrives.length
+    ? `${base} Projects build faster on Dev Drive ${h.devDrives.map((d) => d.letter).join(', ')}.`
+    : `${base} Projects build faster on a Windows Dev Drive; none was found on this PC.`;
 }
 
 /** What keeps a step from being complete, in words; undefined when it is complete. */

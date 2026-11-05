@@ -5,6 +5,7 @@
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
 import './styles/app.css';
+import { navigate } from 'remix/component';
 import { run } from 'remix/spa';
 import { createClient } from './api/client.ts';
 import { HttpTransport, resolveToken, type Transport } from './api/transport.ts';
@@ -13,6 +14,7 @@ import { applyTheme, loadTheme } from './lib/theme.ts';
 import { isAbort, showRuntimeFailure, startGuarded } from './lib/failure.ts';
 import { installExternalLinks } from './lib/external-links.ts';
 import { redirectLegacyHash } from './lib/route.ts';
+import { installShellOpen } from './lib/shell-open.ts';
 import { createAppRouter } from './router.tsx';
 import { EventStore } from './state/eventStore.ts';
 import { ProjectData } from './state/project.ts';
@@ -84,6 +86,8 @@ async function boot() {
     if (!isAbort(err)) showRuntimeFailure(document, err);
   });
   await app.ready();
+  // a click on a Windows notification opens the item here (G1, app/notify_windows.go); only the desktop window has the event
+  if (transport instanceof WailsTransport) installShellOpen((name, cb) => transport.onShellEvent(name, cb), (href) => void navigate(href).catch(() => {}));
 }
 
 void startGuarded(document, boot);

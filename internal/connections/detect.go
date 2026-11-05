@@ -47,6 +47,8 @@ type Prereq struct {
 	Version string `json:"version,omitempty"`
 	OK      bool   `json:"ok"`
 	Guide   string `json:"guide,omitempty"` // plain-language guidance, never a command
+	// Link is the tool's own download page, opened in the browser from the Install and update tab (A5); empty when none is known.
+	Link string `json:"link,omitempty"`
 }
 
 // GateStatus is an acknowledgement the user owes before the Connection is usable.

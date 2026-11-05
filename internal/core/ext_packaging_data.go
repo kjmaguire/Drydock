@@ -105,6 +105,7 @@ func (p *packaging) export(ctx context.Context, r exportReq) (any, error) {
 		return nil, err
 	}
 	p.audit(ctx, "project.export", r.ProjectID, map[string]any{"file": filepath.Base(res.Path), "includeRuns": r.IncludeRuns, "redactions": res.Manifest.Scan.DBRedactions + res.Manifest.Scan.RunsRedactions})
+	p.c.written.add(res.Path)
 	p.c.publish(ctx, "project.exported", r.ProjectID, map[string]any{"file": filepath.Base(res.Path), "bytes": res.Size, "includeRuns": r.IncludeRuns})
 	return res, nil
 }
@@ -385,7 +386,46 @@ func (p *packaging) buildBundle(ctx context.Context, r bundleReq) (supportbundle
 	return supportbundle.Build(ctx, in, supportbundle.Options{Scanner: p.c.Scanner, Identity: p.identity, Now: p.bnow})
 }
 
+// RecentRun is a run the support page offers to include (X56): one that failed or was stopped part way, newest first, named by
+// its task. Ids and names only: nothing of what the run did.
+type RecentRun struct {
+	RunID     string `json:"runId"`
+	TaskID    string `json:"taskId,omitempty"`
+	ProjectID string `json:"projectId,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Project   string `json:"project,omitempty"`
+	Status    string `json:"status"`
+	UpdatedAt int64  `json:"updatedAt"`
+}
+
+// recentRunsLimit is how many runs supportbundle.recentRuns lists.
+const recentRunsLimit = 20
+
+// recentRuns lists the newest runs that failed or are paused (interrupted), for the support page's run picker.
+func (p *packaging) recentRuns(ctx context.Context) ([]RecentRun, error) {
+	rows, err := p.c.DB.Reader().QueryContext(ctx, `SELECT r.id, r.task_id, r.project_id, COALESCE(t.title,''), COALESCE(pr.name,''), r.status, r.updated_at
+		FROM workflow_runs r LEFT JOIN tasks t ON t.id=r.task_id LEFT JOIN projects pr ON pr.id=r.project_id
+		WHERE r.status IN ('FAILED','PAUSED') ORDER BY r.updated_at DESC LIMIT ?`, recentRunsLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RecentRun{}
+	for rows.Next() {
+		var r RecentRun
+		if err := rows.Scan(&r.RunID, &r.TaskID, &r.ProjectID, &r.Title, &r.Project, &r.Status, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 func (p *packaging) dataMethods(m map[string]Method) {
+	m["supportbundle.recentRuns"] = bind(func(ctx context.Context, _ struct{}) (any, error) {
+		runs, err := p.recentRuns(ctx)
+		return map[string]any{"runs": runs}, err
+	})
 	m["project.exportPreview"] = bind(func(ctx context.Context, r exportReq) (any, error) { return p.exportPreview(ctx, r) })
 	m["project.export"] = bind(func(ctx context.Context, r exportReq) (any, error) { return p.export(ctx, r) })
 	m["project.importPreview"] = bind(func(ctx context.Context, r importReq) (any, error) { return p.importPreview(ctx, r) })
@@ -443,6 +483,7 @@ func (p *packaging) dataMethods(m map[string]Method) {
 		if st != nil {
 			size = st.Size()
 		}
+		p.c.written.add(dest)
 		p.audit(ctx, "supportbundle.create", filepath.Base(dest), map[string]any{"runIncluded": r.IncludeRun, "secretsRedacted": b.Report.TotalSecrets, "refused": len(b.Report.Refused), "replaced": replaced})
 		return map[string]any{"path": dest, "size": size, "replaced": replaced, "files": b.Files, "report": b.Report, "notice": supportbundle.Notice}, nil
 	})

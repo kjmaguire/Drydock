@@ -6,7 +6,7 @@ import { css, on, ref, type Handle } from 'remix/component';
 import { CircleCheck, CircleSlash, FileKey, FlaskConical, KeyRound, Lock, RotateCcw, ShieldAlert, Trash2, TriangleAlert } from 'lucide';
 import type { LicenseView } from '../../api/pkgTypes.ts';
 import { starts } from '../../state/live.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, kv, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -16,6 +16,8 @@ import { Page } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { Callout, confirmRow, DangerZone, Done, Group, intro, panel, Row, settingsColumn } from '../settings/settings-kit.tsx';
 import { clockNote, daysLabel, daysText, messageCarriesClockNote, READONLY_OFF, READONLY_USABLE, stateText, stateTone } from './license.ts';
+import { ChooseFile } from '../shared/file-actions.tsx';
+import { folderRow } from '../shared/choose-folder.tsx';
 
 const headCss = css({
   display: 'flex',
@@ -44,7 +46,7 @@ function PageError(handle: Handle<{ error: unknown }>) {
   return () =>
     handle.props.error ? (
       <div class="error-note">
-        <ErrorNote error={handle.props.error} what="License" />
+        <ErrorNote error={handle.props.error} retry={retryFor(handle.props)} what="License" />
       </div>
     ) : null;
 }
@@ -286,13 +288,16 @@ export function LicenseScreen(handle: Handle) {
                 </Field>
                 <Field label="Or a license file path">
                   {(id) => (
-                    <input
-                      id={id}
-                      mix={[mono, on('input', (e) => ((path = e.currentTarget.value), void handle.update()))]}
-                      value={path}
-                      placeholder="C:\Users\you\Downloads\drydock.drydock-license"
-                      spellcheck={false}
-                    />
+                    <div mix={folderRow}>
+                      <input
+                        id={id}
+                        mix={[mono, on('input', (e) => ((path = e.currentTarget.value), void handle.update()))]}
+                        value={path}
+                        placeholder="C:\Users\you\Downloads\drydock.drydock-license"
+                        spellcheck={false}
+                      />
+                      <ChooseFile kind="license" testId="license-choose-file" onPick={(p) => ((path = p), void handle.update())} />
+                    </div>
                   )}
                 </Field>
                 <div mix={formActions}>

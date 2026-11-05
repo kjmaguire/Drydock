@@ -142,9 +142,40 @@ export function toolVerb(name: string | undefined, command: boolean, state: Tool
   return toolLabel(name);
 }
 
-export function ToolCard(handle: Handle<{ m: ChatMessage; summary: string; running: boolean }>) {
+// a diff on its own (the changes of a turn, chat-burst.tsx): the same lines as in an edit's card
+const diffCss = css({
+  margin: '0',
+  maxHeight: '420px',
+  overflow: 'auto',
+  fontFamily: t.mono,
+  fontSize: t.textXs,
+  borderRadius: t.rSm,
+  border: `1px solid ${t.border}`,
+  '& > div': { padding: '0 6px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
+  '& > div[data-kind="-"]': { background: `color-mix(in srgb, ${t.dangerSoft} 80%, transparent)` },
+  '& > div[data-kind="+"]': { background: `color-mix(in srgb, ${t.successSoft} 80%, transparent)` },
+});
+
+/** Removed and added lines, each marked, as an edit's card shows them. */
+export function DiffBlock(handle: Handle<{ lines: readonly DiffLine[]; label: string; testId?: string }>) {
   return () => {
-    const { m, summary, running } = handle.props;
+    const { lines, label, testId } = handle.props;
+    return (
+      <div mix={diffCss} role="group" aria-label={label} data-testid={testId}>
+        {lines.map((l, i) => (
+          <div key={i} data-kind={l.kind}>
+            {`${l.kind} ${l.text}`}
+          </div>
+        ))}
+      </div>
+    );
+  };
+}
+
+/** A tool call's card; `open` opens it when it is first drawn (a failed call shows what went wrong without a click). */
+export function ToolCard(handle: Handle<{ m: ChatMessage; summary: string; running: boolean; open?: boolean }>) {
+  return () => {
+    const { m, summary, running, open } = handle.props;
     const state = toolState(m, running);
     const label = toolLabel(m.toolName);
     const ms = durationText(m.toolMs);
@@ -154,7 +185,7 @@ export function ToolCard(handle: Handle<{ m: ChatMessage; summary: string; runni
     const shell = !!command || m.toolName === 'Bash';
     const result = m.toolResult ?? '';
     return (
-      <details mix={cardCss} data-testid="chat-tool" data-state={state} aria-label={`${label}: ${STATE_TEXT[state]}`}>
+      <details mix={cardCss} open={open || undefined} data-testid="chat-tool" data-state={state} aria-label={`${label}: ${STATE_TEXT[state]}`}>
         <summary>
           <span class="ic" aria-hidden="true">
             <Icon icon={toolIcon(m.toolName ?? '', !!command)} size={14} />

@@ -1,13 +1,24 @@
 import { expect } from 'remix/assert';
-import { afterEach, describe, it } from 'remix/test';
+import { afterEach, beforeEach, describe, it } from 'remix/test';
 import type { Client } from '../api/client.ts';
 import type { AssignPreview } from '../api/controlClient.ts';
 import { lic } from '../test/fixtures.ts';
 import { cleanup, mount, testServices, type, waitFor } from '../test/render.tsx';
 import { adapterInfo } from '../screens/project/wizard-fixtures.ts';
+import { RECENT_KEY } from './palette-items.ts';
 import { CommandPalette } from './palette.tsx';
 
 afterEach(cleanup);
+// what the menu remembers lives in the page's storage: every test starts with nothing run
+const forgetRecent = () => {
+  try {
+    localStorage.removeItem(RECENT_KEY);
+  } catch {
+    // no storage: nothing to forget
+  }
+};
+beforeEach(forgetRecent);
+afterEach(forgetRecent);
 
 function press(down: Element, clickTarget: Element) {
   down.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
@@ -250,7 +261,7 @@ describe('the command menu over a task (the graphite mockup)', () => {
     expect(labels().every((l) => /Tess/.test(l!))).toBe(true);
     await r.act(() => type(input, '> theme'));
     // the settings page that holds the theme, and the three themes
-    await waitFor(() => expect([...labels()].sort()).toEqual(['Settings and about', 'Theme: dark', 'Theme: follow the system', 'Theme: light']), r);
+    await waitFor(() => expect([...labels()].sort()).toEqual(['Settings', 'Theme: dark', 'Theme: follow the system', 'Theme: light']), r);
     await r.act(() => type(input, '> crew'));
     await waitFor(() => expect(labels()).toEqual([]), r);
   });
@@ -360,6 +371,54 @@ describe('the command menu over a task (the graphite mockup)', () => {
     const { r, labels } = await withTask({ agentList: async () => [team[0], team[1], { ...team[0], id: 'b2', name: 'Bea' }] as never });
     await waitFor(() => expect(labels()).toContain('Assign to Bea'), r);
     expect(labels()).not.toContain('Ask the team lead to split it');
+  });
+});
+
+describe('Recent and Open a terminal (G10, G6)', () => {
+  it('Open a terminal asks for a terminal, not only the tab, and what was run comes first next time', async () => {
+    const { s, r, input, groups, labels, highlight } = await withTask({}, {});
+    await r.act(() => type(input, 'open a terminal'));
+    await waitFor(() => expect(labels()[0]).toBe('Open a terminal'), r);
+    await highlight('Open a terminal');
+    await r.act(() => key(input, 'Enter'));
+    expect(s.ui.paletteOpen).toBe(false);
+    expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
+    expect(s.ui.takeTerminalAsk()).toEqual({ ensure: true });
+    // opened again with nothing typed: Recent first, holding it once
+    await r.act(() => s.ui.setPalette(true));
+    await waitFor(() => expect(groups()[0]).toBe('Recent'), r);
+    expect(labels()[0]).toBe('Open a terminal');
+    expect(labels().filter((l) => l === 'Open a terminal').length).toBe(1);
+  });
+
+  it('keeps what was done to the task out of Recent, and keeps a Go to (G10 review)', async () => {
+    const stored = () => {
+      try {
+        return (JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as { id: string }[]).map((e) => e.id);
+      } catch {
+        return [];
+      }
+    };
+    const { s, r, input, calls, highlight } = await withTask();
+    await highlight('Ask the team lead to split it');
+    await r.act(() => key(input, 'Enter'));
+    await waitFor(() => expect(has(calls, ['split', 't44'])).toBe(true), r);
+    await waitFor(() => expect(s.ui.paletteOpen).toBe(false), r);
+    expect(stored()).toEqual([]);
+    s.ui.setPalette(true);
+    await highlight('Crew');
+    await r.act(() => key(input, 'Enter'));
+    await waitFor(() => expect(s.ui.paletteOpen).toBe(false), r);
+    expect(stored()).toEqual(['screen:/team']);
+  });
+
+  it('leaves out Open a terminal on a page without the dock', async () => {
+    const s = testServices({ chatList: async () => [] });
+    const r = mount(<CommandPalette onMessage={() => {}} dock={false} />, s);
+    s.ui.setPalette(true);
+    const dlg = await waitFor(() => openDialog(r.container), r);
+    await r.act(() => type(dlg.querySelector('input')!, '> terminal'));
+    await waitFor(() => expect(dlg.textContent).toContain('Nothing matches'), r);
   });
 });
 

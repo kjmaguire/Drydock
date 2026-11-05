@@ -67,6 +67,11 @@ type MCPServerInput struct {
 	Guard *bool `json:"guard"`
 	// ReadOnlyTools are tools the human declares read-only; every other tool needs an approval for each call.
 	ReadOnlyTools []string `json:"readOnlyTools"`
+	// Discover lists the server's tools right after saving (F12), so connecting one is one step. It is honoured only for a
+	// web server at an https address the person typed, without OAuth (the sign-in comes first): it contacts that address once.
+	// A program is never started by it (M24: a program starts only on the person's Find tools or a grant). A discovery that
+	// fails leaves the server saved, with the reason as its last error.
+	Discover bool `json:"discover"`
 }
 
 // MCPLibraryServer is a connected server as the library shows it. It never carries a secret value.
@@ -712,8 +717,17 @@ ON CONFLICT(id) DO UPDATE SET display=excluded.display, transport=excluded.trans
 		gw.StopUpstream(r.ID) // a changed command, url or credential must take effect on the next call
 	}
 	s.c.publish(ctx, "mcp.server_saved", "", map[string]any{"id": r.ID, "transport": r.Transport, "new": isNew, "by": s.c.Human()})
+	if in.Discover && discoverOnSave(r.Transport, r.URL, r.OAuth) {
+		_, _ = s.discover(ctx, r.ID) // a failure is kept on the server (noteFailure) and shown on its page
+	}
 	out, err := s.load(ctx, r.ID)
 	return out.MCPLibraryServer, err
+}
+
+// discoverOnSave says whether saving may list a server's tools at once: a web server at an https address, not waiting for an
+// OAuth sign-in. Never a program (M24).
+func discoverOnSave(transport, url string, oauth bool) bool {
+	return transport == mcp.TransportHTTP && strings.HasPrefix(strings.ToLower(url), "https://") && !oauth
 }
 
 func nonNil(s []string) []string {

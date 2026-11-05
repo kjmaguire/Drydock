@@ -110,7 +110,7 @@ export function WiringDiagram(handle: Handle) {
         testId="route-wiring"
         description="What the router would choose right now for each level of agent work and each kind of turn: a dry run, nothing is recorded and no quota is taken."
       >
-        <ErrorNote error={answers.error} what="Wiring" />
+        <ErrorNote error={answers.error} retry={answers.reload} what="Wiring" />
         {blocked ? (
           <Notice tone="warn" testId="wire-blocked">
             Every turn is blocked: {blocked}. Add a model provider in <a href={routes.models.href()}>Models</a>.

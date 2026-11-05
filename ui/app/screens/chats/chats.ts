@@ -365,6 +365,16 @@ export function folderText(c: Pick<Chat, 'cwd' | 'wslDistro'>, max = 48): string
   return shortPath(p, max);
 }
 
+/**
+ * The header's folder chip (decision P139): the project's name for a project chat; "Own folder" for a chat in its private
+ * folder, whose path (the core's data folder, chats/<id>) says nothing to the person (decision P144); else the folder chosen,
+ * as its CLI sees it. The full path is the chip's tooltip either way.
+ */
+export function folderChipText(c: Pick<Chat, 'id' | 'cwd' | 'wslDistro'>, projectName?: string): string {
+  if (projectName) return projectName;
+  return inOwnFolder(c) ? 'Own folder' : folderText(c);
+}
+
 /** The command a waiting request would run, or '' when it is not a shell command. */
 export function askCommandOf(a: { input?: unknown }): string {
   const f = a.input && typeof a.input === 'object' && !Array.isArray(a.input) ? (a.input as Record<string, unknown>) : {};
@@ -389,3 +399,103 @@ export function ruleWords(rule: string): string {
   const w = m ? m[1]!.trim() : rule;
   return w.length > 40 ? `${w.slice(0, 39)}…` : w;
 }
+
+/**
+ * The one warning the chat's header shows about its CLI (decision P139), or '' when all is well: the CLI on this PC is missing,
+ * of a version that cannot run or not signed in, or the last turn failed. A chat in WSL is not judged by the Windows install.
+ */
+export function cliWarning(c: Pick<Chat, 'adapter' | 'wslDistro' | 'status'>, adapter: AdapterInfo | undefined): string {
+  if (adapter && !c.wslDistro) {
+    const why = adapterUnavailable(adapter);
+    if (why) return `${adapterLabel(c.adapter)} ${why}`;
+    if (adapter.detection.status === 'unauthenticated') return `${adapterLabel(c.adapter)} not signed in`;
+  }
+  return c.status === 'error' ? 'Last turn failed' : '';
+}
+
+/** The note a turn the person stopped ends with (chats.StoppedNote). */
+export const STOPPED_NOTE = 'Stopped by you.';
+
+/** The message Continue sends after a turn the person stopped (the core quotes what was shown up to the stop). */
+export const CONTINUE_TEXT = 'Continue.';
+
+/** Whether this error is the core's refusal of a chat whose folder is gone (chats.Send: "this chat's folder cannot be used any more"). */
+export const isFolderRefusal = (e: Error | undefined): boolean => !!e && /folder cannot be used any more/i.test(e.message);
+
+/**
+ * What the first seconds of a turn say before any text arrives (D12): the CLI starting, then thinking, then the step it is on.
+ * `phase` is undefined when the view did not see the turn start (opened mid-turn). After `slowMs` still starting says how long.
+ */
+export function turnPhaseText(who: string, phase: { since: number; cli: boolean; step: string } | undefined, now: number, slowMs = 20_000): { text: string; slow: boolean; seconds?: number } {
+  if (!phase) return { text: 'Working…', slow: false };
+  if (!phase.cli) {
+    const ms = now - phase.since;
+    // the seconds are shown beside the words, not in them: the words are what a screen reader announces
+    return ms >= slowMs ? { text: 'Still starting', slow: true, seconds: Math.floor(ms / 1000) } : { text: `Starting ${who}…`, slow: false };
+  }
+  return { text: phase.step ? `Using ${phase.step}…` : 'Thinking…', slow: false };
+}
+
+// --- what a viewer comes back to (D7): the last chat open and the list's filter, per viewer, wide layout only ---
+
+export const LAST_CHAT_KEY = 'drydock.chat.last';
+export const CHAT_FILTER_KEY = 'drydock.chat.filter';
+
+/** The chat the viewer last had open ('' when none, or storage refuses). */
+export function readLastChat(store: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): string {
+  try {
+    return store?.getItem(LAST_CHAT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function writeLastChat(id: string, store: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  try {
+    store?.setItem(LAST_CHAT_KEY, id);
+  } catch {
+    // kept for this view only
+  }
+}
+
+/** The chat /chats opens: the last one open while it is still listed, else the most recently active, else none. */
+export function chatToReopen(list: readonly { id: string; updatedAt: number }[], last: string): string {
+  if (last && list.some((c) => c.id === last)) return last;
+  let best: { id: string; updatedAt: number } | undefined;
+  for (const c of list) if (!best || c.updatedAt > best.updatedAt) best = c;
+  return best?.id ?? '';
+}
+
+export interface ChatFilter {
+  /** Every chat (true), or only the current project's. */
+  all: boolean;
+  archived: boolean;
+}
+
+export function readChatFilter(store: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): ChatFilter {
+  try {
+    const v = JSON.parse(store?.getItem(CHAT_FILTER_KEY) ?? 'null') as unknown;
+    if (v && typeof v === 'object') {
+      const f = v as Record<string, unknown>;
+      return { all: f.all !== false, archived: f.archived === true };
+    }
+  } catch {
+    // a missing, refused or damaged value: the defaults
+  }
+  return { all: true, archived: false };
+}
+
+export function writeChatFilter(f: ChatFilter, store: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  try {
+    store?.setItem(CHAT_FILTER_KEY, JSON.stringify({ all: f.all, archived: f.archived }));
+  } catch {
+    // kept for this view only
+  }
+}
+
+/**
+ * Whether chat.create was refused because of the agent CLI itself (A9): only the core's own CLI refusals, a notice not accepted
+ * ("needs your acknowledgement", internal/core/ext_chats.go), "is not signed in" or "is not installed". A licence, project or
+ * folder refusal ("not found", "not available") is not one: the CLI's fix would not help.
+ */
+export const cliRefusal = (e: Error | undefined): boolean => !!e && /needs your acknowledgement|is not signed in|is not installed/i.test(e.message);
