@@ -2,10 +2,10 @@
   "generated": "2026-11-03T21:26:43Z",
   "commit": "fe5c5e0",
   "summary": {
-    "current": 170,
+    "current": 171,
     "major": 2,
     "minor": 22,
-    "patch": 21,
+    "patch": 20,
     "unknown": 4
   },
   "items": [
@@ -1224,11 +1224,10 @@
       "group": "Go libraries pulled in by other libraries",
       "name": "github.com/andybalholm/brotli",
       "kind": "indirect",
-      "used": "1.2.6",
-      "latest": "1.2.7",
-      "status": "patch",
-      "usedDate": "2026-09-30",
-      "latestDate": "2026-10-23",
+      "used": "1.2.8",
+      "latest": "1.2.8",
+      "status": "current",
+      "usedDate": "2026-11-04",
       "where": "go.mod",
       "inBuild": true
     },
