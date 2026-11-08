@@ -5,7 +5,7 @@
 // (task.assignPreview: the branch, the spec gate, the checks, what it asks before, the agent's queue).
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { ArrowRight, Bot, ClipboardList, Inbox, MessageCircle, MessagesSquare, Search, Shield, User, Users, Zap, type IconNode } from 'lucide';
+import { ArrowRight, Bot, ClipboardList, GitMerge, Inbox, MessageCircle, MessagesSquare, Search, Shield, User, Users, Zap, type IconNode } from 'lucide';
 import type { Agent, Connection, Task } from '../api/types.ts';
 import { projectHasRepo } from '../api/types.ts';
 import type { AssignPreview, PreviewAgent } from '../api/controlClient.ts';
@@ -22,6 +22,7 @@ import { Avatar } from '../ui/data.tsx';
 import { ErrorNote } from '../ui/feedback.tsx';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
+import { needsLook } from '../screens/needs-you/needs-you.ts';
 import {
   GO_CHORDS,
   PALETTE_CHATS,
@@ -185,6 +186,7 @@ function iconOf(it: PaletteItem): IconNode {
   if (group === 'Tasks') return ClipboardList;
   if (group === 'Agents') return Bot;
   if (group === 'Actions') return Zap;
+  if (group === 'Decide') return GitMerge;
   return ArrowRight;
 }
 
@@ -447,6 +449,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
         human: ws.info.data?.human || undefined,
         localIds: new Set([...(local.data?.ids ?? []), ...p.agentList.filter((a) => !!local.data?.providerId && a.providerId === local.data.providerId).map((a) => a.id)]),
         runtime: runtimeOf,
+        awaitsMerge: (ws.needs.data ?? []).some((it) => it.taskId === task.id && needsLook(it) === 'merge'),
         askCli: askChoice ? (askChoice.wslDistro ? cliName({ adapter: askChoice.adapter.id, runMode: 'wsl', distro: askChoice.wslDistro }, conns.data ?? []) : cliName({ adapter: askChoice.adapter.id, runMode: 'native' })) : undefined,
       };
     } else {

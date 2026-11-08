@@ -288,16 +288,20 @@ export function chatRowLine(parts: { project?: string; cli: string; when: string
   return [parts.project, parts.cli, parts.when].filter(Boolean).join(' · ');
 }
 
-/** A permission mode in plain words, for the composer's approval button. A mode Drydock does not know is named as it is. */
+/**
+ * A permission mode in plain words, for the composer's approval button: the three the Start box and the Crew say the same way
+ * (Read only, Asks before edits, Edits freely; critique 2026-11-08), the others in words of their own. A mode Drydock does not
+ * know is named as it is.
+ */
 export function modeWords(mode: string): string {
   switch (mode) {
     case '':
     case 'default':
-      return 'Asks before commands';
+      return 'Asks before edits';
     case 'acceptEdits':
-      return 'Edits files, asks before commands';
+      return 'Edits freely';
     case 'plan':
-      return 'Plans only, changes nothing';
+      return 'Read only';
     case 'bypassPermissions':
       return 'Never asks, skips approvals';
     case 'auto':

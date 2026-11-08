@@ -70,7 +70,7 @@ describe('Agents > My agents (decision P140)', () => {
     expect(tplTiles[0]!.querySelector('strong')!.textContent).toBe('Payments dev');
     expect(tplTiles[0]!.querySelector('[data-letters]')).not.toBeNull();
     expect(purpose(tplTiles[0]!)).toBe('Own the payments service.');
-    expect(chip(tplTiles[0]!)).toBe('sonnet · high');
+    expect(chip(tplTiles[0]!)).toBe('Sonnet · high');
     expect(tplTiles[0]!.textContent).toContain('Gets 1 server');
     expect(purpose(tplTiles[1]!)).toBe('Own the payments service.');
     // no model set: the chip names the agent CLI

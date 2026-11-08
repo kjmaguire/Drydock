@@ -70,7 +70,7 @@ describe('Home is the start screen (P142)', () => {
     await waitFor(() => expect(box(r)).not.toBeNull(), r);
     expect(r.$('h1')!.textContent).toBe('What do you want to build?');
     expect(r.$$('[data-testid="workspace-home"] p').length).toBe(1);
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await waitFor(() => expect(chipText(r, 'start-where')).toBe('New folder: new-project'), r);
     expect(chipText(r, 'start-who')).toBe('Solo · Claude Code');
     expect(chipText(r, 'start-permission')).toBe('Edits freely');
@@ -124,7 +124,7 @@ describe('Home is the start screen (P142)', () => {
     });
     const chosen: string[] = [];
     s.workspace.selectProject = (id: string) => void chosen.push(id);
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await r.act(() => type(box(r), 'A small Go CLI that converts CSV to JSON'));
     await r.act(() => enter(box(r), true)); // Shift+Enter is a new line
     expect(setups).toHaveLength(0);
@@ -225,7 +225,7 @@ describe('Home is the start screen (P142)', () => {
       chatCreate: async () => ({ id: 'c9' }) as never,
       chatSend: async () => ({ turnId: 't', version: 1 }),
     });
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await r.act(() => type(box(r), 'A small Go CLI'));
     await r.act(() => enter(box(r)));
     await waitFor(() => expect(navigated).toEqual(['/?item=chat:c9']), r);
@@ -239,7 +239,7 @@ describe('Home is the start screen (P142)', () => {
         throw new Error('the folder is inside another repository');
       },
     });
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await r.act(() => enter(box(r)));
     expect(r.$('[data-testid="start-error"]')!.textContent).toBe('Describe what you want to build.');
     await r.act(() => type(box(r), 'Build a thing'));
@@ -284,7 +284,7 @@ describe('Home is the start screen (P142)', () => {
       chatCreate: async (p) => (chats.push(p), { id: 'c1' }) as never,
       chatSend: async (_id, text) => (sent.push(text), { turnId: 't', version: 1 }),
     });
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await r.act(() => type(box(r), 'What is a monad?'));
     await r.act(() => byText(r.container, 'button', 'Just chat').click());
     await waitFor(() => expect(navigated).toEqual(['/chats/c1']), r);
@@ -300,7 +300,7 @@ describe('Home is the start screen (P142)', () => {
       chatCreate: async (p) => (chats.push(p), { id: 'c1' }) as never,
       chatSend: async () => ({ turnId: 't', version: 1 }),
     });
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('opus · high'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Opus · high'), r);
     expect(chipText(r, 'start-permission')).toBe('Read only');
     expect(asked[0]).toEqual(['', 'claude']);
     await r.act(() => type(box(r), 'What is a monad?'));
@@ -335,7 +335,7 @@ describe('Home is the start screen (P142)', () => {
       chatSend: async () => ({ turnId: 't', version: 1 }),
     });
     await waitFor(() => expect(box(again.r)?.value).toBe('A pricing page with three tiers'), again.r);
-    await waitFor(() => expect(chipText(again.r, 'start-model')).toBe('sonnet · medium'), again.r);
+    await waitFor(() => expect(chipText(again.r, 'start-model')).toBe('Sonnet · medium'), again.r);
     await again.r.act(() => byText(again.r.container, 'button', 'Just chat').click());
     await waitFor(() => expect(again.navigated).toEqual(['/chats/c1']), again.r);
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
@@ -376,7 +376,7 @@ describe('Home is the start screen (P142)', () => {
       chatSend: async () => ({ turnId: 't', version: 1 }),
     });
     const { r } = first;
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await r.act(() => click(r, '[data-testid="start-who"]'));
     await waitFor(() => expect(r.$('[data-testid="who-team"]')).not.toBeNull(), r);
     await r.act(() => click(r, '[data-testid="who-team"]'));
@@ -404,7 +404,7 @@ describe('Home is the start screen (P142)', () => {
       chatCreate: async () => ({ id: 'c1' }) as never,
       chatSend: async () => ({ turnId: 't', version: 1 }),
     });
-    await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
+    await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await r.act(() => click(r, '[data-testid="start-who"]'));
     await waitFor(() => expect(r.$('[data-testid="who-describe"]')).not.toBeNull(), r);
     await r.act(() => click(r, '[data-testid="who-describe"]'));

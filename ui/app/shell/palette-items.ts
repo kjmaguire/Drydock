@@ -12,11 +12,11 @@ import { GUIDE_TOPICS } from '../screens/guide/topics.ts';
 import { routes } from '../routes.ts';
 import { newProjectHref } from './new.ts';
 
-export type Group = 'Recent' | 'Assign' | 'Actions' | 'Go to' | 'Navigate' | 'Chats' | 'Tasks' | 'Agents';
+export type Group = 'Recent' | 'Decide' | 'Assign' | 'Actions' | 'Go to' | 'Navigate' | 'Chats' | 'Tasks' | 'Agents';
 /** The groups of the menu with nothing typed and no task in context (the order they are listed in): what the person ran last first. */
 export const GROUPS: Group[] = ['Recent', 'Navigate', 'Chats', 'Tasks', 'Agents', 'Actions'];
 /** The groups with nothing typed and a task in context: what can be done with it, then where to go. */
-export const CONTEXT_GROUPS: Group[] = ['Assign', 'Actions', 'Go to'];
+export const CONTEXT_GROUPS: Group[] = ['Decide', 'Assign', 'Actions', 'Go to'];
 
 /** What an option does to the task in context (the menu runs it with the client). */
 export type TaskOp = { kind: 'assign'; assignee: string; agentId?: string } | { kind: 'split' } | { kind: 'scan' } | { kind: 'ask' };
@@ -195,6 +195,8 @@ export interface TaskContext {
   runtime: (a: Agent) => string;
   /** The agent CLI a chat about the task starts with ("Claude Code"); absent when none can start one. */
   askCli?: string;
+  /** The task's change waits for the person to merge it (a review and merge in the Inbox). */
+  awaitsMerge?: boolean;
 }
 
 export interface BuildOptions {
@@ -208,6 +210,19 @@ export interface BuildOptions {
 export function contextItems(agents: readonly Agent[], c: TaskContext, projectKey?: string): PaletteItem[] {
   const out: PaletteItem[] = [];
   const key = taskKey(c.task.seq, projectKey);
+  // a change that waits for the person comes first, found by "merge" (critique 2026-11-08): it opens the decision, with its checks
+  // and the reviewer's verdict, rather than merging from here (the merge stays the click on the decision card)
+  if (c.awaitsMerge) {
+    out.push({
+      id: 'merge',
+      group: 'Decide',
+      label: `Review and merge ${key}`,
+      keywords: ['merge', 'approve', 'review', 'decide', key],
+      href: routes.task.href({ id: c.task.id }),
+      context: true,
+      what: `Opens ${key} at its decision: the checks, the reviewer's verdict and the patch, with Merge and Request changes.`,
+    });
+  }
   const lead = findLead(agents);
   const workers = agents.filter((a) => !isLeadRole(a.role));
   const assign = (a: Agent, hint: string): PaletteItem => ({

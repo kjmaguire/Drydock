@@ -220,6 +220,19 @@ describe('the options about the task in context', () => {
     expect(labels).toEqual(['Assign to Builder', 'Assign to Local helper']);
   });
 
+  it('puts a change waiting to be merged first, found by "merge", opening the decision rather than merging (critique 2026-11-08)', () => {
+    const items = buildItems(rooms, tasks, team, [], { projectKey: 'GOC', context: ctx({ awaitsMerge: true }) });
+    const groups = arrange(filterItems(items, ''), '');
+    expect(groups[0]!.group).toBe('Decide');
+    const merge = groups[0]!.items[0]!;
+    expect(merge.label).toBe('Review and merge GOC-44');
+    expect(merge.op).toBe(undefined);
+    expect(merge.href).toBe('/task/t44');
+    expect(filterItems(items, 'merge')[0]!.id).toBe('merge');
+    // nothing waits: no such option
+    expect(contextItems(team, ctx(), 'GOC').some((i) => i.id === 'merge')).toBe(false);
+  });
+
   it('lists only the options about the task with nothing typed, grouped Assign, Actions, Go to', () => {
     const items = buildItems(rooms, tasks, team, [], { projectKey: 'GOC', context: ctx() });
     const shown = filterItems(items, '');

@@ -260,10 +260,10 @@ function ToolLine(handle: Handle<{ step: ActivityStep; now: number }>) {
             </span>
             {s.added || s.removed ? (
               <>
-                <span class="add" aria-label={`${s.added} lines added`}>
+                <span class="add" aria-label={`${s.added} lines added by this write`} title="Lines this write added and removed; the decision card counts the whole change">
                   +{s.added}
                 </span>
-                <span class="del" aria-label={`${s.removed} lines removed`}>
+                <span class="del" aria-label={`${s.removed} lines removed by this write`}>
                   −{s.removed}
                 </span>
               </>

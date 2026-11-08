@@ -18,8 +18,8 @@ describe('library tiles', () => {
 
 describe('the My agents card and a starter as my agent (decision P140)', () => {
   it('words the chip and the one line of purpose', () => {
-    expect(modelChip({ adapter: 'claude', model: 'opus', effort: 'high' })).toBe('opus · high');
-    expect(modelChip({ adapter: 'claude', model: 'opus', effort: '' })).toBe('opus');
+    expect(modelChip({ adapter: 'claude', model: 'opus', effort: 'high' })).toBe('Opus · high');
+    expect(modelChip({ adapter: 'claude', model: 'opus', effort: '' })).toBe('Opus');
     expect(modelChip({ adapter: 'codex', model: '', effort: 'high' })).toBe('codex');
     expect(purposeLine({ purpose: 'Keeps the crew on task. Escalates when stuck.' })).toBe('Keeps the crew on task.');
     expect(purposeLine({ purpose: 'First line\nsecond line' })).toBe('First line');

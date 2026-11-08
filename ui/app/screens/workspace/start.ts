@@ -3,6 +3,7 @@
 // Enter does: make the project when the place is new, then the first piece of work, a task when the crew has a worker and a
 // different reviewer and the project has a repository, else a chat in the project.
 
+import { modelName } from '../../lib/model-name.ts';
 import { PROJECT_BRIEF_MAX, projectHasRepo, type AdapterInfo, type Agent, type PrebuiltAgent, type Project, type SetupRequest, type SetupResult, type SetupWarning, type Task } from '../../api/types.ts';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import type { Chat, ChatCreate } from '../../api/chatClient.ts';
@@ -553,7 +554,7 @@ export function crewLabel(crew: Crew, o: { adapter: string; catalog: readonly Pr
 }
 
 export function tuningLabel(t: Tuning): string {
-  return `${t.model || 'default model'} · ${t.effort || 'default effort'}`;
+  return `${t.model ? modelName(t.model) : 'default model'} · ${t.effort || 'default effort'}`;
 }
 
 export function permissionLabel(mode: string): string {

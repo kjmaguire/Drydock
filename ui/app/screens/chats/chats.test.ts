@@ -113,10 +113,10 @@ describe('chats helpers', () => {
 
   it('says the permission mode, where a chat runs and its folder in words from its fields', () => {
     expect(['', 'default', 'acceptEdits', 'plan', 'bypassPermissions', 'auto', 'dontAsk', 'read-only'].map(modeWords)).toEqual([
-      'Asks before commands',
-      'Asks before commands',
-      'Edits files, asks before commands',
-      'Plans only, changes nothing',
+      'Asks before edits',
+      'Asks before edits',
+      'Edits freely',
+      'Read only',
       'Never asks, skips approvals',
       'Decides itself, skips approvals',
       'Does not ask, skips approvals',

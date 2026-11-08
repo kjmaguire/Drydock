@@ -1,6 +1,7 @@
 // What a Library tile says about an agent template: one line for what it is, one for its state (with the tone the tile colours it
 // by). Pure, so the wording is tested without a page. The MCP servers it names are connected on the Integrations page.
 
+import { modelName } from '../../lib/model-name.ts';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import type { PrebuiltAgent } from '../../api/types.ts';
 
@@ -21,9 +22,9 @@ export function templateState(tp: Pick<AgentTemplate, 'mcpServers' | 'skills'>, 
   return parts.length ? { text: `Gets ${parts.join(' and ')}`, tone: 'ok' } : { text: 'No servers or skills', tone: '' };
 }
 
-/** The card's chip: the model and the effort ("opus · high"), or the agent CLI when no model is set. */
+/** The card's chip: the model and the effort ("Opus · high"), or the agent CLI when no model is set. */
 export function modelChip(tp: Pick<AgentTemplate, 'adapter' | 'model' | 'effort'>): string {
-  return [tp.model || tp.adapter, tp.model ? tp.effort : ''].filter(Boolean).join(' · ');
+  return [tp.model ? modelName(tp.model) : tp.adapter, tp.model ? tp.effort : ''].filter(Boolean).join(' · ');
 }
 
 /** The card's one line of purpose: the purpose's first sentence or line, '' when none is written. */

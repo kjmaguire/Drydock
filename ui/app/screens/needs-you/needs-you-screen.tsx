@@ -46,6 +46,7 @@ import {
   LOOK_WORDS,
   msOf,
   needsHint,
+  answerKeys,
   needsLook,
   needsRowTitle,
   needsSubtitle,
@@ -603,6 +604,8 @@ export function NeedsYouScreen(
       </section>
     );
 
+    // the A and D keys of the selected item, in its buttons' words
+    const keys = answerKeys(sel?.type === 'needs' ? needsLook(sel.item) : undefined);
     return (
       <div mix={frameCss}>
         <div mix={gridCss}>
@@ -636,13 +639,17 @@ export function NeedsYouScreen(
                 </section>
               )}
             </div>
-            <footer mix={footCss} aria-label="Keys">
-              <span>
-                <kbd>A</kbd> approve
-              </span>
-              <span>
-                <kbd>D</kbd> deny
-              </span>
+            <footer mix={footCss} aria-label="Keys" data-testid="inbox-keys">
+              {keys.a ? (
+                <span>
+                  <kbd>A</kbd> {keys.a}
+                </span>
+              ) : null}
+              {keys.d ? (
+                <span>
+                  <kbd>D</kbd> {keys.d}
+                </span>
+              ) : null}
               <span>
                 <kbd>{'↵'}</kbd> open
               </span>

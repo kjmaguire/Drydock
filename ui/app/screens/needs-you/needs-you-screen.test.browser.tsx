@@ -219,6 +219,8 @@ describe('the Inbox', () => {
     expect(r.$('[data-testid="detail-kind"]')!.textContent).toBe('Spec gate · gocalc');
     expect(r.$('[data-testid="detail-approve"]')!.textContent).toBe('Accept spec A');
     expect(r.$('[data-testid="detail-deny"]')).toBeNull();
+    // the footer's keys follow the selection, in its buttons' words: A accepts the spec, and D is not offered (critique 2026-11-08)
+    expect(r.$('[data-testid="inbox-keys"]')!.textContent).toBe('A accept spec↵ openE done');
     expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open to review');
     // D does nothing to a review: sending a spec back needs the feedback, on the task's page
     await r.act(() => press('d'));

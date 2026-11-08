@@ -5,6 +5,7 @@ import { needsChanged } from '../../state/project.ts';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import { summariesChanged } from '../../state/workspace.ts';
 import {
+  answerKeys,
   answerOf,
   inboxAddress,
   tabOfItem,
@@ -327,5 +328,16 @@ describe("the Inbox's address", () => {
     expect(tabOfItem('task:t4', 'needs')).toBe(undefined);
     expect(tabOfItem('task:t4', 'mine')).toBe('running');
     expect(tabOfItem(undefined, 'mine')).toBe(undefined);
+  });
+});
+
+describe("the Inbox footer's keys (critique 2026-11-08)", () => {
+  it('names what A and D do on the selected item in the words of its buttons, and leaves out a key that does nothing', () => {
+    expect(answerKeys('merge')).toEqual({ a: 'merge' });
+    expect(answerKeys('spec')).toEqual({ a: 'accept spec' });
+    expect(answerKeys('approval')).toEqual({ a: 'approve', d: 'deny' });
+    expect(answerKeys('chat')).toEqual({ a: 'allow', d: 'deny' });
+    expect(answerKeys('failed_check')).toEqual({});
+    expect(answerKeys(undefined)).toEqual({});
   });
 });

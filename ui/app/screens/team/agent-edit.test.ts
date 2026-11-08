@@ -73,8 +73,8 @@ describe('the agent editor panel (P137)', () => {
   });
 
   it('the chip says model and effort', () => {
-    expect(modelChip(agent())).toBe('sonnet · medium');
-    expect(modelChip(agent({ effort: '' }))).toBe('sonnet');
+    expect(modelChip(agent())).toBe('Sonnet · medium');
+    expect(modelChip(agent({ effort: '' }))).toBe('Sonnet');
     expect(modelChip(agent({ model: '', effort: '' }))).toBe('default model');
   });
 
@@ -91,7 +91,7 @@ describe('the agent editor panel (P137)', () => {
   });
 
   it('says where a save goes', () => {
-    expect(scopeNote(agent(), false, 'calculator', 'opus · high')).toBe('opus · high is used for Pay in calculator only. Other projects keep their own settings.');
+    expect(scopeNote(agent(), false, 'calculator', 'Opus · high')).toBe('Opus · high is used for Pay in calculator only. Other projects keep their own settings.');
     expect(scopeNote(agent({ templateId: 'tpl_1' }), true, 'calculator', 'x')).toContain("Pay's template and to every agent made from it");
     expect(scopeNote(agent(), true, 'calculator', 'x')).toContain('Also saves Pay as a template');
     expect(everywhereNote({ templateName: 'Backend', created: false, agents: 2, skipped: [] })).toBe('Saved to the template Backend and 2 more agents.');

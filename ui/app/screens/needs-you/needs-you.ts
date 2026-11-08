@@ -383,3 +383,22 @@ export function tabOfItem(item: string | undefined, current: 'needs' | 'running'
   if (item.startsWith('task:') || item.startsWith('scan:')) return current === 'needs' || current === 'running' ? undefined : 'running';
   return undefined;
 }
+
+/**
+ * What the A and D keys do on the selected item, in the words of its buttons (critique 2026-11-08: the footer said "A approve,
+ * D deny" on a merge, whose button says Merge and which D does not answer). A key that does nothing there is left out.
+ */
+export function answerKeys(look: NeedsLook | undefined): { a?: string; d?: string } {
+  switch (look) {
+    case 'merge':
+      return { a: 'merge' };
+    case 'spec':
+      return { a: 'accept spec' };
+    case 'approval':
+      return { a: 'approve', d: 'deny' };
+    case 'chat':
+      return { a: 'allow', d: 'deny' };
+    default:
+      return {};
+  }
+}

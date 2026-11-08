@@ -2,6 +2,7 @@
 // the panel offers while the CLI's capabilities load or when they cannot be read, the chip text, and the update a Save sends.
 
 import type { Agent, AgentUpdate, Capabilities } from '../../api/types.ts';
+import { modelName } from '../../lib/model-name.ts';
 import { skipsApprovals } from '../../lib/permission.ts';
 import type { Segment } from '../../ui/segmented.tsx';
 
@@ -94,9 +95,9 @@ export function permissionWords(mode: string | undefined): string {
   return mode;
 }
 
-/** The "model · effort" chip of an agent ("sonnet · medium", "default model"). */
+/** The "model · effort" chip of an agent ("Sonnet · medium", "default model"): the model named as everywhere else (modelName). */
 export function modelChip(a: Pick<Agent, 'model' | 'effort'>): string {
-  const m = a.model || 'default model';
+  const m = a.model ? modelName(a.model) : 'default model';
   return a.effort ? `${m} · ${a.effort}` : m;
 }
 

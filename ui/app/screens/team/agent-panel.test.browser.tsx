@@ -81,7 +81,7 @@ describe('the agent editor panel (P137)', () => {
     const s = svc([a], { agentUpdate: async (u) => (calls.push(u), { ...a, ...u } as UpdatedAgent) });
     const r = mount(<TeamScreen now={() => Date.now()} />, s);
     const chip = await waitFor(() => must(r.$('[data-testid="agent"] [data-testid="agent-model-chip"]') as HTMLElement | null, 'no chip'), r);
-    expect(chip.textContent).toBe('sonnet · medium');
+    expect(chip.textContent).toBe('Sonnet · medium');
     expect(r.$('[data-testid="agent-permission-chip"]')!.textContent).toBe('Asks before edits');
     await r.act(() => chip.click());
     const ed = await waitFor(() => must(panel(r), 'no panel'), r);
@@ -92,7 +92,7 @@ describe('the agent editor panel (P137)', () => {
     type(byLabel(ed, 'Model'), 'opus');
     await r.act(() => radio(ed, 'Effort', 'high').click());
     await r.act(() => radio(ed, 'Permissions', 'plan').click());
-    expect(ed.querySelector('[data-testid="scope-note"]')!.textContent).toBe('opus · high is used for Backend Engineer in calculator only. Other projects keep their own settings.');
+    expect(ed.querySelector('[data-testid="scope-note"]')!.textContent).toBe('Opus · high is used for Backend Engineer in calculator only. Other projects keep their own settings.');
     await r.act(() => byText(ed, 'button', 'Save').click());
     await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', model: 'opus', effort: 'high', permissionMode: 'plan' }]), r);
     await waitFor(() => expect(panel(r)).toBeNull(), r);

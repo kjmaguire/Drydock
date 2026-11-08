@@ -892,7 +892,7 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     expect(b.querySelector('[data-testid="presence"]')!.textContent).toBe('waiting on you');
     expect(b.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · backend');
     // the model is said once, on its chip (decision P144)
-    expect(b.querySelector('[data-testid="agent-model-chip"]')!.textContent).toContain('opus');
+    expect(b.querySelector('[data-testid="agent-model-chip"]')!.textContent).toContain('Opus');
     await waitFor(() => expect(b.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Approve the plan on GOC-41. Open the Inbox to decide.'), r);
     expect(b.querySelector('[data-testid="agent-inbox"]')!.getAttribute('href')).toBe('/needs-you');
     expect(b.querySelector('[data-testid="agent-link"]')!.getAttribute('href')).toBe('/team/agt_2');

@@ -85,7 +85,7 @@ test('Ctrl+N starts a chat without a project, and Move to a project moves it int
   await expect(list).toBeVisible();
   await page.locator('body').press('Control+n');
   await expect(page).toHaveURL(/\/chats\/chat_/);
-  await expect(page.getByTestId('chip-mode')).toHaveText('Asks before commands');
+  await expect(page.getByTestId('chip-mode')).toHaveText('Asks before edits');
 
   const message = page.getByLabel('Message', { exact: true });
   await message.fill('drydock-e2e chat: before the move');

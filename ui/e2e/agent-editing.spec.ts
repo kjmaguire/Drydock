@@ -16,14 +16,14 @@ test('the Crew card opens the agent editor panel; model, effort and permission p
   await choose(panel.getByLabel('Model', { exact: true }), 'opus');
   await panel.getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'high', exact: true }).click();
   await panel.getByRole('radiogroup', { name: 'Permissions' }).getByRole('radio', { name: 'Read only' }).click();
-  await expect(panel.getByTestId('scope-note')).toContainText('opus · high is used for Zed in edit-in-place only');
+  await expect(panel.getByTestId('scope-note')).toContainText('Opus · high is used for Zed in edit-in-place only');
   await panel.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('dialog[open]')).toHaveCount(0);
-  await expect(card.getByTestId('agent-model-chip')).toHaveText('opus · high');
+  await expect(card.getByTestId('agent-model-chip')).toHaveText('Opus · high');
 
   await page.reload();
   await projectNav(page, 'nav-team');
-  await expect(card.getByTestId('agent-model-chip')).toHaveText('opus · high');
+  await expect(card.getByTestId('agent-model-chip')).toHaveText('Opus · high');
   await expect(card.getByTestId('agent-permission-chip')).toHaveText('Read only');
   const again = await openAgentPanel(page, 'Zed', false);
   await expect(again.getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'high', exact: true })).toHaveAttribute('aria-checked', 'true');
@@ -55,7 +55,7 @@ test('a sentence drafts an agent (offline rules), the person adjusts it and crea
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   const card = page.locator('[data-testid="agent"][data-name="Sec"]');
   await expect(card).toBeVisible();
-  await expect(card.getByTestId('agent-model-chip')).toHaveText('opus · high');
+  await expect(card.getByTestId('agent-model-chip')).toHaveText('Opus · high');
   await expect(card.getByTestId('agent-permission-chip')).toHaveText('Read only');
 
   // a starter chip drafts at once

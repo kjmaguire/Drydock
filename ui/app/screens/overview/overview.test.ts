@@ -49,6 +49,8 @@ describe('the Insights numbers', () => {
     expect(spendLine({ rows: 3, reportedUsd: 2.5, estimatedUsd: 0.25, unknownCostRows: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, turns: 3 }, [st])).toEqual({ amount: '$2.75', note: 'of $5 budget', fraction: 0.5 });
     expect(spendLine({ rows: 2, reportedUsd: 0, estimatedUsd: 0, unknownCostRows: 2, inputTokens: 0, outputTokens: 0, cachedTokens: 0, turns: 2 }, [])).toEqual({ amount: 'n/a', note: 'no budget set · 2 calls not priced', fraction: undefined });
     expect(spendLine(undefined, [])).toEqual({ amount: '$0.00', note: 'no budget set', fraction: undefined });
+    expect(spendLine({ rows: 1, reportedUsd: 0.0004, estimatedUsd: 0, unknownCostRows: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, turns: 1 }, []).amount).toBe('under $0.01');
+    expect(spendLine({ rows: 1, reportedUsd: 0.005, estimatedUsd: 0, unknownCostRows: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0, turns: 1 }, []).amount).toBe('$0.01');
   });
 
   it('a disabled budget, a budget without a dollar limit or a task budget is not the project line', () => {

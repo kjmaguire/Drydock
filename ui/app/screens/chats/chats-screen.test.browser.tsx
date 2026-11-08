@@ -649,7 +649,7 @@ describe('Conversation', () => {
     const effort = must$(r, '[data-testid="chip-effort"]');
     expect([effort.textContent, effort.getAttribute('data-default')]).toEqual(['· medium', 'true']);
     expect(must$(r, '[data-testid="chat-settings-open"]').getAttribute('title')).toContain("Opus 5.5 is the CLI's default");
-    expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Asks before commands');
+    expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Asks before edits');
     // the settings say what "none chosen" means, by name
     await r.act(() => must$(r, '[data-testid="chat-settings-open"]').click());
     const form = await waitFor(() => must(doc$$('form').find((f) => f.textContent!.includes('Chat settings')), 'settings'), r);
@@ -1679,19 +1679,19 @@ describe('The graphite Chats screen (P97)', () => {
     const updates: unknown[] = [];
     const { r } = conv(chat(), [msg(1, 'user', 'hi')], { chatUpdate: async (u) => (updates.push(u), chat({ ...u, skipsApprovals: u.permissionMode === 'bypassPermissions' } as Partial<Chat>)) });
     const mode = await waitFor(() => must$(r, '[data-testid="chip-mode"]'), r);
-    expect([mode.tagName, mode.textContent, mode.getAttribute('data-warn')]).toEqual(['BUTTON', 'Asks before commands', null]);
+    expect([mode.tagName, mode.textContent, mode.getAttribute('data-warn')]).toEqual(['BUTTON', 'Asks before edits', null]);
     const openList = async () => {
       await r.act(() => must$(r, '[data-testid="chip-mode"]').click());
       return waitFor(() => must$(r, '[data-testid="chat-mode-settings"] [data-testid="chat-mode-list"]'), r);
     };
     let list = await openList();
     const names = () => Array.from(list.querySelectorAll('[role="group"] button')).map((b) => b.textContent!.replace('✓', '').trim());
-    expect(names()).toEqual(['Asks before commands', 'Edits files, asks before commands', 'Plans only, changes nothing', 'Other…']);
+    expect(names()).toEqual(['Asks before edits', 'Edits freely', 'Read only', 'Other…']);
     expect(list.querySelector('[data-mode="default"]')!.getAttribute('aria-pressed')).toBe('true');
     // one click applies it and closes the list
     await r.act(() => must(list.querySelector<HTMLElement>('[data-mode="acceptEdits"]'), 'acceptEdits').click());
     await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', permissionMode: 'acceptEdits' }]), r);
-    await waitFor(() => expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Edits files, asks before commands'), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Edits freely'), r);
     await waitFor(() => expect($(r, '[data-testid="chat-mode-list"]')).toBeNull(), r);
     // the skip modes are behind Other…, and apply only once confirmed
     list = await openList();
