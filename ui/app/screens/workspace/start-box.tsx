@@ -1,6 +1,6 @@
 // The start screen's box (decision P142): one description, a row of chips under it (Where, Who, model · effort, permissions),
-// Start (Enter), the progress in the box and one line of error under it; then the "Or:" row (New folder, Clone from GitHub,
-// Open a folder..., Just chat). What Enter does is start.ts; this file only holds the choices and shows them. A project without
+// Start (Enter), the progress in the box and one line of error under it; then the "Or:" row (Just chat: the places are the Where
+// chip's menu). What Enter does is start.ts; this file only holds the choices and shows them. A project without
 // work yet is Home's New project (P143); the box has no way to the old wizard any more.
 
 import { css, navigate, on, ref, type Handle, type MixInput, type RemixNode } from 'remix/component';
@@ -62,6 +62,7 @@ import {
   type Tuning,
   type Where,
 } from './start.ts';
+import { projectLabels } from '../../lib/project-label.ts';
 
 const boxCss = css({
   display: 'grid',
@@ -362,6 +363,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
     // the most recently active first, as "Pick up where you left off" has them, with the same pill (B9)
     const ws = s.workspace;
     const recent = pickUp(ws.projectList, ws.summaries.data?.summaries ?? [], ws.needs.data ?? [], RUNNING_STATUSES).slice(0, 6);
+    const names = projectLabels(ws.projectList);
     const w = effectiveWhere();
     return (
       <div mix={menuCss}>
@@ -409,7 +411,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
               >
                 <span class="dot" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} aria-hidden="true" />
                 <span class="grow">
-                  <span>{p.name}</span>
+                  <span>{names.get(p.id)?.label ?? p.name}</span>
                   <span class="sub" data-testid="where-recent-state">
                     {pickPill(it).text}
                   </span>
@@ -629,16 +631,8 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
         ) : null}
         {fixed ? null : (
           <div mix={orCss} data-testid="start-or">
+            {/* the places (New folder, Open a folder, Clone from GitHub) are the Where chip's menu; the row repeated them (critique 2026-11-08) */}
             <span>Or:</span>
-            <button type="button" data-testid="or-new-folder" disabled={busy} mix={on('click', () => choose({ kind: 'new', path: '' }))}>
-              <Icon icon={Plus} size={13} /> New folder
-            </button>
-            <button type="button" data-testid="or-clone" disabled={busy} mix={on('click', () => set(() => (dialog = 'clone')))}>
-              <Icon icon={ArrowDownToLine} size={13} /> Clone from GitHub
-            </button>
-            <button type="button" data-testid="or-folder" disabled={busy} mix={on('click', () => set(() => (dialog = 'folder')))}>
-              <Icon icon={FolderOpen} size={13} /> Open a folder…
-            </button>
             <button type="button" data-testid="or-chat" disabled={busy} mix={on('click', () => void justChat())}>
               <Icon icon={MessagesSquare} size={13} /> Just chat
             </button>

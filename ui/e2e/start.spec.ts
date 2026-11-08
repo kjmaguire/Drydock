@@ -60,7 +60,8 @@ test('an opened folder with Small team: a task assigned to the builder and the r
   await home(page);
   await page.getByTestId('start-text').fill('Add a Multiply function to the calculator. With tests.');
   // Open a folder...: the folder field of the wizard, in a small dialog
-  await page.getByTestId('or-folder').click();
+  await page.getByTestId('start-where').click();
+  await page.getByTestId('where-folder').click();
   const dialog = page.getByTestId('start-folder-dialog');
   await dialog.getByLabel('Folder', { exact: true }).fill(repo);
   await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'repository');

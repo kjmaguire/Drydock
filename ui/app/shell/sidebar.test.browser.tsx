@@ -80,6 +80,24 @@ describe('the sidebar', () => {
     expect(r.$$('[aria-current="page"]')).toHaveLength(0);
   });
 
+  it('tells two projects of one name apart by their folders (critique 2026-11-08)', async () => {
+    const r = mount(
+      <Sidebar route={{ name: 'tasks' }} />,
+      svc({
+        projectList: async () =>
+          [
+            { id: 'p', name: 'gocalc', repoPath: '/tmp/x/repo0/gocalc' },
+            { id: 'q', name: 'gocalc', repoPath: '/tmp/x/repo1/gocalc' },
+            { id: 'z', name: 'shop-api', repoPath: '/src/shop-api' },
+          ] as never,
+      }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="nav-project-item"]').length).toBe(3), r);
+    const items = Array.from(r.$$('[data-testid="nav-project-item"]'));
+    expect(items.map((a) => a.getAttribute('aria-label'))).toEqual(['gocalc · repo0', 'gocalc · repo1', 'shop-api']);
+    expect(items.map((a) => a.querySelector('.lbl')!.textContent)).toEqual(['gocalc · repo0', 'gocalc · repo1', 'shop-api']);
+  });
+
   it("counts every project's items that need you; the Inbox is current on its tabs and on My tasks", async () => {
     const s = svc({
       // a project's own list is not the count: the workspace's (no project) is

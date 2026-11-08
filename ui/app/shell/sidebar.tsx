@@ -28,6 +28,7 @@ import { hueFor } from '../ui/data.tsx';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
 import { focusStart, isNewKey, newHref, openNew } from './new.ts';
+import { projectLabels } from '../lib/project-label.ts';
 
 const asideCss = css({
   display: 'flex',
@@ -130,6 +131,7 @@ const itemCss = css({
   textDecoration: 'none',
   whiteSpace: 'nowrap',
   '& > .lbl': { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& > .lbl > .detail': { color: t.textFaint },
   '& svg': { flex: 'none' },
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
   '&[aria-current="page"], &[aria-current="true"]': { background: t.bgActive, color: t.text },
@@ -314,6 +316,8 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
     const eng = engineWords(engine.data);
     const is = (h: Hub) => hub === h;
 
+    // a name two projects share is told apart by its folder (critique 2026-11-08)
+    const names = projectLabels(ws.projectList);
     return (
       <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar" data-region="sidebar">
         <nav aria-label="Main" mix={[navCss, on<HTMLElement, 'keydown'>('keydown', onKey)]}>
@@ -407,6 +411,7 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
           <ul mix={listCss} role="list" aria-label="Projects">
             {ws.projectList.map((p) => {
               const open = !workspace && p.id === project?.id;
+              const named = names.get(p.id) ?? { label: p.name, detail: '' };
               const waiting = perProject.get(p.id) ?? [];
               return (
                 <li key={p.id} style={{ position: 'relative' }}>
@@ -416,7 +421,8 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                       // a project opens on Work (decision P141), also the open one from its Crew or Settings
                       if (p.id !== ws.projectId) s.workspace.selectProject(p.id);
                     })]}
-                    title={p.name}
+                    title={named.label}
+                    aria-label={named.label}
                     data-nav=""
                     data-testid="nav-project-item"
                     data-project={p.id}
@@ -425,8 +431,16 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                     data-needs={waiting.length ? 'true' : undefined}
                   >
                     <span mix={squareCss} aria-hidden="true" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} />
-                    <span class="lbl">{p.name}</span>
-                    {open && s.project.taskTotal ? <span class="count" mix={countCss}>{s.project.taskTotal}</span> : null}
+                    <span class="lbl">
+                      {p.name}
+                      {named.detail ? <span class="detail"> · {named.detail}</span> : null}
+                    </span>
+                    {/* the open project's tasks: said in its title, so it is not read as a second "needs you" count beside the amber one */}
+                    {open && s.project.taskTotal ? (
+                      <span class="count" mix={countCss} title={`${s.project.taskTotal} ${s.project.taskTotal === 1 ? 'task' : 'tasks'}`} data-testid="nav-project-tasks">
+                        {s.project.taskTotal}
+                      </span>
+                    ) : null}
                   </a>
                   {/* which project needs you: its count opens the Inbox on its first item */}
                   {waiting.length ? (
@@ -435,8 +449,8 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                       mix={[needsCss, projectNeedsCss]}
                       data-testid="nav-project-needs"
                       data-project={p.id}
-                      aria-label={`${p.name}: ${waiting.length} ${waiting.length === 1 ? 'item needs' : 'items need'} you`}
-                      title={`${waiting.length} ${waiting.length === 1 ? 'item needs' : 'items need'} you in ${p.name}`}
+                      aria-label={`${named.label}: ${waiting.length} ${waiting.length === 1 ? 'item needs' : 'items need'} you`}
+                      title={`${waiting.length} ${waiting.length === 1 ? 'item needs' : 'items need'} you in ${named.label}`}
                     >
                       {waiting.length}
                     </a>

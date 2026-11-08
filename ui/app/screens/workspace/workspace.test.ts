@@ -27,6 +27,24 @@ describe('Pick up where you left off (P142)', () => {
     ]);
   });
 
+  it("counts a project's chats: a chat is something to pick up, and the newer of a chat and a task is the line (critique 2026-11-08)", () => {
+    const items = pickUp(
+      [p('chatty', 1), p('both', 1), p('quiet', 1)],
+      [{ projectId: 'both', status: 'COMPLETED', title: 'Add Divide', updatedAt: 2_000_000_000_000 }],
+      [],
+      RUNNING_STATUSES,
+      [
+        { projectId: 'chatty', title: 'How does parse work?', updatedAt: 3_000_000_000 },
+        { projectId: 'both', title: 'Older chat', updatedAt: 1_500_000_000_000 },
+      ],
+    );
+    expect(items.map((x) => [x.project.id, x.line, x.last])).toEqual([
+      ['chatty', 'Chat: How does parse work?', 3_000_000_000_000],
+      ['both', 'Last: Add Divide (completed)', 2_000_000_000_000],
+      ['quiet', 'Nothing started yet.', 1000],
+    ]);
+  });
+
   it('reads a creation time in seconds or milliseconds', () => {
     expect(pickUp([p('s', 1_700_000_000)], [], [], RUNNING_STATUSES)[0]!.last).toBe(1_700_000_000_000);
     expect(pickUp([p('ms', 1_700_000_000_000)], [], [], RUNNING_STATUSES)[0]!.last).toBe(1_700_000_000_000);

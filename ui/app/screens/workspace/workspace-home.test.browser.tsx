@@ -76,7 +76,7 @@ describe('Home is the start screen (P142)', () => {
     expect(chipText(r, 'start-permission')).toBe('Asks before edits');
     await r.act(() => type(box(r), 'A small Go CLI that converts CSV to JSON'));
     await waitFor(() => expect(chipText(r, 'start-where')).toBe('New folder: go-cli-converts'), r);
-    expect(Array.from(r.$$('[data-testid="start-or"] button')).map((b) => b.textContent!.trim())).toEqual(['New folder', 'Clone from GitHub', 'Open a folder…', 'Just chat']);
+    expect(Array.from(r.$$('[data-testid="start-or"] button')).map((b) => b.textContent!.trim())).toEqual(['Just chat']);
     // no way to the old wizard any more: a project without work is New project (P143)
     expect(r.$('[data-testid="start-more"]')).toBe(null);
   });
@@ -350,8 +350,9 @@ describe('Home is the start screen (P142)', () => {
     const { r } = show({
       repoCheck: async (path: string) => (checks++, { path, state: 'missing', entries: 0, canInit: true, message: 'This folder does not exist yet.' }) as never,
     });
-    await waitFor(() => expect(r.$('[data-testid="or-folder"]')).not.toBeNull(), r);
-    await r.act(() => click(r, '[data-testid="or-folder"]'));
+    await waitFor(() => expect(r.$('[data-testid="start-where"]')).not.toBeNull(), r);
+    await r.act(() => click(r, '[data-testid="start-where"]'));
+    await r.act(() => click(r, '[data-testid="where-folder"]'));
     const field = await waitFor(() => r.$('[data-testid="start-folder-dialog"] [data-testid="folder-field"] input') as HTMLInputElement, r);
     await r.act(() => type(field, '/src/new'));
     const tick = () => r.$('[data-testid="folder-init"] input') as HTMLInputElement;
@@ -359,7 +360,8 @@ describe('Home is the start screen (P142)', () => {
     await r.act(() => tick().click());
     expect(tick().checked).toBe(false);
     await r.act(() => byText(r.$('[data-testid="start-folder-dialog"]')!, 'button', 'Cancel').click());
-    await r.act(() => click(r, '[data-testid="or-folder"]'));
+    await r.act(() => click(r, '[data-testid="start-where"]'));
+    await r.act(() => click(r, '[data-testid="where-folder"]'));
     // the folder is checked again; the person's untick stands
     await waitFor(() => expect(checks).toBe(2), r, 3000);
     await drain();

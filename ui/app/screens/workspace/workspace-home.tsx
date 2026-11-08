@@ -10,7 +10,7 @@ import { ArrowRight, Plus } from 'lucide';
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
-import { retryFor, services, watch } from '../../state/services.tsx';
+import { query, retryFor, services, watch } from '../../state/services.tsx';
 import { hueFor } from '../../ui/data.tsx';
 import type { NewProjectWhere } from '../../shell/new.ts';
 import { Button } from '../../ui/button.tsx';
@@ -22,6 +22,7 @@ import { NewProjectDialog } from './new-project.tsx';
 import { StartBox } from './start-box.tsx';
 import { StartReportLine } from './start-report.tsx';
 import { pickPill, pickUp, type PickUp } from './workspace.ts';
+import { projectLabels } from '../../lib/project-label.ts';
 
 const wrapCss = css({
   display: 'grid',
@@ -77,7 +78,7 @@ const cardCss = css({
 });
 
 /** One project to pick up: its colour, name, a status pill and one line. Opening it selects the project first. */
-function PickCard(handle: Handle<{ item: PickUp; onNavigate?: (href: string) => void }>) {
+function PickCard(handle: Handle<{ item: PickUp; name: string; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   const open = (e: MouseEvent) => {
     e.preventDefault();
@@ -87,13 +88,14 @@ function PickCard(handle: Handle<{ item: PickUp; onNavigate?: (href: string) => 
   };
   return () => {
     const { project: p, line } = handle.props.item;
+    const name = handle.props.name;
     const pill = pickPill(handle.props.item);
     return (
       <li>
-        <a href={routes.home.href()} mix={[cardCss, on<HTMLAnchorElement, 'click'>('click', open)]} data-testid="home-project" data-project={p.id} aria-label={`Open ${p.name}`}>
+        <a href={routes.home.href()} mix={[cardCss, on<HTMLAnchorElement, 'click'>('click', open)]} data-testid="home-project" data-project={p.id} aria-label={`Open ${name}`}>
           <span class="top">
             <span class="dot" aria-hidden="true" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} />
-            <strong>{p.name}</strong>
+            <strong>{name}</strong>
             {pill.text ? (
               <span class="pill" data-tone={pill.tone || undefined} data-testid="home-project-state">
                 {pill.text}
@@ -132,12 +134,16 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
     }
   };
 
+  // the chats of every project: a project with only a chat in it has something to pick up (critique 2026-11-08)
+  const chats = query(handle, { load: () => s.client.chatList({ projectId: '', includeArchived: false }).catch(() => []), when: (e) => e.type.startsWith('chat.') });
+
   return () => {
     fromAddress();
     const ws = s.workspace;
     const projects: Project[] = ws.projectList;
-    const items = pickUp(projects, ws.summaries.data?.summaries ?? [], ws.needs.data ?? [], RUNNING_STATUSES);
+    const items = pickUp(projects, ws.summaries.data?.summaries ?? [], ws.needs.data ?? [], RUNNING_STATUSES, chats.data ?? []);
     const shown = all ? items : items.slice(0, 3);
+    const names = projectLabels(projects);
     return (
       <Page
         title="What do you want to build?"
@@ -146,7 +152,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
           <div mix={wrapCss}>
             <div class="top">
               <h1 id={id}>What do you want to build?</h1>
-              <Button variant="primary" size="sm" icon={Plus} aria-haspopup="dialog" data-testid="home-new-project" mix={on('click', () => ((newWhere = undefined), (newOpen = true), void handle.update()))}>
+              <Button variant="secondary" size="sm" icon={Plus} aria-haspopup="dialog" data-testid="home-new-project" mix={on('click', () => ((newWhere = undefined), (newOpen = true), void handle.update()))}>
                 New project
               </Button>
             </div>
@@ -166,7 +172,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
                 </div>
                 <ul aria-label="Projects">
                   {shown.map((it) => (
-                    <PickCard key={it.project.id} item={it} onNavigate={handle.props.onNavigate} />
+                    <PickCard key={it.project.id} item={it} name={names.get(it.project.id)?.label ?? it.project.name} onNavigate={handle.props.onNavigate} />
                   ))}
                 </ul>
               </section>
