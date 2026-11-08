@@ -93,6 +93,10 @@ A sweep of the code, CI and packaging for software Drydock uses found these, whi
   in the path.
 - **Not part of the product**: the Phase 0 probe modules (`evidence/phase0/**/go.mod`, a record of what was verified), the
   starter template's packages (`testdata/starter-cloudflare-saas`), the trial fixtures, and Dependabot (a GitHub service).
+- **Tools for the coding agents that work on this repository**: Impeccable, the design skill in `.claude/` (skill 4.8.1, its
+  engine 0.1.19, Apache-2.0; `.claude/skills/impeccable/scripts/VERSION` and `engine-checksums.txt`). It is not built into Drydock
+  or run by its CI. Its engine binary is not committed: the launcher downloads it on first use and checks it against
+  `engine-checksums.txt`. `npx impeccable update` moves it to a newer release.
 
 ## Libraries only in the module graph
 
