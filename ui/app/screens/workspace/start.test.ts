@@ -137,8 +137,9 @@ describe('the start screen: crews (P142)', () => {
   });
 
   it("takes the builder's model and effort as the chips' first values; a new agent edits freely", () => {
-    expect(defaultTuning(CATALOG)).toEqual({ model: 'sonnet', effort: 'medium', permission: 'acceptEdits' });
-    expect(defaultTuning([])).toEqual({ model: '', effort: '', permission: 'acceptEdits' });
+    // a first start asks before edits, whatever the catalog's builder would get (critique 2026-11-08)
+    expect(defaultTuning(CATALOG)).toEqual({ model: 'sonnet', effort: 'medium', permission: 'default' });
+    expect(defaultTuning([])).toEqual({ model: '', effort: '', permission: 'default' });
   });
 
   it('Solo is the builder with the chips; Small team the suggested three with the chips on the builder only', () => {
@@ -211,7 +212,8 @@ describe('what Enter does (P142)', () => {
     const p = plan({});
     expect(p.setup).toEqual({
       name: 'csv-json',
-      brief: 'A small Go CLI that converts CSV to JSON',
+      // the description is the first task, never the project's brief (critique 2026-11-08)
+      brief: '',
       repo: { kind: 'local', path: '/code/csv-json', init: true },
       mode: 'local_merge',
       libraryServers: [],
@@ -354,7 +356,7 @@ describe('New project (P143): a project with nothing started', () => {
     expect(req.libraryServers).toEqual([]);
     expect(req.catalogServers).toEqual([]);
     expect(req.agents.map((a) => a.prebuilt)).toEqual(['backend-engineer']);
-    expect(req.agents[0]!.permissionMode).toBe('acceptEdits');
+    expect(req.agents[0]!.permissionMode).toBe('default');
     const clone = newProjectSetup({ where: { kind: 'clone', repo: 'acme/pay', cloneDir: '/src' }, name: 'pay', catalog: CATALOG }) as SetupRequest;
     // New project's Clone makes the project at once and the clone is attached when it lands (B12)
     expect(clone.repo).toEqual({ kind: 'github', github: 'acme/pay', cloneDir: '/src', later: true });

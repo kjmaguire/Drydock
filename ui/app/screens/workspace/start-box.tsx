@@ -39,6 +39,7 @@ import {
   crewKinds,
   crewLabel,
   defaultTuning,
+  FIRST_PERMISSION,
   insteadTuning,
   keepDraft,
   newFolderPath,
@@ -173,7 +174,7 @@ const menuCss = css({
 });
 const dialogBody = css({ display: 'grid', gap: t.s4, minWidth: '0', '& .acts': { display: 'flex', justifyContent: 'flex-end', gap: t.s2 } });
 
-const noTuning: Tuning = { model: '', effort: '', permission: 'acceptEdits' };
+const noTuning: Tuning = { model: '', effort: '', permission: FIRST_PERMISSION };
 
 /** A chip: an icon, a name and a quiet detail, opening its menu. */
 function chip(mix: MixInput<HTMLElement>, expanded: boolean, testId: string, label: string, icon: IconNode | undefined, name: string, detail?: string, disabled?: boolean): RemixNode {

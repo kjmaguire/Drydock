@@ -140,11 +140,15 @@ export function tuningApplies(crew: Pick<Crew, 'kind'>): boolean {
 /** The builder's catalog entry. */
 export const builderEntry = (catalog: readonly PrebuiltAgent[]): PrebuiltAgent | undefined => catalog.find((e) => e.id === BUILDER);
 
-/** The chips' first values: the builder's model and effort, and its permission mode (a new agent edits freely). */
+/**
+ * The chips' first values: the builder's model and effort, and Asks before edits. A first start does not hand an agent the
+ * repository without asking (critique 2026-11-08); the person's own choice is remembered for the place (remember) and wins after.
+ */
+export const FIRST_PERMISSION = 'default';
 export function defaultTuning(catalog: readonly PrebuiltAgent[]): Tuning {
   const e = builderEntry(catalog);
   const m = e ? memberFromPrebuilt(e, []) : undefined;
-  return { model: m?.model ?? '', effort: m?.effort ?? '', permission: m?.permissionMode || 'acceptEdits' };
+  return { model: m?.model ?? '', effort: m?.effort ?? '', permission: FIRST_PERMISSION };
 }
 
 /** The builder's agent CLI: the catalog's recommendation (or the first usable alternative), else the first CLI offered. */
@@ -203,9 +207,13 @@ export function crewMembers(crew: Crew, catalog: readonly PrebuiltAgent[], templ
   return team;
 }
 
-/** The wizard's state for a start: its defaults (no connectors, local merge, the agents' skills installed), this place and crew. */
+/**
+ * The wizard's state for a start: its defaults (no connectors, local merge, the agents' skills installed), this place and crew.
+ * The description is the first task, not the project's brief: a brief is what every agent reads on every turn, so it is never
+ * made from one task's words without the person writing it (critique 2026-11-08); Project settings › Brief is where it is written.
+ */
 export function startWizard(where: Where, text: string, team: TeamMember[]): WizardState {
-  const st: WizardState = { ...emptyWizard(), name: projectName(where, text), brief: text.trim(), team, suggested: true };
+  const st: WizardState = { ...emptyWizard(), name: projectName(where, text), brief: '', team, suggested: true };
   if (where.kind === 'new') Object.assign(st, { repo: 'local', localPath: where.path.trim(), initRepo: true });
   else if (where.kind === 'folder') Object.assign(st, { repo: 'local', localPath: where.path.trim(), initRepo: where.init });
   else if (where.kind === 'clone') {

@@ -73,7 +73,7 @@ describe('Home is the start screen (P142)', () => {
     await waitFor(() => expect(chipText(r, 'start-model')).toBe('Sonnet · medium'), r);
     await waitFor(() => expect(chipText(r, 'start-where')).toBe('New folder: new-project'), r);
     expect(chipText(r, 'start-who')).toBe('Solo · Claude Code');
-    expect(chipText(r, 'start-permission')).toBe('Edits freely');
+    expect(chipText(r, 'start-permission')).toBe('Asks before edits');
     await r.act(() => type(box(r), 'A small Go CLI that converts CSV to JSON'));
     await waitFor(() => expect(chipText(r, 'start-where')).toBe('New folder: go-cli-converts'), r);
     expect(Array.from(r.$$('[data-testid="start-or"] button')).map((b) => b.textContent!.trim())).toEqual(['New folder', 'Clone from GitHub', 'Open a folder…', 'Just chat']);
@@ -139,7 +139,7 @@ describe('Home is the start screen (P142)', () => {
     expect(setups[0]!.agents.map((a) => a.prebuilt)).toEqual(['backend-engineer']);
     release();
     await waitFor(() => expect(navigated).toEqual(['/?item=chat:c9']), r);
-    expect(chats).toEqual([{ projectId: 'p9', adapter: 'claude', model: 'sonnet', effort: 'medium', permissionMode: 'acceptEdits' }]);
+    expect(chats).toEqual([{ projectId: 'p9', adapter: 'claude', model: 'sonnet', effort: 'medium', permissionMode: 'default' }]);
     expect(sent).toEqual(['A small Go CLI that converts CSV to JSON']);
     expect(s.workspace.setupOpen).toBe(false);
     expect(chosen).toEqual(['p9']);
@@ -288,7 +288,7 @@ describe('Home is the start screen (P142)', () => {
     await r.act(() => type(box(r), 'What is a monad?'));
     await r.act(() => byText(r.container, 'button', 'Just chat').click());
     await waitFor(() => expect(navigated).toEqual(['/chats/c1']), r);
-    expect(chats).toEqual([{ adapter: 'claude', model: 'sonnet', effort: 'medium', permissionMode: 'acceptEdits' }]);
+    expect(chats).toEqual([{ adapter: 'claude', model: 'sonnet', effort: 'medium', permissionMode: 'default' }]);
     expect(sent).toEqual(['What is a monad?']);
   });
 
