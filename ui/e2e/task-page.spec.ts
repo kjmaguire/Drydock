@@ -104,5 +104,6 @@ test('steer, pause and resume a running task from its page', async ({ page }) =>
   await page.getByRole('button', { name: 'Cancel task' }).click();
   await page.getByRole('button', { name: 'Yes, cancel task' }).click();
   await expect(pill).toHaveText(/^Cancelled/, { timeout: 60_000 });
-  await expect(page.getByLabel('Message the agent')).toBeDisabled();
+  // a closed task has no steer box: there is no run to steer (critique 2026-11-08)
+  await expect(page.getByTestId('steer')).toHaveCount(0);
 });
