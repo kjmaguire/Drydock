@@ -63,6 +63,14 @@ describe('the hubs', () => {
     expect(mount(<SubNav route={{ name: 'needs-you' }} />).$('nav')).toBeNull();
   });
 
+  it('names the project as the sidebar does: a name two projects share is told apart by its folder (critique 2026-11-08)', async () => {
+    const r = mount(
+      <SubNav route={{ name: 'home' }} />,
+      svc({ projectList: async () => [{ id: 'p', name: 'gocalc', repoPath: '/x/repo0/gocalc' }, { id: 'q', name: 'gocalc', repoPath: '/x/repo1/gocalc' }] as never }),
+    );
+    await waitFor(() => expect(r.$('[data-testid="project-name"]')!.textContent).toBe('gocalc · repo0'), r);
+  });
+
   it("a project's pages have one tab bar (decision P141): its name, Work, Crew and Settings with the old test ids, New task on Work", async () => {
     const tabs = (r: ReturnType<typeof mount>) => Array.from(r.$$('nav[aria-label="Project"] > a')).map((a) => [a.getAttribute('data-testid'), a.textContent, a.getAttribute('href'), a.getAttribute('aria-current')]);
     const w = mount(<SubNav route={{ name: 'home' }} />, svc());

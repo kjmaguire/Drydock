@@ -16,6 +16,7 @@ import { Avatar, hueFor, presenceColor } from '../ui/data.tsx';
 import { Icon, roomIcon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
 import { tightList } from '../ui/layout.tsx';
+import { projectLabels } from '../lib/project-label.ts';
 import { PROJECT_SECTIONS } from './project-sections.ts';
 import { SETTINGS_SECTIONS, searchSettings, sectionOf, type SettingsSection } from './settings-sections.ts';
 
@@ -191,6 +192,8 @@ export function ProjectTabs(handle: Handle<{ route: Route }>) {
     const { route } = handle.props;
     const hub = hubOf(route);
     const project = s.workspace.project;
+    // the name the sidebar shows: a name two projects share is told apart by its folder (critique 2026-11-08)
+    const named = project ? (projectLabels(s.workspace.projectList).get(project.id)?.label ?? project.name) : '';
     const tab = (id: string, label: string, href: string, current: boolean) => (
       <a href={href} mix={tabCss} data-testid={id} aria-current={current ? 'page' : undefined}>
         {label}
@@ -199,9 +202,9 @@ export function ProjectTabs(handle: Handle<{ route: Route }>) {
     return (
       <nav aria-label="Project" mix={tabBar} data-testid="project-tabs">
         {project ? (
-          <span class="name" title={project.name} data-testid="project-name">
+          <span class="name" title={named} data-testid="project-name">
             <i aria-hidden="true" style={{ background: `hsl(${hueFor(project.id)} 62% 62%)` }} />
-            {project.name}
+            {named}
           </span>
         ) : null}
         {tab('nav-overview', 'Work', routes.home.href(), hub === 'work')}
