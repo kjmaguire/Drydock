@@ -10,9 +10,9 @@
 // work (reject, request changes, send the spec back) stays available.
 
 import { css, on, type Handle } from 'remix/component';
-import { FileDiff, GitBranch, Hand } from 'lucide';
+import { CircleCheck, CircleDashed, CircleX, FileDiff, GitBranch, GitMerge, Hand, UserCheck, type IconNode } from 'lucide';
 import type { SpecReviewPayload } from '../../api/extTypes.ts';
-import type { PendingRequest, PRReviewNote, TaskAllowRule, TaskDetail } from '../../api/types.ts';
+import type { Agent, PendingRequest, PRReviewNote, SummaryCheck, TaskAllowRule, TaskDetail } from '../../api/types.ts';
 import { visible } from '../../lib/visible.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { services, watch } from '../../state/services.tsx';
@@ -31,8 +31,8 @@ import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.ts
 import { CIGatePanel, ciGatePayload, GitHubTroublePanel, githubTroublePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
 import { SandboxGatePanel, sandboxGatePayload } from './sandbox-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, newestDiffStat, payloadOf, type PayloadDiff, specPayload } from './tasks.ts';
-import { changeLine, changesDraft, type CriterionRow } from './task-page.ts';
-import { plural } from '../../lib/format.ts';
+import { changeLine, changesDraft, checksFact, reviewerFact, type CriterionRow, type Fact } from './task-page.ts';
+import { agentName, plural } from '../../lib/format.ts';
 
 // The decide card (graphite, decision P97): on the task page it sits above the Activity while a request waits, a card in the
 // "waiting on you" tone with the requests inside; the primary answer is the accent button.
@@ -67,12 +67,17 @@ const cardCss = css({
  * The pending requests of the task's run. Renders nothing when nothing is pending. `criteria` are the task page's criteria rows:
  * Request changes starts from the ones not met or still open.
  */
-export function ReviewPanel(handle: Handle<{ detail: TaskDetail; criteria?: readonly CriterionRow[]; onChanged: () => void }>) {
+export function ReviewPanel(
+  handle: Handle<{ detail: TaskDetail; criteria?: readonly CriterionRow[]; checks?: readonly SummaryCheck[]; agents?: readonly Agent[]; onChanged: () => void }>,
+) {
   return () => {
-    const { detail, criteria = [], onChanged } = handle.props;
+    const { detail, criteria = [], checks = [], agents = [], onChanged } = handle.props;
     if (detail.pending.length === 0) return null;
     // the task's newest patch: what the Diff section shows and what Approve merges (L36), not the one the request was raised on
     const diff = newestDiffStat(detail.evidence);
+    // the checks and the verdict a review and merge is decided on, above its Approve (they were below the fold)
+    const reviewer = reviewerFact(detail.reviews, (id) => agentName(id, agents));
+    const facts = [checksFact(checks), ...(reviewer ? [reviewer] : [])];
     return (
       <section mix={panelCss} aria-label="Needs your decision" data-testid="review-panel">
         <h2>
@@ -80,7 +85,7 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; criteria?: read
           Needs your decision
         </h2>
         {detail.pending.map((p) => (
-          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} criteria={criteria} prReview={p.spec.kind === 'review' ? detail.prReview : undefined} onChanged={onChanged} />
+          <PendingCard key={p.id} p={p} taskId={detail.task.id} facts={facts} runId={detail.run?.id} diff={diff} criteria={criteria} prReview={p.spec.kind === 'review' ? detail.prReview : undefined} onChanged={onChanged} />
         ))}
       </section>
     );
@@ -140,6 +145,39 @@ export function GateAnswer(
   };
 }
 
+// what a merge is decided on (critique 2026-11-08): the checks and the reviewer's verdict, first in the card, in the Inbox's words
+const factsCss = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: `${t.s1} ${t.s4}`,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  fontSize: t.textSm,
+  '& li': { display: 'inline-flex', alignItems: 'center', gap: '6px' },
+  '& li[data-tone="ok"]': { color: t.text },
+  '& li[data-tone="ok"] svg': { color: t.success },
+  '& li[data-tone="err"]': { color: t.danger },
+  '& li[data-tone="muted"]': { color: t.textMuted },
+});
+
+const factIcon = (f: Fact): IconNode => (f.tone === 'err' ? CircleX : f.kind === 'change' ? FileDiff : f.kind === 'reviewer' ? UserCheck : f.tone === 'ok' ? CircleCheck : CircleDashed);
+
+/** The checks and the reviewer's verdict of a review and merge, one row. */
+export function DecisionFacts(handle: Handle<{ facts: readonly Fact[] }>) {
+  return () => (
+    <ul mix={factsCss} aria-label="What this is decided on" data-testid="decision-facts">
+      {handle.props.facts.map((f) => (
+        <li key={f.text} data-tone={f.tone} data-kind={f.kind}>
+          <Icon icon={factIcon(f)} size={14} />
+          {f.text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const textareaCss = css({ width: '100%', resize: 'vertical' });
 const prReviewCss = css({
   display: 'grid',
@@ -156,6 +194,9 @@ const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', 
 function PendingCard(
   handle: Handle<{
     p: PendingRequest;
+    taskId: string;
+    /** The checks and the reviewer's verdict: shown on a review and merge. */
+    facts: readonly Fact[];
     runId: string | undefined;
     diff: PayloadDiff | undefined;
     criteria: readonly CriterionRow[];
@@ -207,7 +248,7 @@ function PendingCard(
   };
 
   return () => {
-    const { p, runId, diff, criteria, prReview, onChanged } = handle.props;
+    const { p, taskId, facts, runId, diff, criteria, prReview, onChanged } = handle.props;
     const info = payloadOf(p);
     const spec = specPayload(p);
     const permission = permissionPayload(p);
@@ -215,10 +256,12 @@ function PendingCard(
     const ro = s.workspace.license;
     const sending = state !== 'idle';
     const busy = sending || ro.readOnly;
+    const merge = p.spec.kind === 'review' && !spec && !permission && !hasGatePanel(p) && !!info.branch;
     return (
       <div mix={cardCss} data-testid="pending-request" data-request-id={p.id} data-kind={p.spec.kind}>
         {/* an interrupted turn's engine title ("Approve to run it again ... or reject") does not match its panel's answers: a short question instead */}
         <h3>{interrupted ? `Run the ${interrupted.node ? visible(interrupted.node) + ' ' : ''}step again?` : visible(p.spec.title)}</h3>
+        {merge ? <DecisionFacts facts={facts} /> : null}
         {/* the request's kind (review, question, approval) is its data-kind, not a line: the title says what is asked (P144) */}
         <div class="meta">
           {info.branch ? (
@@ -260,7 +303,7 @@ function PendingCard(
                 </li>
               ))}
             </ul>
-            {/* the patch itself is the Diff section's (one viewer per page, the task's newest patch); the card points there (UI review P1-1) */}
+            {/* the patch opens in the dock's Diff on this task (critique 2026-11-08: scrolling the page to the Diff section moved the whole shell) */}
             {diff ? (
               <div style={{ display: 'grid', gap: '8px', justifyItems: 'start' }}>
                 {info.diff && info.diff.id < diff.id ? (
@@ -268,11 +311,7 @@ function PendingCard(
                     A newer patch was recorded after this request. The counts and the Diff section are of the newer one.
                   </p>
                 ) : null}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  mix={on('click', () => document.querySelector<HTMLElement>('[data-testid="task-diff"]')?.scrollIntoView({ block: 'start' }))}
-                >
+                <Button size="sm" variant="ghost" icon={FileDiff} mix={on('click', () => s.ui.openDiff(taskId))}>
                   See the patch
                 </Button>
               </div>
@@ -320,8 +359,9 @@ function PendingCard(
                 </div>
               ) : null}
               <div mix={formActions}>
-                <Button variant="primary" disabled={busy} mix={on('click', () => void respond('approved'))}>
-                  Approve
+                {/* a review and merge says what Approve does: it merges (one verb with the Inbox and the palette, critique 2026-11-08) */}
+                <Button variant="primary" icon={merge ? GitMerge : undefined} disabled={busy} mix={on('click', () => void respond('approved'))}>
+                  {merge ? 'Merge' : 'Approve'}
                 </Button>
                 <Button
                   disabled={sending}

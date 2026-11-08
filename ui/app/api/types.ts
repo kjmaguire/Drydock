@@ -781,6 +781,16 @@ export interface TaskDetail {
   prReview?: PRReviewNote;
   /** The task names a worktree whose folder is not there any more (removed after the merge): nothing offers to open it outside Drydock (X26). Absent otherwise. */
   worktreeGone?: boolean;
+  /** How a completed task's change landed (core.TaskMerged): absent until it was merged, and from an older core. */
+  merged?: TaskMerged;
+}
+
+/** core.TaskMerged: the merge commit and the branch it went into, or the pull request GitHub merged; at is Unix ms. */
+export interface TaskMerged {
+  commit?: string;
+  into?: string;
+  pr?: number;
+  at: number;
 }
 
 /** core.SandboxStart: the steps of creating a task's sandbox; neither ready nor failed while it goes on. */

@@ -21,7 +21,7 @@ const detail = (over: Partial<TaskDetail> = {}): TaskDetail =>
 const buttons = (root: ParentNode) => Array.from(root.querySelectorAll('button')).map((b) => b.textContent?.trim());
 
 describe('Review panel', () => {
-  it('Approve answers the pending request id of the run with decision approved', async () => {
+  it('Merge (the Approve of a review and merge) answers the pending request id of the run with decision approved', async () => {
     const runRespond = recorder(() => undefined);
     let changed = 0;
     const r = mount(<ReviewPanel detail={detail()} onChanged={() => changed++} />, svc({ runRespond }));
@@ -32,7 +32,7 @@ describe('Review panel', () => {
     expect(card.textContent).not.toContain('Request kind');
     expect(card.textContent).toContain('drydock/t1');
     expect(card.textContent).toContain('calc.go');
-    await r.act(() => byText(r.container, 'button', 'Approve').click());
+    await r.act(() => byText(r.container, 'button', 'Merge').click());
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'approved', undefined]]), r);
     await waitFor(() => expect(changed).toBe(1), r);
     expect(r.$('[role="status"]')!.textContent).toContain('Answer sent');
@@ -153,14 +153,14 @@ describe('Review panel', () => {
       throw new Error('request is no longer pending');
     };
     const r = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc({ runRespond }));
-    await r.act(() => byText(r.container, 'button', 'Approve').click());
+    await r.act(() => byText(r.container, 'button', 'Merge').click());
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('request is no longer pending'), r);
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Approve').disabled).toBe(false);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Merge').disabled).toBe(false);
   });
 
   it('says so when the task has no run to answer', async () => {
     const r = mount(<ReviewPanel detail={detail({ run: undefined })} onChanged={() => undefined} />, svc());
-    await r.act(() => byText(r.container, 'button', 'Approve').click());
+    await r.act(() => byText(r.container, 'button', 'Merge').click());
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('This task has no run to answer.'), r);
   });
 
@@ -176,7 +176,7 @@ describe('Review panel', () => {
   it('read-only turns off approving but not requesting changes', async () => {
     const r = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Approve').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Merge').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Request changes').disabled).toBe(false);
   });
 });
@@ -297,7 +297,7 @@ describe('Merge gates of a pull request', () => {
     expect(note.textContent).toContain('1 change request(s) from kyle on GitHub');
     expect(note.querySelector('pre')!.textContent).toBe(feedback);
     // Approve and Request changes stay: the person decides
-    expect(buttons(r.container)).toEqual(['Send back with the GitHub review', 'Approve', 'Request changes']);
+    expect(buttons(r.container)).toEqual(['Send back with the GitHub review', 'Merge', 'Request changes']);
     await r.act(() => byText(r.container, 'button', 'Send back with the GitHub review').click());
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback }]]), r);
     cleanup();

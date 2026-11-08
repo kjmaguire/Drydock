@@ -290,23 +290,63 @@ describe('Task view: header, properties and content', () => {
     expect(s.ui.dock.tab).toBe('diff');
   });
 
-  it("has one patch viewer: the review card's See the patch brings the Diff section into view (UI review P1-1)", async () => {
+  it("has one patch viewer: the review card's See the patch opens the dock's Diff, and the card says what the merge is decided on (critique 2026-11-08)", async () => {
     const ev: Evidence = { id: 3, taskId: 't1', attempt: 1, kind: 'diff', passed: null, summary: '1 file', data: { Files: 1, Insertions: 2, Deletions: 0 }, created: 0 };
     const d = detail({
       evidence: [ev],
+      reviews: [{ id: 1, taskId: 't1', attempt: 1, reviewer: 'a-rev', verdict: 'SHIP', feedback: '', created: 1 }],
       pending: [{ id: 'req-1', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge', payload: { files: ['a.go'], branch: 'drydock/t1', base: 'main', evidence: [ev] } } }],
       run: { id: 'run-1', workflow: 'iterate-until-verified', status: 'WAITING_HUMAN', topology: 'x', created: 0, updated: 0, version: 1 },
     });
-    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d }));
+    const checks = [
+      { kind: 'build', status: 'passed' },
+      { kind: 'test', status: 'passed' },
+      { kind: 'lint', status: 'passed' },
+      { kind: 'preview', status: 'not_run' },
+    ];
+    const s = svc({ taskGet: async () => d, taskSummaries: async () => ({ summaries: [{ taskId: 't1', checks }] }) as never });
+    const r = mount(<TaskDetailScreen id="t1" />, s);
     await waitFor(() => need(byText(r.container, 'button', 'See the patch')), r);
     // the raw patch is the Diff viewer's Raw view, not a second button on the page (X212)
     expect(buttonNames(r.container)).not.toContain('Show the raw patch');
     expect(r.$$('[data-testid="task-diff"]').length).toBe(1);
+    // the checks and the reviewer's verdict sit above the button that merges, and the button says it merges
+    await waitFor(() => expect(r.$('[data-testid="review-panel"] [data-testid="decision-facts"]')!.textContent).toBe('3 of 3 checks passeda-rev approved'), r);
+    expect(buttonNames(r.$('[data-testid="review-panel"]')!)).toContain('Merge');
+    expect(buttonNames(r.$('[data-testid="review-panel"]')!)).not.toContain('Approve');
     const section = r.$('[data-testid="task-diff"]')!;
     let scrolled = 0;
     section.scrollIntoView = () => void scrolled++;
     await r.act(() => byText(r.container, 'button', 'See the patch').click());
-    expect(scrolled).toBe(1);
+    // the page does not move (scrolling the document shifted the whole shell); the dock opens on the Diff
+    expect(scrolled).toBe(0);
+    expect(s.ui.dock.open).toBe(true);
+    expect(s.ui.dock.tab).toBe('diff');
+  });
+
+  it('a merged task closes with where it landed, who approved it, what it was decided on, and no steer box (critique 2026-11-08)', async () => {
+    const ev: Evidence = { id: 3, taskId: 't1', attempt: 1, kind: 'diff', passed: null, summary: '1 file', data: { Files: 1, Insertions: 5, Deletions: 1 }, created: 0 };
+    const d = detail({
+      task: task({ status: 'COMPLETED', acceptedBy: 'human:kyle' }),
+      evidence: [ev],
+      reviews: [{ id: 1, taskId: 't1', attempt: 1, reviewer: 'a-rev', verdict: 'SHIP', feedback: '', created: 1 }],
+      merged: { commit: 'ef14966aa0b1c2d3e4f5', into: 'main', at: Date.now() },
+    });
+    const s = svc({ taskGet: async () => d, taskSummaries: async () => ({ summaries: [{ taskId: 't1', checks: [{ kind: 'test', status: 'passed' }] }] }) as never });
+    const r = mount(<TaskDetailScreen id="t1" />, s);
+    const card = await waitFor(() => need(r.$('[data-testid="task-merged"]')), r);
+    expect(card.querySelector('h2')!.textContent).toBe('Merged into main as ef14966');
+    expect(card.querySelector('code')!.getAttribute('title')).toBe('ef14966aa0b1c2d3e4f5');
+    expect(card.querySelector('.who')!.textContent).toMatch(/^Approved by kyle today at /);
+    const facts = () => Array.from(card.querySelectorAll('[data-testid="decision-facts"] li'), (li) => li.textContent);
+    await waitFor(() => expect(facts()).toEqual(['1 file +5\u00a0\u22121', '1 of 1 check passed', 'a-rev approved']), r);
+    expect(r.$('[data-testid="steer"]')).toBeNull();
+    await r.act(() => byText(card, 'button', 'See what changed').click());
+    expect(s.ui.dock.tab).toBe('diff');
+    // a completed task the core recorded no merge for (an older core) shows no card
+    const r2 = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail({ task: task({ status: 'COMPLETED' }) }) }));
+    await waitFor(() => need(r2.$('[data-testid="task-key"]')), r2);
+    expect(r2.$('[data-testid="task-merged"]')).toBeNull();
   });
 
   it('embedded in Work, the Diff section lists the changed files with their counts, and a row opens the dock on that file (X212)', async () => {

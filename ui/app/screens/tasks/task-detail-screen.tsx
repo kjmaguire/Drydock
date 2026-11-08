@@ -31,6 +31,7 @@ import { Interventions, leadOf } from '../team/lead.tsx';
 import { TaskActivity } from './activity-panel.tsx';
 import { CriteriaList } from './criteria.tsx';
 import { EndedCard } from './ended-card.tsx';
+import { MergedCard } from './merged-card.tsx';
 import { EvidenceList, ReviewList } from './evidence.tsx';
 import { PreviewControls } from './preview-controls.tsx';
 import { SandboxApp } from './sandbox-app.tsx';
@@ -307,7 +308,8 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                 </div>
                 {task.blockedReason ? <BlockedNote task={task} onChanged={reload} /> : null}
                 <EndedCard detail={d} />
-                <ReviewPanel detail={d} criteria={criteria} onChanged={reload} />
+                <MergedCard detail={d} checks={checks} agents={agents} />
+                <ReviewPanel detail={d} criteria={criteria} checks={checks} agents={agents} onChanged={reload} />
                 <AllowRules rules={d.allowRules ?? []} onChanged={reload} />
                 <TaskControls key={task.id} detail={d} onChanged={reload} />
                 {d.sandboxStart && d.sandboxStart.steps.length > 0 ? <SandboxStartLine start={d.sandboxStart} /> : null}

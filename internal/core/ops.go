@@ -400,6 +400,45 @@ type TaskDetail struct {
 	// WorktreeGone says the task names a worktree whose folder is not there any more (removed after the merge): the task page then
 	// offers no way to open it outside Drydock (X26). Absent while the folder is there or the task has none.
 	WorktreeGone bool `json:"worktreeGone,omitempty"`
+	// Merged is how a completed task's change landed: the merge commit and the branch it went into, or the pull request GitHub
+	// merged. The task page closes the task with it ("Merged into main as 1a2b3c4"). Absent until the change is merged.
+	Merged *TaskMerged `json:"merged,omitempty"`
+}
+
+// TaskMerged is the merge of a task's change, from the event the pipeline published when it merged (git.commit_created with
+// "merged", or github.pr_merged). At is Unix milliseconds.
+type TaskMerged struct {
+	Commit string `json:"commit,omitempty"`
+	Into   string `json:"into,omitempty"`
+	PR     int    `json:"pr,omitempty"`
+	At     int64  `json:"at"`
+}
+
+// taskMerged reads the newest merge event of a task; nil when its change was never merged.
+func (c *Core) taskMerged(ctx context.Context, taskID string) *TaskMerged {
+	var typ string
+	var ts int64
+	var data []byte
+	if c.DB.Reader().QueryRowContext(ctx, `SELECT type, ts, data FROM events WHERE task_id=? AND type IN ('git.commit_created','github.pr_merged') ORDER BY seq DESC LIMIT 1`, taskID).Scan(&typ, &ts, &data) != nil {
+		return nil
+	}
+	var v struct {
+		Commit string `json:"commit"`
+		Merged string `json:"merged"`
+		Into   string `json:"into"`
+		Number int    `json:"number"`
+		SHA    string `json:"sha"`
+	}
+	if json.Unmarshal(data, &v) != nil {
+		return nil
+	}
+	if typ == "github.pr_merged" {
+		return &TaskMerged{Commit: v.SHA, PR: v.Number, At: ts}
+	}
+	if v.Merged == "" {
+		return nil
+	}
+	return &TaskMerged{Commit: v.Commit, Into: v.Into, At: ts}
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -414,6 +453,9 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	if t.Status == tasks.Failed || t.Status == tasks.Cancelled {
 		d.RunAgainWhy = runAgainRefusal(t)
 		d.RunAgain = d.RunAgainWhy == ""
+	}
+	if t.Status == tasks.Completed {
+		d.Merged = c.taskMerged(ctx, t.ID)
 	}
 	if rules, err := c.TaskRules(ctx, id); err == nil {
 		d.AllowRules = rules

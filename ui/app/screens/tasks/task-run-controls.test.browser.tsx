@@ -59,7 +59,7 @@ describe('steering the running agent', () => {
     expect(steerInput(r.container).value).toBe('hello');
   });
 
-  it('is off, with the reason, while no run is going', async () => {
+  it('is off, with the reason, while no run is going, and gone once the task is closed', async () => {
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail() }));
     const input = await waitFor(() => steerInput(r.container), r);
     expect(input.disabled).toBe(true);
@@ -67,7 +67,8 @@ describe('steering the running agent', () => {
     expect(r.$('[data-testid="steer"]')!.textContent).toContain('Start the task to steer its agent.');
     cleanup();
     const done = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail({ task: task({ status: 'COMPLETED' }) }) }));
-    await waitFor(() => expect(done.$('[data-testid="steer"]')!.textContent).toContain('The task is closed: there is no run to steer.'), done);
+    await waitFor(() => expect(done.$('[data-testid="task-key"]')).toBeTruthy(), done);
+    expect(done.$('[data-testid="steer"]')).toBeNull();
   });
 });
 
