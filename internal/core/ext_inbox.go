@@ -514,7 +514,8 @@ func approvalDescription(d ApprovalDetail, t *tasks.Task) string {
 		if t != nil && t.BaseBranch != "" {
 			into = " into " + t.BaseBranch
 		}
-		return "The change of " + task + " is ready. Approve to merge it" + into + ", or ask for changes."
+		// the button says Merge: the words say the same (critique 2026-11-08: "Approve to merge it" beside a Merge button)
+		return strings.ToUpper(task[:1]) + task[1:] + " is ready to merge" + into + ". Merge it, or ask for changes."
 	case d.Kind == "review" && d.Phase == "plan":
 		return "A plan is ready. Accept it to make its tasks, or send it back with what to change."
 	case d.Kind == "question":

@@ -305,15 +305,16 @@ test('development flow: the Feature template stops at the spec gate; reject with
   await page.getByRole('button', { name: 'Accept spec with my edited criteria' }).click();
 
   // red then green, then the final approval
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 120_000 });
   await expect(page.locator('[data-testid=evidence][data-kind=spec]').first()).toBeVisible();
   await expect(page.locator('[data-testid=evidence][data-kind=spec_accept]').first()).toContainText('Spec accepted');
   await expect(page.locator('[data-testid=evidence][data-kind=red_test]').first()).toContainText('Test written first (red)');
   await expect(page.locator('[data-testid=evidence][data-kind=green_test]').first()).toContainText('Tests now pass (green)');
   await expect(page.locator('main')).toContainText('then the result is 0');
-  await page.getByTestId('review-panel').getByRole('button', { name: 'Approve' }).click();
+  await page.getByTestId('review-panel').getByRole('button', { name: 'Merge' }).click();
   await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
   // every agent turn has a recorded routing decision, and the explanation says it was static
+  await page.getByTestId('run-details').locator('summary').click();
   await page.getByRole('button', { name: 'Explain why this model' }).first().click();
   await expect(page.getByTestId('explain')).toContainText('static');
 });
@@ -379,7 +380,7 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   // answered: the item leaves the Inbox
   await expect(budgetItem).toHaveCount(0, { timeout: 30_000 });
   await page.goto(taskPage);
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId('budget-pause')).toHaveCount(0);
   await projectNav(page, 'nav-budgets');
   await expect(page.getByTestId('budget').first()).toContainText('10 turns');

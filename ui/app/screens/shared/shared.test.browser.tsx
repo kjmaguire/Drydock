@@ -211,6 +211,9 @@ describe('routing decisions', () => {
     expect(rows[0]!.textContent).toContain('price unknown');
     expect(rows[0]!.textContent).toContain('static');
     expect(rows[1]!.textContent).toContain('$0.0012');
+    // one short word in the row, named in full; the first attempt is not numbered (critique 2026-11-08)
+    expect(byText(rows[1]!, 'button', 'Explain why this model').textContent!.trim()).toBe('Explain');
+    expect(r.container.textContent).not.toContain('attempt 1');
     await r.act(() => byText(rows[1]!, 'button', 'Explain why this model').click());
     await waitFor(() => r.$('[data-testid="explain"]') ?? (() => { throw new Error('no explain'); })(), r);
     expect(asked).toEqual(['dec_2']);

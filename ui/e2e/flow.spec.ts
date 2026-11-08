@@ -45,7 +45,8 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     const rowsOf = async (name: string) => activity.locator(`[data-thread="${await activity.getByTestId('activity-thread').filter({ hasText: name }).getAttribute('data-thread')}"]`);
     await expect((await rowsOf('Worker One')).getByTestId('activity-text').filter({ hasText: 'implemented Subtract' })).toBeVisible();
     await expect((await rowsOf('Worker One')).locator('[data-testid=activity-step][data-kind=edit]').first()).toContainText('calc.go');
-    await expect((await rowsOf('Reviewer One')).getByTestId('activity-text').filter({ hasText: 'SHIP' })).toBeVisible();
+    // the reviewer's structured verdict reads as the decision it is, not as JSON (critique 2026-11-08)
+    await expect((await rowsOf('Reviewer One')).locator('[data-testid=activity-verdict][data-verdict=SHIP]')).toContainText('Approved');
     // the head names the newest process's agent and CLI
     await expect(activity.getByTestId('activity-agent')).toContainText('Reviewer One · Claude Code');
 
@@ -66,7 +67,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
 
     // approve with the button bound to the request
     await page.getByRole('link', { name: 'Task details' }).click();
-    await page.getByRole('button', { name: 'Approve' }).click();
+    await page.getByRole('button', { name: 'Merge' }).click();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
 
@@ -138,7 +139,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await expect(page.locator('[data-testid=message][data-author-kind=agent]').filter({ hasText: 'added the doc comment' })).toBeVisible();
     await page.getByRole('link', { name: 'Task details' }).click();
 
-    await page.getByTestId('review-panel').getByRole('button', { name: 'Approve' }).click();
+    await page.getByTestId('review-panel').getByRole('button', { name: 'Merge' }).click();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
   });

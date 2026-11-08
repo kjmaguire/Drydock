@@ -12,7 +12,7 @@ test('Work lists the tasks and chats, opens one in the centre, and shows the cre
   await createAgent(page, 'Ada', 'backend');
   await createAgent(page, 'Rex', 'reviewer');
   await createAndStartTask(page, 'Implement Subtract in Work', 'Ada', 'Rex');
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 90_000 });
 
   // the project in the sidebar is one line; it opens Work, the tab bar marks it
   await projectItem(page, 'work-e2e').click();

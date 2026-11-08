@@ -81,7 +81,8 @@ export function TaskDecisions(handle: Handle<{ taskId: string }>) {
                 {rows.map((r) => (
                   <tr key={r.id} data-testid="decision-row" data-decided-by={r.decidedBy} data-run-kind={r.runKind}>
                     <td>
-                      {runKindLabel(r.runKind)} <span mix={muted}>attempt {r.attempt}</span>
+                      {/* which attempt, once there was more than one (critique 2026-11-08) */}
+                      {runKindLabel(r.runKind)} {r.attempt > 1 ? <span mix={muted}>attempt {r.attempt}</span> : null}
                     </td>
                     <td>
                       <code>
@@ -111,15 +112,17 @@ export function TaskDecisions(handle: Handle<{ taskId: string }>) {
                     <td>{money(r.estCostUsd)}</td>
                     <td>{r.outcome ? `${r.outcome.outcome}${r.outcome.accepted ? ', accepted' : ''}${r.outcome.escalated ? ', escalated' : ''}` : 'pending'}</td>
                     <td style={{ textAlign: 'right' }}>
+                      {/* one short word in the row (the long label ran out of the task page's column); the name says what it explains */}
                       <Button
                         variant="link"
+                        aria-label="Explain why this model"
                         aria-expanded={open === r.id}
                         mix={on('click', () => {
                           open = open === r.id ? undefined : r.id;
                           void handle.update();
                         })}
                       >
-                        Explain why this model
+                        Explain
                       </Button>
                     </td>
                   </tr>

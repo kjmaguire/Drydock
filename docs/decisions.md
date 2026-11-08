@@ -2738,3 +2738,36 @@ Open, owner action:
   (`project.cloneState`, kept in memory until the app restarts) with Clone and attach. The start box keeps waiting for its
   clone: the task it starts needs the repository. Tests: `TestSetupLater*` (a clone that lands, one refused up front, one
   cancelled) and `screens/work/landing-clone.test.browser.tsx`.
+- **P147. The design critique of 2026-11-08: the merge moment, plain words, one name per thing, a safer Start (2026-11-08).** A
+  critique of the whole app (two independent reviews: a design review of the running harness and Impeccable's detector, which
+  found nothing in the source and three small things in the page) scored it 26/40 and named five issues; the owner chose all of
+  them, the merge moment first, and to change both Start behaviours. (a) **The merge moment.** The task page's decision card
+  says what a review and merge is decided on, first: the newest checks ("4 of 4 checks passed", a failed one named) and the
+  reviewer's verdict in words ("Code Reviewer approved"); its button is **Merge** (Approve stays for any other request). See the
+  patch opens the dock's Diff on the task instead of scrolling the page. A merged task closes with "Merged into main as 1a2b3c4"
+  (or "through pull request #12"), who approved it and when, the change's size, checks and verdict, and See what changed: the
+  core's `task.get` carries `merged` (`core.TaskMerged`, read from the `git.commit_created` or `github.pr_merged` event the
+  pipeline publishes when it merges). A closed task has no steer box. Undo of a merge is not built: it would write to the
+  person's main branch (a revert), which is the owner's call. (b) **Plain words.** A reviewer's `{"verdict":"SHIP"}` reads as an
+  Approved badge in the Activity; the Reviews list says Approved or Asked for changes; every evidence kind the core writes has
+  words (`review_requested` is "Sent to you for review"), any other is made into words; the 0-based attempt is gone, and "run N"
+  shows only when there was more than one run (the routing table numbers an attempt only after the first). Usage, Why these
+  models? and Agent tools are folded under **Run details**, loaded when opened. The permission hints drop the CLI's mode names
+  (a tooltip on the Start menu keeps them). (c) **One name per thing.** The Inbox's footer names the keys of the selected item in
+  its buttons' words ("A merge"; D only where it answers); the Inbox's description says "Task 1 (...) is ready to merge into
+  main. Merge it, or ask for changes."; Chat uses the Start box's permission words (Read only, Asks before edits, Edits freely);
+  model names are cased as the Work rail has them (`modelName`: "Opus · high") on the Crew, the Library and the Start chip;
+  spend under a cent is "under $0.01", not "$0.00"; the Activity's line counts say they are the write's; the palette lists
+  **Review and merge GOC-1** first (group Decide) on a task whose change waits, found by "merge", opening the decision rather
+  than merging from the palette. (d) **A safer Start.** A first start asks before edits (`FIRST_PERMISSION`, the Start chips'
+  default and New project's builder), whatever the catalog's builder would get; the person's choice is remembered per place
+  as before. The description is the first task and never the project's brief (the brief is what every agent reads each turn;
+  it is written in Project settings). (e) **Home and names.** New project is a secondary button beside Start; the Or row is
+  Just chat (the places are the Where chip's menu); the hint "Enter to start" is gone (the placeholder says it). Two projects
+  of one name are told apart by their repository's folder ("gocalc · repo1"; else the key, else the place in the list;
+  `lib/project-label.ts`) in the sidebar, the switcher, Pick up and the Where menu, whose task count says what it counts. Pick
+  up counts a project's chats. (f) **Type.** The Inbox's group headings are body size, never smaller than their rows; the
+  Settings table's longest cell keeps a 60ch line. Tests: `TestUIMethodsDriveATaskFromCreationToHumanMerge` (the merge record),
+  `TestMergeDescriptionSaysMerge`, and UI tests beside each change (`task-page.test.ts`, `evidence.test.browser.tsx`,
+  `activity-steps.test.ts`, `task-detail-screen.test.browser.tsx`, `needs-you.test.ts`, `palette-items.test.ts`,
+  `project-label.test.ts`, `workspace.test.ts`, `sidebar.test.browser.tsx`); e2e specs whose strings changed are updated.

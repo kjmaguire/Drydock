@@ -22,7 +22,7 @@ test('the board: columns from the steps, a ready-to-merge card, C for a new task
   await createAgent(page, 'Worker B', 'backend');
   await createAgent(page, 'Reviewer B', 'reviewer');
   await createAndStartTask(page, 'Implement Subtract', 'Worker B', 'Reviewer B');
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 90_000 });
 
   // C opens a new task; it is created and waits in Spec
   await projectNav(page, 'nav-tasks');

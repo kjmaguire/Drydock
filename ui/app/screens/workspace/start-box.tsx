@@ -558,7 +558,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
         >
           <textarea
             aria-label="Describe what you want to build"
-            placeholder="Describe it. Enter to start, Shift+Enter for a new line."
+            placeholder="A feature, a fix, a question. Enter to start, Shift+Enter for a new line."
             data-testid="start-text"
             data-autofocus
             autofocus
@@ -597,9 +597,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
                 <span role="status" mix={progressCss} data-testid="start-progress">
                   {progress}
                 </span>
-              ) : (
-                <small aria-hidden="true">Enter to start</small>
-              )}
+              ) : null /* the placeholder says Enter starts; a hint here said it again and pushed Start onto a row of its own (critique 2026-11-08) */}
               <Button type="submit" variant="primary" size="sm" disabled={busy || s.workspace.license.readOnly} title={s.workspace.license.readOnly ? s.workspace.license.reason : undefined} data-testid="start-button" aria-keyshortcuts="Enter">
                 Start <Icon icon={CornerDownLeft} size={13} />
               </Button>
