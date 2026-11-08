@@ -108,7 +108,8 @@ const listSide = css({
 });
 const hintCss = css({ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', color: t.textFaint, fontSize: t.textXs });
 const scrollCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', paddingBottom: t.s3, '@container (max-width: 820px)': { overflowY: 'visible' } });
-const groupCss = css({ margin: '0', padding: `${t.s3} 20px 6px`, color: t.textFaint, fontSize: t.textXs, fontWeight: '500' });
+// the group headings (Needs you, Running, Done today): body size, heavier, never smaller than the rows under them (critique 2026-11-08)
+const groupCss = css({ margin: '0', padding: `${t.s3} 20px 6px`, color: t.textMuted, fontSize: t.textMd, fontWeight: '600' });
 // the Needs you heading with Mark N done at its end
 const groupRowCss = css({ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: t.s2, paddingRight: '12px' });
 const listCss = css({ display: 'grid', margin: '0', padding: '0', listStyle: 'none' });

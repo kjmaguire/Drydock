@@ -210,7 +210,8 @@ function NotBuilt(_handle: Handle) {
               <tr key={r.feature}>
                 <td>{r.feature}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{r.slice}</td>
-                <td>{r.meanwhile}</td>
+                {/* a readable line: the longest of these ran about 90 characters a line (critique 2026-11-08) */}
+                <td style={{ maxWidth: '60ch' }}>{r.meanwhile}</td>
               </tr>
             ))}
           </tbody>
