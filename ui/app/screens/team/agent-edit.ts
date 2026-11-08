@@ -14,17 +14,17 @@ export const PERMISSION_SEGMENTS: readonly Segment[] = [
   {
     value: 'plan',
     label: 'Read only',
-    hint: 'Reads and comments; never edits files (plan)',
+    hint: 'Reads and comments; never edits files',
   },
   {
     value: 'default',
     label: 'Asks before edits',
-    hint: 'Asks you before each edit (default)',
+    hint: 'Asks you before each edit',
   },
   {
     value: 'acceptEdits',
     label: 'Edits freely',
-    hint: 'Edits its own worktree without asking (acceptEdits)',
+    hint: 'Edits its own worktree without asking',
   },
 ];
 

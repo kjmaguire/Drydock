@@ -8,7 +8,7 @@
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { TaskMinutesLink } from '../room/room-exports.tsx';
-import { ClipboardList, Columns2, MessagesSquare } from 'lucide';
+import { ChevronRight, ClipboardList, Columns2, MessagesSquare } from 'lucide';
 import type { AssignPreview } from '../../api/controlClient.ts';
 import type { Connection, SandboxStart, SummaryCheck, Task, TaskDetail } from '../../api/types.ts';
 import { agentName } from '../../lib/format.ts';
@@ -198,6 +198,56 @@ function Part(handle: Handle<{ title: string; label?: string; testId?: string; a
   };
 }
 
+const runDetailsCss = css({
+  minWidth: '0',
+  '& > summary': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    minHeight: '28px',
+    cursor: 'pointer',
+    listStyle: 'none',
+    fontSize: t.textXs,
+    fontWeight: '500',
+    color: t.textFaint,
+  },
+  '& > summary::-webkit-details-marker': { display: 'none' },
+  '& > summary:hover': { color: t.textMuted },
+  '& > summary > .rule': { flex: '1', minWidth: '16px', height: '1px', background: t.border },
+  '& > summary > svg': { flex: 'none', transition: 'transform 160ms cubic-bezier(0.16, 1, 0.3, 1)' },
+  '&[open] > summary > svg': { transform: 'rotate(90deg)' },
+  '& > .in': { display: 'grid', gap: t.s5, paddingTop: t.s3, minWidth: '0' },
+  '& > .in > section': { display: 'grid', gap: t.s2, minWidth: '0' },
+  '& > .in h3': { margin: '0', fontSize: t.textSm, fontWeight: '600', color: t.textMuted },
+});
+
+/**
+ * Usage, the routing decisions and the agent's tools: telemetry a person opens when they want it, not the page's business. Folded
+ * by default; the parts mount only once it is opened, so a closed section loads nothing.
+ */
+function RunDetails(handle: Handle<{ children?: RemixNode }>) {
+  let open = false;
+  return () => (
+    <details
+      mix={[
+        runDetailsCss,
+        on('toggle', (e) => {
+          open = (e.currentTarget as HTMLDetailsElement).open;
+          void handle.update();
+        }),
+      ]}
+      data-testid="run-details"
+    >
+      <summary>
+        <span>Run details</span>
+        <span class="rule" aria-hidden="true" />
+        <Icon icon={ChevronRight} size={14} />
+      </summary>
+      {open ? <div class="in">{handle.props.children}</div> : null}
+    </details>
+  );
+}
+
 /** `embedded`: drawn in the centre of a project's Work view (decision P141) rather than as a page of its own. */
 export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean }>) {
   const s = services(handle);
@@ -343,16 +393,22 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                 </Part>
                 <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} sandboxed={!!d.sandboxed} />
                 <SandboxApp key={`sandbox-app-${task.id}`} taskId={task.id} />
-                <Part title="Usage">
-                  <ErrorNote error={usage.error} retry={usage.reload} what="Could not load usage" />
-                  <UsageTable rows={usage.data ?? []} />
-                </Part>
-                <Part title="Why these models?">
-                  <TaskDecisions taskId={task.id} />
-                </Part>
-                <Part title="Agent tools">
-                  <TaskTools key={task.id} taskId={task.id} />
-                </Part>
+                {/* what the run cost, why its models and which tools its agent gets: one folded section, opened on demand (critique 2026-11-08) */}
+                <RunDetails key={`run-details-${task.id}`}>
+                  <section aria-label="Usage">
+                    <h3>Usage</h3>
+                    <ErrorNote error={usage.error} retry={usage.reload} what="Could not load usage" />
+                    <UsageTable rows={usage.data ?? []} />
+                  </section>
+                  <section aria-label="Why these models?">
+                    <h3>Why these models?</h3>
+                    <TaskDecisions taskId={task.id} />
+                  </section>
+                  <section aria-label="Agent tools">
+                    <h3>Agent tools</h3>
+                    <TaskTools key={task.id} taskId={task.id} />
+                  </section>
+                </RunDetails>
               </div>
 
               <SteerBox key={task.id} detail={d} agentName={name} onChanged={setDetail} />

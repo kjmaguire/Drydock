@@ -112,7 +112,15 @@ describe('Task view: header, properties and content', () => {
     expect(meta.querySelector('[role="group"][aria-label="Cancel the task"]')).toBeTruthy();
     expect(buttonNames(r.container)).toContain('Cancel task');
     expect(byLabel<HTMLInputElement>(r.container, 'Message the agent').placeholder).toBe('Steer Dana: it reads this before its next step');
+    // usage, the routing decisions and the agent tools are folded under Run details, and load once it is opened (critique 2026-11-08)
+    const details = r.$('[data-testid="run-details"]') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(r.$$('[data-testid="usage-row"]').length).toBe(0);
+    await r.act(() => {
+      details.open = true;
+    });
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(1), r);
+    expect(Array.from(details.querySelectorAll('h3'), (h) => h.textContent)).toEqual(['Usage', 'Why these models?', 'Agent tools']);
     // the steps: the spec is done (three criteria), the code is being written on attempt 3, a check of the newest attempt failed
     const steps = Array.from(r.$$('[data-testid="task-steps"] li[data-step]'));
     expect(steps.map((x) => x.getAttribute('data-step'))).toEqual(['spec', 'code', 'checks', 'review', 'you']);

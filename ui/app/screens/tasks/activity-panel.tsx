@@ -14,7 +14,7 @@ import type { AguiThread, PlanEntry } from '../../api/agui.gen.ts';
 import type { Agent, Connection } from '../../api/types.ts';
 import { agentName } from '../../lib/format.ts';
 import { query, services } from '../../state/services.tsx';
-import { Avatar } from '../../ui/data.tsx';
+import { Avatar, Badge } from '../../ui/data.tsx';
 import { ErrorNote, Spinner } from '../../ui/feedback.tsx';
 import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
@@ -23,7 +23,7 @@ import { VirtualList } from '../../ui/virtual-list.tsx';
 import { toolInputText } from '../chats/chats.ts';
 import { cliName } from '../shared/cli-name.ts';
 import { argsValue, planOf, planProgress, turnSummary, waitOutcomeText, waitWhy, type ToolItem, type Turn } from './activity.ts';
-import { activityRows, baseName, changeLines, secondsText, stepVerb, timeOfDay, type ActivityRow, type ActivityStep } from './activity-steps.ts';
+import { activityRows, baseName, changeLines, secondsText, stepVerb, timeOfDay, verdictOf, type ActivityRow, type ActivityStep } from './activity-steps.ts';
 
 const sectionCss = css({
   display: 'grid',
@@ -317,7 +317,16 @@ function StepView(handle: Handle<{ step: ActivityStep; running: boolean; now: nu
   return () => {
     const { step: s, running, now } = handle.props;
     let main;
-    if (s.kind === 'text') {
+    const verdict = s.kind === 'text' ? verdictOf(s.text) : undefined;
+    if (verdict) {
+      // a reviewer's verdict reads as the decision it is, in the words the decision card uses
+      main = (
+        <div class="text" data-testid="activity-verdict" data-verdict={verdict.verdict}>
+          <Badge tone={verdict.verdict === 'SHIP' ? 'ok' : 'warn'}>{verdict.verdict === 'SHIP' ? 'Approved' : 'Asked for changes'}</Badge>
+          {verdict.feedback ? <Markdown source={verdict.feedback} /> : null}
+        </div>
+      );
+    } else if (s.kind === 'text') {
       main = (
         <div class="text" data-testid="activity-text">
           <Markdown source={s.text} />

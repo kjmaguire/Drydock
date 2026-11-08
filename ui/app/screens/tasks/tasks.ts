@@ -449,7 +449,35 @@ export const EVIDENCE_LABEL: Record<string, string> = {
   diff: 'Diff',
   commit: 'Commit',
   review_finding: 'Review finding',
+  // the project's checks (pipeline.CheckKinds) and the run's own records: every kind the core writes has words (critique 2026-11-08)
+  build: 'Build',
+  lint: 'Lint',
+  typecheck: 'Type check',
+  secrets: 'Secrets scan',
+  deps: 'Dependency scan',
+  ci: 'CI',
+  'merge-conflicts': 'Merge conflicts',
+  review_requested: 'Sent to you for review',
+  approval: 'Approved by you',
+  guard: 'Merge guard',
+  guard_override: 'Merge guard let through',
+  ci_push_approved: 'CI push approved',
+  pr: 'Pull request',
+  pr_feedback: 'Pull request feedback',
+  pr_comments: 'Pull request comments',
+  pr_review_waiting: 'Waiting for the pull request review',
+  sync: 'Brought up to date',
+  waiver: 'Check waived',
+  definition_of_done: 'Definition of done',
 };
+
+/** An evidence kind in words: its label, else the kind itself with its underscores and dashes as spaces ("new_kind" is "New kind"). */
+export function evidenceLabel(kind: string): string {
+  const known = EVIDENCE_LABEL[kind];
+  if (known) return known;
+  const words = kind.replace(/[_-]+/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : kind;
+}
 
 export type EvidenceResult = 'pass' | 'fail' | 'skipped' | 'info';
 

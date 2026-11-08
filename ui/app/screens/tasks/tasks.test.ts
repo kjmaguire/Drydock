@@ -23,6 +23,7 @@ import {
   editedCriteria,
   elapsed,
   EVIDENCE_LABEL,
+  evidenceLabel,
   evidenceResult,
   failingLine,
   finishedWhen,
@@ -367,5 +368,15 @@ describe("a project's board as the person left it (drydock.tasks.board)", () => 
     expect(kept.includes('p0')).toBe(false);
     expect(boardPrefsOf(raw, `p${BOARD_PREFS_MAX + 4}`)).toEqual({ filter: { needsMe: true }, range: 'week' });
     expect(boardPrefsOf(withBoardPrefs(raw, 'p6', { filter: {}, range: 'today' }), 'p7')).toEqual({ filter: { needsMe: true }, range: 'week' });
+  });
+});
+
+describe('evidence kinds in words (critique 2026-11-08)', () => {
+  it('has words for the kinds the core writes, and makes words of any other', () => {
+    expect(evidenceLabel('review_requested')).toBe('Sent to you for review');
+    expect(evidenceLabel('merge-conflicts')).toBe('Merge conflicts');
+    expect(evidenceLabel('typecheck')).toBe('Type check');
+    expect(evidenceLabel('some_new-kind')).toBe('Some new kind');
+    expect(evidenceLabel('')).toBe('');
   });
 });
