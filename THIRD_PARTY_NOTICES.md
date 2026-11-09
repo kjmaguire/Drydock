@@ -62,7 +62,7 @@ Pulled in by those, and compiled in:
 | github.com/Masterminds/semver/v3 | v3.5.0 | MIT | Copyright (C) 2014-2019, Matt Butcher and Matt Farina | - |
 | github.com/Masterminds/sprig/v3 | v3.3.0 | MIT | Copyright (C) 2013-2020 Masterminds | - |
 | github.com/STARRY-S/zip | v0.2.3 | BSD-3-Clause | Copyright (c) 2023, Starry | - |
-| github.com/andybalholm/brotli | v1.2.6 | MIT | Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors. | - |
+| github.com/andybalholm/brotli | v1.2.8 | MIT | Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors. | - |
 | github.com/antlr4-go/antlr/v4 | v4.13.1 | BSD-3-Clause | Copyright (c) 2012-2023 The ANTLR Project. All rights reserved. | - |
 | github.com/aymanbagabas/go-osc52/v2 | v2.0.1 | MIT | Copyright (c) 2022 Ayman Bagabas | - |
 | github.com/bahlo/generic-list-go | v0.2.0 | BSD-3-Clause | Copyright (c) 2009 The Go Authors. All rights reserved. | - |
