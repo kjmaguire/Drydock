@@ -141,7 +141,7 @@ jobs:
           check-latest: true # the runner's cached 24.x can be older than a security release
       - name: install CLIs from npm
         run: |
-          npm install -g @anthropic-ai/claude-code@2.1.306 @openai/codex@0.163.0 @google/gemini-cli@0.65.0 opencode-ai@1.19.3 @aaif/goose-acp@1.55.0
+          npm install -g @anthropic-ai/claude-code@2.1.319 @openai/codex@0.167.0 @google/gemini-cli@0.67.0 opencode-ai@1.19.5 @aaif/goose-acp@1.57.0
           npm prefix -g
           Get-ChildItem (npm prefix -g) | Select-Object -First 40 Name
       - name: where and versions
@@ -165,10 +165,10 @@ jobs:
         run: ./bin/acpspawn.exe 60 goose acp
       - name: ACP initialize - codex-acp via npx.cmd
         if: always()
-        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/codex-acp@2.2.2
+        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/codex-acp@2.6.0
       - name: ACP initialize - claude-agent-acp via npx.cmd
         if: always()
-        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/claude-agent-acp@0.94.0
+        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/claude-agent-acp@0.101.0
       - name: orphan check after probes
         if: always()
         run: |

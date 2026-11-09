@@ -92,6 +92,9 @@ A sweep of the code, CI and packaging for software Drydock uses found these, whi
 - **Services without a version**: the hosted MCP servers of `internal/mcp/catalog.yaml` (Microsoft Learn, Cloudflare docs and API,
   GitHub, Context7, Linear, Notion, Sentry), and the Sentry (`/api/0`) and Aikido (`/api/public/v1`) APIs, whose version is only
   in the path.
+- **Skills for the coding agents that work on this repository**: the Remix app skill in `.claude/skills/remix` (MIT), copied
+  unchanged from remix-run/remix at the commit its `SOURCE.md` names. It is not built into Drydock; it follows the Remix
+  release `ui/package.json` pins by reading that release's installed guides.
 - **Not part of the product**: the Phase 0 probe modules (`evidence/phase0/**/go.mod`, a record of what was verified), the
   starter template's packages (`testdata/starter-cloudflare-saas`), the trial fixtures, and Dependabot (a GitHub service).
 

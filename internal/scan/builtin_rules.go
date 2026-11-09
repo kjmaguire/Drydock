@@ -40,7 +40,7 @@ type RuleSet struct {
 var builtinSets = []RuleSet{
 	{ID: "drydock", Name: "Drydock's own", Source: "written for Drydock", Licence: "the repository's licence"},
 	{ID: "third_party/dgryski-semgrep-go", Name: "dgryski/semgrep-go", Source: "https://github.com/dgryski/semgrep-go", Licence: "MIT", Commit: "db0227c03f4b3c4e71d900188d51db4c81d66932"},
-	{ID: "third_party/0xdea-c", Name: "0xdea/semgrep-rules (C and C++)", Source: "https://github.com/0xdea/semgrep-rules", Licence: "MIT", Commit: "e0121ac19d9fa259a44f3a24d3e42c95719b17c7"},
+	{ID: "third_party/0xdea-c", Name: "0xdea/semgrep-rules (C and C++)", Source: "https://github.com/0xdea/semgrep-rules", Licence: "MIT", Commit: "b9942606d3543e3145a95332e6543fb79a01af00"},
 }
 
 type ruleFile struct {

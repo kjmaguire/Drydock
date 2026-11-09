@@ -222,11 +222,11 @@ The `tools` folder beside `drydock.exe` holds these release files exactly as eac
 `packaging/bundle.json` and checked against the SHA-256 digest GitHub recorded (`tools/bundle.json` lists each file, its address and
 its digest). Drydock installs them into its own folder at the first start; it does not change them.
 
-- osv-scanner v2.7.0 (https://github.com/google/osv-scanner): Apache-2.0.
-- Opengrep v1.31.0 (https://github.com/opengrep/opengrep): LGPL-2.1. The program is shipped unmodified, as its own executable, not
-  linked into Drydock. Its source for that release is at https://github.com/opengrep/opengrep/tree/v1.31.0; on request Drydock's
+- osv-scanner v2.7.1 (https://github.com/google/osv-scanner): Apache-2.0.
+- Opengrep v1.33.1 (https://github.com/opengrep/opengrep): LGPL-2.1. The program is shipped unmodified, as its own executable, not
+  linked into Drydock. Its source for that release is at https://github.com/opengrep/opengrep/tree/v1.33.1; on request Drydock's
   maintainers provide the same source.
-- llama.cpp, the TurboQuant fork's release `b10298-2.0.0`, its Windows Vulkan build
+- llama.cpp, the TurboQuant fork's release `b10298-2.1.0`, its Windows Vulkan build
   (https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant): MIT, as llama.cpp and ggml (copyright the ggml
   authors, as its LICENSE file states). Its archive carries the licences of what it contains; Drydock unpacks it as published.
 
@@ -237,7 +237,7 @@ The built-in Opengrep rules in `internal/scan/rules` are compiled into Drydock a
 - dgryski/semgrep-go (https://github.com/dgryski/semgrep-go), at commit db0227c03f4b3c4e71d900188d51db4c81d66932: MIT,
   Copyright (c) 2020 Damian Gryski.
 - 0xdea/semgrep-rules, the C and C++ rules (https://github.com/0xdea/semgrep-rules), at commit
-  e0121ac19d9fa259a44f3a24d3e42c95719b17c7: MIT, Copyright (c) 2022 raptor.
+  b9942606d3543e3145a95332e6543fb79a01af00: MIT, Copyright (c) 2022 raptor.
 
 ## Tools Drydock invokes but does not bundle
 
@@ -267,14 +267,14 @@ Listed in `ui/package.json` as what the UI needs to run:
 |---|---|---|---|
 | @fontsource-variable/inter | 5.3.0 | OFL-1.1 | Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1). |
 | @fontsource-variable/jetbrains-mono | 5.3.0 | OFL-1.1 | Bundles the JetBrains Mono variable font for code, task keys and numbers in the graphite UI (decision P97), so the desktop app looks the same offline (OFL-1.1). |
-| @remix-run/ui | 0.12.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
+| @remix-run/ui | 0.13.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
 | @xterm/addon-fit | 0.11.0 | MIT | Sizes a terminal to its panel. |
 | @xterm/xterm | 6.0.0 | MIT | Draws the human's terminals in the bottom dock (lazy-loaded). |
-| lucide | 1.61.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
+| lucide | 1.70.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
 | marked | 14.0.0 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
-| marked | 18.1.1 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
+| marked | 18.1.3 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
 | monaco-editor | 0.57.0 | MIT | The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported). |
-| remix | 3.0.0 | MIT | The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix... |
+| remix | 3.2.0 | MIT | The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix... |
 
 Pulled in by those:
 
@@ -286,53 +286,54 @@ Pulled in by those:
 | @oxc-project/runtime | 0.121.0 | MIT | - |
 | @oxc-project/types | 0.121.0 | MIT | - |
 | @remix-run/assert | 1.0.0 | MIT | - |
-| @remix-run/assets | 1.0.0 | MIT | - |
+| @remix-run/assets | 1.0.2 | MIT | - |
 | @remix-run/async-context-middleware | 1.0.0 | MIT | - |
-| @remix-run/auth | 1.0.0 | MIT | - |
-| @remix-run/auth-middleware | 1.0.0 | MIT | - |
-| @remix-run/cli | 1.0.0 | MIT | - |
-| @remix-run/component | 1.0.0 | MIT | - |
-| @remix-run/component-hmr | 1.0.0 | MIT | - |
-| @remix-run/compression-middleware | 1.0.0 | MIT | - |
-| @remix-run/cookie | 1.0.0 | MIT | - |
+| @remix-run/auth | 1.0.1 | MIT | - |
+| @remix-run/auth-middleware | 1.0.1 | MIT | - |
+| @remix-run/cli | 1.0.2 | MIT | - |
+| @remix-run/component | 1.2.0 | MIT | - |
+| @remix-run/component-hmr | 1.0.1 | MIT | - |
+| @remix-run/compression-middleware | 1.0.2 | MIT | - |
+| @remix-run/cookie | 1.0.2 | MIT | - |
 | @remix-run/cop-middleware | 1.0.0 | MIT | - |
-| @remix-run/cors-middleware | 1.0.0 | MIT | - |
-| @remix-run/csrf-middleware | 1.0.0 | MIT | - |
+| @remix-run/cors-middleware | 1.0.2 | MIT | - |
+| @remix-run/csp-middleware | 1.0.0 | MIT | - |
+| @remix-run/csrf-middleware | 1.0.1 | MIT | - |
 | @remix-run/data-schema | 1.0.0 | MIT | - |
 | @remix-run/data-table | 1.0.0 | MIT | - |
 | @remix-run/data-table-mysql | 1.0.0 | MIT | - |
 | @remix-run/data-table-postgres | 1.0.0 | MIT | - |
 | @remix-run/data-table-sqlite | 1.0.0 | MIT | - |
-| @remix-run/fetch-proxy | 1.0.0 | MIT | - |
+| @remix-run/fetch-proxy | 1.0.2 | MIT | - |
 | @remix-run/fetch-router | 1.0.0 | MIT | - |
-| @remix-run/file-storage | 1.0.0 | MIT | - |
-| @remix-run/file-storage-s3 | 1.0.0 | MIT | - |
-| @remix-run/form-data-middleware | 1.0.0 | MIT | - |
-| @remix-run/form-data-parser | 1.0.0 | MIT | - |
+| @remix-run/file-storage | 1.0.1 | MIT | - |
+| @remix-run/file-storage-s3 | 1.1.1 | MIT | - |
+| @remix-run/form-data-middleware | 1.1.1 | MIT | - |
+| @remix-run/form-data-parser | 1.1.1 | MIT | - |
 | @remix-run/fs | 1.0.0 | MIT | - |
-| @remix-run/headers | 1.0.0 | MIT | - |
+| @remix-run/headers | 1.1.0 | MIT | - |
 | @remix-run/html-template | 1.0.0 | MIT | - |
 | @remix-run/lazy-file | 5.0.8 | MIT | - |
 | @remix-run/logger-middleware | 1.0.0 | MIT | - |
 | @remix-run/method-override-middleware | 1.0.0 | MIT | - |
 | @remix-run/mime | 1.0.0 | MIT | - |
-| @remix-run/multipart-parser | 1.0.0 | MIT | - |
-| @remix-run/multiple-import-maps-polyfill | 1.0.0 | MIT | - |
+| @remix-run/multipart-parser | 1.1.1 | MIT | - |
+| @remix-run/multiple-import-maps-polyfill | 1.0.1 | MIT | - |
 | @remix-run/node-fetch-server | 1.0.0 | MIT | - |
 | @remix-run/node-hmr | 1.0.0 | MIT | - |
 | @remix-run/node-tsx | 1.0.0 | MIT | - |
-| @remix-run/render-middleware | 1.0.0 | MIT | - |
-| @remix-run/response | 1.0.0 | MIT | - |
+| @remix-run/render-middleware | 1.1.0 | MIT | - |
+| @remix-run/response | 1.0.2 | MIT | - |
 | @remix-run/route-pattern | 1.0.0 | MIT | - |
-| @remix-run/session | 1.0.0 | MIT | - |
-| @remix-run/session-middleware | 1.0.0 | MIT | - |
-| @remix-run/session-storage-memcache | 1.0.0 | MIT | - |
-| @remix-run/session-storage-redis | 1.0.0 | MIT | - |
-| @remix-run/spa | 1.0.0 | MIT | - |
-| @remix-run/static-middleware | 1.0.0 | MIT | - |
-| @remix-run/tar-parser | 1.0.0 | MIT | - |
+| @remix-run/session | 1.0.1 | MIT | - |
+| @remix-run/session-middleware | 1.0.2 | MIT | - |
+| @remix-run/session-storage-memcache | 1.0.1 | MIT | - |
+| @remix-run/session-storage-redis | 1.0.1 | MIT | - |
+| @remix-run/spa | 1.0.2 | MIT | - |
+| @remix-run/static-middleware | 1.0.2 | MIT | - |
+| @remix-run/tar-parser | 1.0.1 | MIT | - |
 | @remix-run/terminal | 1.0.0 | MIT | - |
-| @remix-run/test | 1.0.0 | MIT | - |
+| @remix-run/test | 1.1.0 | MIT | - |
 | @standard-schema/spec | 1.1.0 | MIT | - |
 | @types/dom-navigation | 1.0.7 | MIT | - |
 | @types/istanbul-lib-coverage | 2.0.6 | MIT | - |
@@ -360,7 +361,7 @@ Pulled in by those:
 | picomatch | 4.0.7 | MIT | - |
 | readdirp | 5.1.1 | MIT | - |
 | resolve-pkg-maps | 1.0.0 | MIT | - |
-| semver | 7.8.5 | ISC | - |
+| semver | 7.8.6 | ISC | - |
 | source-map-js | 1.2.2 | BSD-3-Clause | - |
 | supports-color | 7.2.0 | MIT | - |
 | v8-to-istanbul | 9.3.0 | ISC | - |
@@ -387,10 +388,10 @@ The marks are trademarks of their owners, shown only to say which service or CLI
 `internal/skills/registry.yaml` quotes the description from the front matter of each skill the prebuilt agents name, read at a
 pinned commit; nothing else of the skills ships (a skill's files are fetched only when a person adds it):
 
-- anthropics/skills at dbd4588f9e1033efb41dad4bef2f7947c8993d44: Apache-2.0 (each skill's `LICENSE.txt`).
-- vercel-labs/agent-skills at 063bee94c3f4df8453406c830b0a7df0f2860278: MIT.
-- cloudflare/skills at 86505e44f87d801aa1864a3c4109e9a8ae5c409f: Apache-2.0.
-- MicrosoftDocs/mcp at f8ffde185dfd232dbf5d187c22ce299eadc3d583: content CC BY 4.0, code MIT.
+- anthropics/skills at 2c5958ecac7cee2b583967a2c4981d0f4a75c579: Apache-2.0 (each skill's `LICENSE.txt`).
+- vercel-labs/agent-skills at 1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62: MIT.
+- cloudflare/skills at 6eb6c781aa9b6438e0c7307bd102788a75fe1a6d: Apache-2.0.
+- MicrosoftDocs/mcp at f0a9478a954c9b3a7c6525a5183466902ca60731: content CC BY 4.0, code MIT.
 
 ## Reused architecture and algorithms (reimplemented, not copied)
 

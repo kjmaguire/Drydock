@@ -5,7 +5,7 @@ install:                                         # display only; vendor docs: do
   - {shell: powershell, command: 'Invoke-WebRequest -Uri "https://raw.githubusercontent.com/aaif-goose/goose/main/download_cli.ps1" -OutFile "download_cli.ps1"; .\download_cli.ps1'}
   - {shell: cmd, command: 'npm install -g @aaif/goose-acp', requires: [{tool: node, min: "22"}]}
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
-versions: {min: "1.53.0", recommended: "1.55.0"}
+versions: {min: "1.53.0", recommended: "1.57.0"}
 auth:
   login: {argv: [configure], terminal: true}
   probe: none                                      # `goose doctor` exists but its output is unverified

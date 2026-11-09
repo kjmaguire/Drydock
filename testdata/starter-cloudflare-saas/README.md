@@ -4,7 +4,7 @@ The Drydock golden starter: a small, opinionated Cloudflare SaaS that AI coding 
 
 | Layer | Choice |
 |---|---|
-| Runtime | Cloudflare Workers (module syntax), Wrangler 4.151.0, `nodejs_compat` |
+| Runtime | Cloudflare Workers (module syntax), Wrangler 4.156.1, `nodejs_compat` |
 | API | Hono, in `src/api/`, served under `/api/*` |
 | Frontend | React Router 8 framework mode, SSR on the same Worker (`app/`); the Cloudflare bindings reach loaders and actions as a typed context (`app/context.ts`) |
 | Data | D1 (`DB`, SQL migrations in `migrations/`), KV (`KV`), R2 (`ATTACHMENTS`) |

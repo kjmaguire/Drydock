@@ -86,8 +86,8 @@ func fixtureSkill(name, extra, body string) string {
 }
 
 const (
-	cfPin = "86505e44f87d801aa1864a3c4109e9a8ae5c409f"
-	msPin = "f8ffde185dfd232dbf5d187c22ce299eadc3d583"
+	cfPin = "6eb6c781aa9b6438e0c7307bd102788a75fe1a6d"
+	msPin = "f0a9478a954c9b3a7c6525a5183466902ca60731"
 )
 
 func prebuiltFixture(t *testing.T, a *app) *registryFixture {

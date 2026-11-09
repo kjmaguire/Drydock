@@ -1,15 +1,15 @@
 {
   "used": {
-    "tool:gh": "2.103.0",
+    "tool:gh": "2.103.3",
     "tool:task": "3.54.0",
     "tool:go-licenses": "2.0.1",
     "tool:govulncheck": "1.9.0",
-    "tool:wrangler": "4.151.0",
-    "tool:docker": "29.9.2",
+    "tool:wrangler": "4.156.1",
+    "tool:docker": "29.9.3",
     "tool:golangci-lint": "2.15.0",
-    "tool:actions-runner": "2.338.0",
+    "tool:actions-runner": "2.338.2",
     "tool:git": "2.56.0",
-    "tool:semgrep": "1.182.0",
+    "tool:semgrep": "1.184.0",
     "tool:nsis": "3.13"
   },
   "notes": {
@@ -103,7 +103,7 @@
     },
     "npm:@remix-run/ui": {
       "role": "Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui.",
-      "hold": "Pinned exactly: Remix calls it unstable (0.x, breaking changes in minor releases). Re-read its changelog before every bump."
+      "hold": "Pinned exactly: Remix calls it unstable (0.x, breaking changes in minor releases). Re-read its changelog before every bump. 0.13.1 (2026-11-09): its one breaking change Drydock met, the toggle mixin now exported as toggle() instead of toggle.control(), is made in ui/app/ui/form.tsx."
     },
     "npm:lucide": {
       "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled."
@@ -132,40 +132,40 @@
     },
     "npm:@pitlane/vite-plugin-remix": {
       "role": "Pitlane's Remix 3 Vite plugin in SPA mode (server: false): component hot module replacement while developing (an edited component swaps in place and keeps its state). Development only; the production build is the same static dist/. Its chunk import map is off because it is an inline script the CSP forbids.",
-      "hold": "Pinned exactly: 0.x and first published 2026-10-07; breaking changes can come in minor releases. Read its changelog before every bump."
+      "hold": "Pinned exactly: 0.x and first published 2026-10-07; breaking changes can come in minor releases. Read its changelog before every bump. 0.9.1 taken on 2026-11-09 (a patch release); the build and the UI tests pass on it."
     },
     "cli:claude": {
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
-      "note": "Recommended 2.1.306, moved to the newest release on 2026-10-21 at the owner's instruction (decision P82). Checked here on 2026-10-21 without a sign-in: the contract suite's free contracts (8 passed, 0 failed, the Claude ACP bridge 0.94.0's handshake among them); the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Under npm 12 the npm install needs --allow-scripts=@anthropic-ai/claude-code, which the install line shown in Drydock carries. Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself."
+      "note": "Recommended 2.1.319, moved to the newest release on 2026-11-09 at the owner's instruction (update everything). Checked here on 2026-11-09 without a sign-in: the contract suite's free contracts (16 passed, 0 failed) against the newest releases; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). CLAUDE-ARGV-01, EFFORT-01, QUIET-01, PLAN-01, RESTRICTED-01, USAGE-03 and PERMPROMPT-01 passed on it. Under npm 12 the npm install needs --allow-scripts=@anthropic-ai/claude-code, which the install line shown in Drydock carries. Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself."
     },
     "cli:codex": {
       "role": "Codex: runs OpenAI's models as an agent.",
       "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
-      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
+      "hold": "Moved to the newest release on 2026-11-09 at the owner's instruction (update everything): Codex 0.167.0 with its ACP bridge 2.6.0, whose handshake (ACP-INIT-01) passed here without a sign-in. Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
     },
     "cli:gemini": {
       "role": "Gemini CLI: runs Google's models as an agent.",
-      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+      "note": "Recommended 0.67.0, moved to the newest release on 2026-11-09 at the owner's instruction (update everything). Checked here on 2026-11-09 without a sign-in: the contract suite's free contracts (16 passed, 0 failed) against the newest releases; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Its ACP handshake (ACP-INIT-01) passed. You install the CLI yourself."
     },
     "cli:goose": {
       "role": "Goose: the open-source agent (reached through its ACP bridge).",
-      "note": "Recommended 1.55.0, moved on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). You install the CLI yourself."
+      "note": "Recommended 1.57.0, moved to the newest release on 2026-11-09 at the owner's instruction (update everything). Checked here on 2026-11-09 without a sign-in: the contract suite's free contracts (16 passed, 0 failed) against the newest releases; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Its ACP handshake (ACP-INIT-01) passed. You install the CLI yourself."
     },
     "cli:opencode": {
       "role": "OpenCode: an open-source agent that can use many providers.",
-      "note": "Recommended 1.19.3, moved on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). You install the CLI yourself."
+      "note": "Recommended 1.19.5, moved to the newest release on 2026-11-09 at the owner's instruction (update everything). Checked here on 2026-11-09 without a sign-in: the contract suite's free contracts (16 passed, 0 failed) against the newest releases; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Its ACP handshake (ACP-INIT-01) passed. You install the CLI yourself."
     },
     "cli:cline": {
       "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
-      "note": "Recommended 3.0.73, moved on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). You install it yourself with npm i -g cline (Node 22+)."
+      "note": "Recommended 3.0.74, moved to the newest release on 2026-11-09 at the owner's instruction (update everything). Checked here on 2026-11-09 without a sign-in: the contract suite's free contracts (16 passed, 0 failed) against the newest releases; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Its ACP handshake (ACP-INIT-01) passed. You install it yourself with npm i -g cline (Node 22+)."
     },
     "bridge:@agentclientprotocol/claude-agent-acp": {
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
-      "note": "Pinned at 0.94.0 on 2026-10-20 at the owner's instruction, after its ACP handshake contract (ACP-INIT-01) passed on it; no prompt turn is sent (the bridge stays disabled, D1)."
+      "note": "Pinned at 0.101.0 on 2026-11-09 at the owner's instruction (update everything), after its ACP handshake contract (ACP-INIT-01) passed on it; no prompt turn is sent (the bridge stays disabled, D1)."
     },
     "bridge:@agentclientprotocol/codex-acp": {
       "role": "The ACP bridge Drydock starts with npx for Codex.",
-      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
+      "hold": "Moved to the newest release on 2026-11-09 at the owner's instruction (update everything): Codex 0.167.0 with its ACP bridge 2.6.0, whose handshake (ACP-INIT-01) passed here without a sign-in. Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
     },
     "action:actions/checkout": {
       "role": "Fetches the repository in CI.",
@@ -205,18 +205,18 @@
     },
     "tool:gh": {
       "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
-      "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.103.0 (2026-10-21, installed from the release tarball with its SHA-256 checked against gh_2.103.0_checksums.txt)."
+      "note": "Version shown is what the documentation says the project was written against, moved to the newest release on 2026-11-09 at the owner's instruction. This session's sandbox has gh 2.89.0, on which the contract suite's gh contracts (GH-AUTH-01, GH-API-01, GH-REST-01) passed on 2026-11-09; Drydock uses only long-standing gh commands."
     },
     "tool:task": {
       "role": "Runs Taskfile targets (build, test, lint); optional, not bundled."
     },
     "tool:osv-scanner": {
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline). Comes with Drydock's Windows download (decision P77: pinned in packaging/bundle.json, fetched by cmd/drydock-bundle in CI and checked against GitHub's SHA-256 digest, installed from the download's tools folder at the first start). The Security page offers newer releases (a check three minutes after start and twice a day, or Check for updates) and Update installs one from google/osv-scanner's GitHub releases, checked the same way (decision P66).",
-      "note": "2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
+      "note": "The download carries 2.7.1 since 2026-11-09 (the owner's instruction: update everything); CI's download job fetches it and checks it against GitHub's SHA-256 digest. 2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
     },
     "tool:opengrep": {
       "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary. Comes with Drydock's Windows download, pinned in packaging/bundle.json and checked against GitHub's SHA-256 digest (decision P77); the Security page offers newer releases and Update installs one from opengrep/opengrep's GitHub releases (decision P66). It runs with Drydock's built-in rules (internal/scan/rules) and, if the person adds one, a folder of their own.",
-      "note": "Built-in rules (decision P77): Drydock's own 34 rules and two MIT sets copied at a fixed commit, dgryski/semgrep-go (66 rules, Go) and 0xdea/semgrep-rules (49 rules, C and C++); internal/scan/rules/README.md names the commits. Not built in, on licence grounds: opengrep-rules (LGPL-2.1 with the Commons Clause, 'for research, testing & benchmarking'), semgrep-rules (Semgrep Rules License) and trailofbits/semgrep-rules (AGPL-3.0). Newest release read from GitHub's tags."
+      "note": "Built-in rules (decision P77): Drydock's own 34 rules and two MIT sets copied at a fixed commit, dgryski/semgrep-go (66 rules, Go) and 0xdea/semgrep-rules (49 rules, C and C++); internal/scan/rules/README.md names the commits. Not built in, on licence grounds: opengrep-rules (LGPL-2.1 with the Commons Clause, 'for research, testing & benchmarking'), semgrep-rules (Semgrep Rules License) and trailofbits/semgrep-rules (AGPL-3.0). Newest release read from GitHub's tags. The download carries 1.33.1 since 2026-11-09 (the owner's instruction: update everything); CI's download job runs that exact file with a scan's arguments and the built-in rules (TestTheRealOpengrepRunsTheBuiltInRules) before the change can merge."
     },
     "tool:go-licenses": {
       "role": "The documented cross-check for THIRD_PARTY_NOTICES.md (brief section 21); nothing in the repository runs it.",
@@ -228,7 +228,7 @@
     },
     "tool:wrangler": {
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
-      "hold": "4.151.3 is out, but Cloudflare's newest @cloudflare/vite-plugin (1.64.0, which the starter template builds with) pins wrangler 4.151.0 exactly; the starter moves when that plugin does (checked 2026-10-20 and again 2026-10-21, plugin still 1.64.0: 4.151.3 would put a second wrangler in its lock file). Drydock itself does not run wrangler."
+      "hold": "4.158.0 is out, but Cloudflare's newest @cloudflare/vite-plugin (1.67.0, which the starter template builds with) pins wrangler 4.156.1 exactly, and @cloudflare/vitest-plugin 1.4.12 is the newest that pins the same (1.6.0 pins 4.158.0): the starter takes that pair so its lock file has one wrangler (checked 2026-11-09). Drydock itself does not run wrangler."
     },
     "go:golang.org/x/oauth2": {
       "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens)."
@@ -252,7 +252,7 @@
     },
     "tool:docker": {
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker (Docker Desktop on Windows), the only supported engine (P135), which you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
-      "note": "Version shown is the Docker Engine and CLI the sandbox is tested with on Linux: 29.9.2 on the development host since 2026-10-21 (decision P81, from Docker's apt repository), where its daemon ran the sandbox tests as CI's sandbox job runs them (DRYDOCK_REQUIRE_DOCKER=1: 24 passed, none skipped); CI's ubuntu-latest image carries its own engine. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
+      "note": "Version shown is the newest release, recorded on 2026-11-09 at the owner's instruction; the sandbox tests last ran on Docker Engine and CLI 29.9.2 (decision P81, from Docker's apt repository), as CI's sandbox job runs them (DRYDOCK_REQUIRE_DOCKER=1); CI's ubuntu-latest image carries its own engine. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
     },
     "tool:golangci-lint": {
       "role": "The Go linter the CI lint job runs (go install ...@v2.15.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
@@ -303,7 +303,7 @@
     },
     "tool:llama.cpp-turboquant": {
       "role": "The llama.cpp build that comes installed with Drydock's Windows download (decision P77, the owner's words: 'I want it already installed with Google's TurboQuant built in'): AtomicBot-ai/atomic-llama-cpp-turboquant, MIT, a community fork of llama.cpp adding Google's TurboQuant KV cache types (turbo4, turbo3). Pinned in packaging/bundle.json for the Vulkan backend (any recent GPU), checked against GitHub's SHA-256 digest, installed at the first start with turbo4 as the cache type. Newer builds are offered on the Providers page with the twice-daily check.",
-      "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. Its releases are tagged bNNNN-X.Y.Z (the llama.cpp build it is based on, then its own version); b10298-2.0.0 (2026-10-05) is the newest. Its per-commit tags (turboquant-windows-x64-vulkan-<commit>) and dev-latest are pre-release dev builds, which Drydock does not install. It trails upstream llama.cpp."
+      "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. Its releases are tagged bNNNN-X.Y.Z (the llama.cpp build it is based on, then its own version); the download carries b10298-2.1.0 since 2026-11-09 (the owner's instruction: update everything; its Windows Vulkan archive, llama-turboquant-windows-x64-vulkan.zip, is in that release, and CI's download job checks it against GitHub's SHA-256 digest); b10298-2.0.0 (2026-10-05) was the one before. Its per-commit tags (turboquant-windows-x64-vulkan-<commit>) and dev-latest are pre-release dev builds, which Drydock does not install. It trails upstream llama.cpp."
     },
     "tool:git": {
       "role": "Version control for every project: Drydock runs git for worktrees, commits, merges and the repository guard (internal/git), always with hooks, filters and external programs switched off. On a PC it is Git for Windows, which the person installs; nothing is bundled.",
@@ -311,7 +311,7 @@
     },
     "tool:semgrep": {
       "role": "Development only: Semgrep OSS runs the built-in Opengrep rules against their fixtures (internal/scan builtin_rules_test.go with DRYDOCK_RULES_ENGINE) and made the SARIF fixture of the reader. Opengrep reads the same rule syntax; Semgrep is not shipped.",
-      "note": "Installed in a Python virtual environment on the development host; CI does not run it."
+      "note": "Installed in a Python virtual environment on the development host; CI does not run it. Version shown is the newest release, recorded on 2026-11-09 at the owner's instruction; it is reinstalled with pip install semgrep==<version> the next time the built-in rules change."
     },
     "cli:antigravity": {
       "role": "Google's Antigravity CLI (agy), driven only after a person acknowledges the terms notice (decision D2); its adapter refuses to start sessions until its stream is captured (no fixtures yet).",

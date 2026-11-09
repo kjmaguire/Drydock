@@ -135,7 +135,7 @@ func TestParseRejectsBadEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const pin = "86505e44f87d801aa1864a3c4109e9a8ae5c409f"
+	const pin = "6eb6c781aa9b6438e0c7307bd102788a75fe1a6d"
 	base := func(extra string) string {
 		return "schema: 1\nagents:\n  - id: x-agent\n    name: X\n    role: backend\n    category: engineering\n    summary: One line.\n    description: Two words.\n    purpose: Do the thing.\n" + extra
 	}

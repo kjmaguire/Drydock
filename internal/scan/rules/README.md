@@ -7,7 +7,7 @@ rules on top. Each set is here with its licence. Nothing is downloaded at run ti
 | --- | --- | --- | --- | --- | --- |
 | Drydock's own | `drydock/` | 34 | JavaScript, TypeScript, Python, Go, Java, C# | written for Drydock; fixtures in `../testdata/rules/drydock` | the repository's `LICENSE` |
 | dgryski/semgrep-go | `third_party/dgryski-semgrep-go/` | 66 (in 43 files) | Go (bug patterns) | https://github.com/dgryski/semgrep-go at `db0227c03f4b3c4e71d900188d51db4c81d66932` (2024-11-17) | MIT (`LICENSE` beside it) |
-| 0xdea/semgrep-rules, C | `third_party/0xdea-c/` | 49 | C, C++ | https://github.com/0xdea/semgrep-rules `rules/c` at `e0121ac19d9fa259a44f3a24d3e42c95719b17c7` (2026-10-18); its `noisy` rules are left out | MIT (`LICENSE` beside it) |
+| 0xdea/semgrep-rules, C | `third_party/0xdea-c/` | 49 | C, C++ | https://github.com/0xdea/semgrep-rules `rules/c` at `b9942606d3543e3145a95332e6543fb79a01af00` (2026-10-18); its `noisy` rules are left out | MIT (`LICENSE` beside it) |
 
 Not shipped, because their terms do not allow it in a product that is sold, or bind it to terms the owner has not chosen:
 

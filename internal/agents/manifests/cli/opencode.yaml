@@ -6,7 +6,7 @@ install:
   - {shell: cmd, command: 'choco install opencode'}
   - {shell: cmd, command: 'npm i -g --allow-scripts=opencode-ai opencode-ai@latest', requires: [{tool: node, min: "22"}]}   # npm 12 runs no install script unless allowed; its postinstall picks the platform binary
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
-versions: {min: "1.18.35", recommended: "1.19.3"}
+versions: {min: "1.18.35", recommended: "1.19.5"}
 auth:
   login: {argv: [providers, login], terminal: true}
   probe: {argv: [providers, list], parse: text_providers, ready_when: 'exit == 0', unverified: true}
