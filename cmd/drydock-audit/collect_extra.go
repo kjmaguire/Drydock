@@ -26,6 +26,7 @@ func extras(ctx context.Context) []Item {
 	var items []Item
 	items = append(items, otherAgentCLIs()...)
 	items = append(items, copiedContent(ctx)...)
+	items = append(items, copiedQueries()...)
 	items = append(items, pinnedSkills(ctx)...)
 	items = append(items, containerImages(ctx)...)
 	items = append(items, vendorAPIs(ctx)...)
@@ -150,6 +151,69 @@ func copiedContent(ctx context.Context) []Item {
 		it := Item{ID: ic.id, Group: "Copied into Drydock", Name: ic.name, Kind: "copied", Used: pinnedIn("ui/app/ui/brand-logo.tsx", ic.expr),
 			Where: "ui/app/ui/brand-logo.tsx", Role: "SVG paths of brand logos, copied so only the few the app shows ship."}
 		it.Latest = npmLatest(ctx, ic.npm)
+		items = append(items, it)
+	}
+	return items
+}
+
+// queryHeaderR finds where a repo map tag query was copied from: "Copied unchanged from github.com/tree-sitter/tree-sitter-go
+// v0.25.0, queries/tags.scm."
+var queryHeaderR = regexp.MustCompile(`Copied unchanged from (github\.com/\S+) v(\S+), queries/tags\.scm`)
+
+// copiedQueries are the repo map's tag queries, copied from the grammars (internal/repomap/queries/*-tags.scm): each must be the
+// one of the grammar release go.mod compiles in, so a grammar update that leaves its query behind shows here.
+func copiedQueries() []Item {
+	dir := filepath.Join(root, "internal", "repomap", "queries")
+	names, err := filepath.Glob(filepath.Join(dir, "*-tags.scm"))
+	if err != nil || len(names) == 0 {
+		fail("repo map queries: none found in internal/repomap/queries")
+		return nil
+	}
+	files := map[string]string{}
+	for _, n := range names {
+		b, err := os.ReadFile(n)
+		if err != nil {
+			fail("repo map queries: " + err.Error())
+			continue
+		}
+		files[filepath.Base(n)] = string(b)
+	}
+	gomod, err := readRepo("go.mod")
+	if err != nil {
+		fail("go.mod: " + err.Error())
+		return nil
+	}
+	return queryCopies(files, gomod)
+}
+
+// queryCopies measures each copied query (file name to text) against the version go.mod requires of its grammar: that version
+// is its "newest", since the query must match the grammar compiled in. A query with no origin header, or whose grammar go.mod
+// does not require, is a failed lookup.
+func queryCopies(files map[string]string, gomod string) []Item {
+	var names []string
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var items []Item
+	for _, n := range names {
+		m := queryHeaderR.FindStringSubmatch(files[n])
+		if m == nil {
+			fail("internal/repomap/queries/" + n + ": no \"Copied unchanged from\" header")
+			continue
+		}
+		mod, used := m[1], m[2]
+		req := regexp.MustCompile(`(?m)^\s*(?:require\s+)?` + regexp.QuoteMeta(mod) + `\s+v(\S+)`).FindStringSubmatch(gomod)
+		if req == nil {
+			fail("internal/repomap/queries/" + n + ": go.mod does not require " + mod)
+			continue
+		}
+		it := Item{ID: "copied:query:" + n, Group: "Copied into Drydock", Name: strings.TrimPrefix(mod, "github.com/tree-sitter/") + " tag query (MIT)",
+			Kind: "copied", Used: used, Latest: req[1], Where: "internal/repomap/queries/" + n,
+			Role: "The grammar's queries/tags.scm, copied unchanged for the repo map (decision P62); it must be the one of the grammar release go.mod compiles in."}
+		if used != req[1] {
+			it.Note = "go.mod compiles " + mod + " v" + req[1] + ": copy that release's queries/tags.scm and update the header."
+		}
 		items = append(items, it)
 	}
 	return items

@@ -156,3 +156,40 @@ func sourceRoot(t *testing.T) string {
 		d = p
 	}
 }
+
+// A copied tag query is measured against the grammar version go.mod compiles in: the same is current, a grammar that moved on
+// leaves its query behind, with a note on what to copy.
+func TestCopiedQueriesFollowTheGrammarsInGoMod(t *testing.T) {
+	gomod := "module x\n\nrequire (\n\tgithub.com/tree-sitter/tree-sitter-go v0.25.0\n\tgithub.com/tree-sitter/tree-sitter-rust v0.25.1\n)\n"
+	files := map[string]string{
+		"go-tags.scm":   "; Copied unchanged from github.com/tree-sitter/tree-sitter-go v0.25.0, queries/tags.scm.\n",
+		"rust-tags.scm": "; Copied unchanged from github.com/tree-sitter/tree-sitter-rust v0.24.2, queries/tags.scm.\n",
+	}
+	items := queryCopies(files, gomod)
+	if len(items) != 2 {
+		t.Fatalf("%+v", items)
+	}
+	goq, rust := items[0], items[1]
+	if goq.Used != "0.25.0" || goq.Latest != "0.25.0" || goq.Note != "" || classify(goq.Used, goq.Latest) != "current" {
+		t.Errorf("go: %+v", goq)
+	}
+	if rust.Used != "0.24.2" || rust.Latest != "0.25.1" || !strings.Contains(rust.Note, "v0.25.1") || classify(rust.Used, rust.Latest) == "current" {
+		t.Errorf("rust: %+v", rust)
+	}
+}
+
+// The repository's own copies are all found, each with a header and a grammar go.mod requires.
+func TestTheRepositorysQueryCopiesAreMeasured(t *testing.T) {
+	old := root
+	root = sourceRoot(t)
+	t.Cleanup(func() { root = old })
+	items := copiedQueries()
+	if len(items) < 7 {
+		t.Fatalf("%d query copies measured: %+v", len(items), items)
+	}
+	for _, it := range items {
+		if it.Used == "" || it.Latest == "" {
+			t.Errorf("%+v", it)
+		}
+	}
+}
