@@ -118,3 +118,51 @@ func (s splitTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	return s.scan.RoundTrip(r)
 }
+
+// A download that GitHub answers with a 5xx is tried again, after a pause, and the bundle is built; one that keeps failing, and
+// one refused for a reason that a new try cannot change (a 404), are not (CI's download step failed on two HTTP 504s, 2026-11-09).
+func TestADownloadThatFailsOnGitHubsSideIsTriedAgain(t *testing.T) {
+	ctx := context.Background()
+	old := retryWaits
+	retryWaits = []time.Duration{time.Millisecond, time.Millisecond}
+	t.Cleanup(func() { retryWaits = old })
+	fx := scantest.NewReleases(t)
+	fx.Add(scantest.ReleaseSpec{Repo: "opengrep/opengrep", Tag: "v1.31.0", Assets: map[string][]byte{"opengrep_windows_x86.exe": []byte("MZ og")}})
+	var pins Pins
+	if err := json.Unmarshal([]byte(`{"scan":[{"tool":"opengrep","tag":"v1.31.0"}]}`), &pins); err != nil {
+		t.Fatal(err)
+	}
+	api := host.HTTPAPI{BaseURL: fx.Server.URL}
+	build := func(fail int, status int) (int, error) {
+		flaky := &flakyTransport{next: fx.Transport, fail: fail, status: status}
+		_, err := Build(ctx, pins, api, &http.Client{Transport: flaky}, t.TempDir(), time.Now())
+		return flaky.tries, err
+	}
+	if tries, err := build(2, http.StatusGatewayTimeout); err != nil || tries != 3 {
+		t.Fatalf("two 504s, then the file: %d tries, %v", tries, err)
+	}
+	if tries, err := build(5, http.StatusBadGateway); err == nil || tries != 3 || !strings.Contains(err.Error(), "HTTP 502") {
+		t.Fatalf("a 502 every time: %d tries, %v", tries, err)
+	}
+	if tries, err := build(5, http.StatusNotFound); err == nil || tries != 1 {
+		t.Fatalf("a 404: %d tries, %v", tries, err)
+	}
+}
+
+// flakyTransport answers the first fail downloads of a release file with status, then passes them on.
+type flakyTransport struct {
+	next         http.RoundTripper
+	fail, status int
+	tries        int
+}
+
+func (f *flakyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if !strings.Contains(r.URL.Path, "/releases/download/") {
+		return f.next.RoundTrip(r)
+	}
+	f.tries++
+	if f.tries <= f.fail {
+		return &http.Response{StatusCode: f.status, Body: http.NoBody, Header: http.Header{}, Request: r}, nil
+	}
+	return f.next.RoundTrip(r)
+}
