@@ -74,14 +74,34 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
     // the text an editor or a terminal draws is not the element's: they draw their lines in their own clipped viewport (on the
     // Windows runner, whose column is narrower, a clipped line of the task page's diff ran under the properties beside it)
     const DRAWN = '.monaco-editor, .xterm';
+    // a text cut short with an ellipsis reports its whole run, past the edge that hides it: only what is inside the box that
+    // truncates it, up to the element measured, is on the page (a long agent name and role on a narrow Crew card read as 7 px
+    // from the card's state, which sits 10 px away, whenever the hidden part was under 11 px)
+    const clipOf = (from: Element | null, to: Element) => {
+      let left = -Infinity, right = Infinity;
+      for (let e = from; e; e = e.parentElement) {
+        const s = getComputedStyle(e);
+        if (s.textOverflow === 'ellipsis' && s.overflowX !== 'visible') {
+          const r = e.getBoundingClientRect();
+          left = Math.max(left, r.left);
+          right = Math.min(right, r.right);
+        }
+        if (e === to) break;
+      }
+      return { left, right };
+    };
     const textBox = (el: Element) => {
-      const rects: DOMRect[] = [];
+      const rects: { left: number; right: number; top: number; bottom: number }[] = [];
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         if (!n.textContent?.trim() || n.parentElement?.closest(DRAWN)) continue;
         const rg = document.createRange();
         rg.selectNodeContents(n);
-        rects.push(...Array.from(rg.getClientRects()).filter((r) => r.width > 0 && r.height > 0));
+        const clip = clipOf(n.parentElement, el);
+        for (const r of Array.from(rg.getClientRects())) {
+          const left = Math.max(r.left, clip.left), right = Math.min(r.right, clip.right);
+          if (right - left > 0 && r.height > 0) rects.push({ left, right, top: r.top, bottom: r.bottom });
+        }
       }
       if (!rects.length) return null;
       return { left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)), top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)) };
