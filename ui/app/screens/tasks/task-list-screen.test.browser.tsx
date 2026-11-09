@@ -21,6 +21,8 @@ afterEach(() => {
 const status = { settings: { maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } }, activeRuns: 0, agentSlotsInUse: 0, peakAgentSlots: 1 } as never;
 
 const NOW = Date.now();
+// a time earlier today, never yesterday: a run in the first minute after midnight read "Yesterday" (CI, 2026-11-09)
+const EARLIER_TODAY = Math.max(NOW - 60_000, new Date(NOW).setHours(0, 0, 0, 0));
 
 // TEST DOUBLES (labelled): task.summaries rows as the core writes them, one per step of the board
 const sum = (over: Partial<TaskSummary>): TaskSummary => ({
@@ -72,7 +74,7 @@ const SUMMARIES: TaskSummary[] = [
     ],
   }),
   sum({ taskId: 'merge', seq: 38, title: 'Cover the empty case', status: 'VERIFICATION', step: 'you', stepIndex: 4, assignee: 'a1', reviewer: 'a2', verdict: 'SHIP', checks: allPassed, diff: { files: 2, insertions: 31, deletions: 2 }, pending: pending('merge', 'req_merge', 'run_38'), pendingCount: 1, startedAt: NOW - 900_000 }),
-  sum({ taskId: 'done', seq: 37, title: 'Trim spaces in input', status: 'COMPLETED', step: 'done', stepIndex: 5, completedAt: NOW - 60_000, startedAt: NOW - 120_000, assignee: 'a1' }),
+  sum({ taskId: 'done', seq: 37, title: 'Trim spaces in input', status: 'COMPLETED', step: 'done', stepIndex: 5, completedAt: EARLIER_TODAY, startedAt: NOW - 120_000, assignee: 'a1' }),
   sum({ taskId: 'gone', seq: 36, title: 'Try a faster parser', status: 'FAILED', step: 'code', stepIndex: 1, completedAt: NOW - 7_200_000 }),
 ];
 
