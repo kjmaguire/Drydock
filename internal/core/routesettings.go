@@ -22,7 +22,10 @@ import (
 
 const (
 	settingTiebreak = "route.tiebreak"
-	settingCeilings = "route.ceilings"
+	// the startup probe's switch ("1" on) and who last set it
+	settingProbeStartup   = "route.probe.startup"
+	settingProbeStartupBy = "route.probe.startup.by"
+	settingCeilings       = "route.ceilings"
 
 	// DefaultTiebreakBudgetUSD is the tiebreak's own budget per day (UTC) when the person sets none.
 	DefaultTiebreakBudgetUSD = 0.25
@@ -64,6 +67,10 @@ type RouteSettings struct {
 	Level string `json:"level"`
 	// Agents are the agents a ceiling can be set for (every project's team), with their project's name.
 	Agents []RouteAgent `json:"agents"`
+	// ProbeStartup is the startup probe's switch (route.probe.startup), and ProbeStartupBy who last set it (empty when nobody
+	// has: it is off by default). The page draws it as a switch instead of guessing (effort review F8).
+	ProbeStartup   bool   `json:"probeStartup"`
+	ProbeStartupBy string `json:"probeStartupBy,omitempty"`
 }
 
 // RouteAgent is an agent as the Routing page names it.
@@ -117,6 +124,10 @@ func (e *economics) routeSettings(ctx context.Context) RouteSettings {
 	}
 	ts.SpentTodayUSD, ts.CallsToday = e.tiebreakSpentToday(ctx)
 	rs := RouteSettings{Tiebreak: ts, Ceilings: e.ceilingSettings(ctx), Level: string(e.workspaceLevel(ctx)), Agents: []RouteAgent{}}
+	if v, _ := e.setting(ctx, settingProbeStartup); v == "1" {
+		rs.ProbeStartup = true
+	}
+	rs.ProbeStartupBy, _ = e.setting(ctx, settingProbeStartupBy)
 	if ags, err := e.c.AllAgents(ctx); err == nil {
 		names := map[string]string{}
 		if ps, err := e.c.Projects(ctx); err == nil {

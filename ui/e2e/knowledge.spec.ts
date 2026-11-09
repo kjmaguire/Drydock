@@ -17,18 +17,17 @@ test('Knowledge: cards with real counts, requirement coverage, the latest note, 
   await page.getByRole('button', { name: 'Add requirement' }).click();
   await expect(page.getByTestId('requirement-detail')).toBeVisible();
 
-  // one memory note, accepted by the person
+  // one memory note: the person's own entry is accepted when it is added (E10)
   await projectNav(page, 'nav-memory');
-  await expect(page.getByRole('heading', { name: 'Propose an entry' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add to memory' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Use gofmt');
   await page.getByLabel('Body').fill('Run gofmt before every commit.');
-  await page.getByRole('button', { name: 'Propose' }).click();
+  await page.getByRole('button', { name: 'Add to memory' }).click();
   const mem = page.locator('[data-testid=memory][data-title="Use gofmt"]');
-  await mem.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect(mem).toHaveAttribute('data-status', 'accepted');
 
   // the hub: every card counts what is really there and links to its page
-  await sidebar(page).getByTestId('nav-knowledge').click();
+  await projectNav(page, 'nav-knowledge');
   const hub = page.getByTestId('knowledge');
   await expect(hub).toBeVisible();
   await expect(hub.getByRole('heading', { level: 1 })).toContainText('Knowledge');
@@ -66,6 +65,7 @@ test('Knowledge: cards with real counts, requirement coverage, the latest note, 
   await expect(log).toContainText('drydock-e2e chat: where do we round currency?');
   await expect(log.getByText('Hello from the scripted chat stand-in')).toBeVisible();
   // in the project's folder, not the private folder a chat without a project gets
+  await page.getByTestId('chat-more').click();
   await page.getByRole('button', { name: 'Properties' }).click();
   await expect(page.getByTestId('chat-cwd')).toBeVisible();
   await expect(page.getByTestId('chat-cwd')).not.toHaveAttribute('title', /[\\/]chats[\\/]/);

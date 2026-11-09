@@ -238,7 +238,7 @@ export function Turns(
                   </span>
                 ) : null}
               </button>
-              {isOpen ? <TurnDetail e={e} taskId={taskId} runId={x.run!.id} openLogs={() => s.ui.openDock('logs')} /> : null}
+              {isOpen ? <TurnDetail e={e} taskId={taskId} runId={x.run!.id} openLogs={() => s.ui.openLogs(taskId, e.logId)} /> : null}
             </li>
           );
         })}

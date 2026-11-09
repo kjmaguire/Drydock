@@ -126,6 +126,9 @@ export function buildInput(v: FormValues, initial?: McpLibraryServer): { ok: tru
         bearerToken: v.auth === 'token' ? v.token.trim() || undefined : undefined,
         clearBearer: (v.auth === 'token' ? v.clearToken : !!initial?.hasToken) || undefined,
         oauth: v.auth === 'oauth',
+        // a new web server at an https address lists its tools as it is saved (F12): connecting it is one step; never a
+        // program (M24), never before an OAuth sign-in
+        discover: (!initial && v.auth !== 'oauth' && /^https:\/\//i.test(v.url.trim())) || undefined,
       },
     };
   }

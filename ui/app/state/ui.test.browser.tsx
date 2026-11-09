@@ -1,18 +1,19 @@
 import { expect } from 'remix/assert';
 import { afterEach, beforeEach, describe, it } from 'remix/test';
-import { parseDetails, parseDock, UiModel, wideWindow } from './ui.ts';
+import { DOCK_VIEWS_MAX, parseDetails, parseDock, parseDockViews, parseInboxTab, UiModel, wideWindow } from './ui.ts';
 
 // What is in localStorage can be anything (audit 2026-10-16, L43): an older version's shape, another tool's, a hand edit. A
 // value that is not what the UI expects is its default, and nothing else is trusted.
 
 const DOCK = 'drydock.dock';
 const DETAILS = 'drydock.details';
+const INBOX = 'drydock.inbox';
 const keep: Record<string, string | null> = {};
 beforeEach(() => {
-  for (const k of [DOCK, DETAILS]) keep[k] = localStorage.getItem(k);
+  for (const k of [DOCK, DETAILS, INBOX]) keep[k] = localStorage.getItem(k);
 });
 afterEach(() => {
-  for (const k of [DOCK, DETAILS]) {
+  for (const k of [DOCK, DETAILS, INBOX]) {
     if (keep[k] === null) localStorage.removeItem(k);
     else localStorage.setItem(k, keep[k]!);
   }
@@ -58,6 +59,43 @@ describe('parseDock', () => {
     expect(Object.keys(dock).sort()).toEqual(['__proto__', 'constructor', 'toString']);
     expect(dock['constructor']).toEqual({ open: true, tab: 'diff', height: 280 });
     expect(({} as Record<string, unknown>)['open']).toBeUndefined(); // nothing leaked into Object.prototype
+  });
+});
+
+describe('the dock remembers per task what it showed (X22)', () => {
+  it('parses a stored view field by field, and keeps only the newest tasks', () => {
+    expect({ ...parseDockViews({ t1: { live: true, file: 'a.go', log: 'ev:1' }, t2: { live: 'yes', file: 7, log: '' }, t3: 'x' }) }).toEqual({
+      t1: { live: true, file: 'a.go', log: 'ev:1' },
+      t2: {},
+    });
+    expect(parseDockViews('junk')).toBeUndefined();
+    const many = Object.fromEntries(Array.from({ length: DOCK_VIEWS_MAX + 5 }, (_, i) => [`t${i}`, { file: 'f' }]));
+    const kept = Object.keys(parseDockViews(many)!);
+    expect(kept.length).toBe(DOCK_VIEWS_MAX);
+    expect(kept[0]).toBe('t5');
+    const p1 = parseDock({ p1: { open: true, views: { t1: { file: 'x.go' } } } }).p1!;
+    expect({ ...p1.views }).toEqual({ t1: { file: 'x.go' } });
+    expect(p1.open).toBe(true);
+  });
+
+  it('stores the choices with the dock state, per project, and drops the oldest task', () => {
+    const a = new UiModel({ media: wideWindow });
+    a.setProject('p1');
+    a.setDock({ open: true, tab: 'diff' });
+    a.setDockView('t1', { file: 'calc.go' });
+    a.setDockView('t1', { live: false });
+    a.setDockView('t2', { log: 'ev:3' });
+    const b = new UiModel({ media: wideWindow });
+    b.setProject('p1');
+    expect(b.dockView('t1')).toEqual({ file: 'calc.go', live: false });
+    expect(b.dockView('t2')).toEqual({ log: 'ev:3' });
+    expect(b.dock.open).toBe(true);
+    b.setProject('p2');
+    expect(b.dockView('t1')).toEqual({});
+    b.setProject('p1');
+    for (let i = 0; i < DOCK_VIEWS_MAX; i++) b.setDockView(`n${i}`, { file: 'f' });
+    expect(b.dockView('t1')).toEqual({});
+    expect(b.dockView(`n${DOCK_VIEWS_MAX - 1}`)).toEqual({ file: 'f' });
   });
 });
 
@@ -123,5 +161,21 @@ describe('a narrow window (P85)', () => {
   it('is never narrow in a wide window', () => {
     const ui = new UiModel({ media: wideWindow });
     expect([ui.narrowDetails, ui.narrowRails]).toEqual([false, false]);
+  });
+});
+
+describe('the Inbox tab is remembered (drydock.inbox)', () => {
+  it('opens on the tab it was left on; a stored value that is not a tab is Needs you', () => {
+    const a = new UiModel({ media: wideWindow });
+    a.setInboxTab('done');
+    expect(new UiModel({ media: wideWindow }).inboxTab).toBe('done');
+    // a test's model (persist: false) neither reads nor writes it
+    const quiet = new UiModel({ persist: false, media: wideWindow });
+    expect(quiet.inboxTab).toBe('needs');
+    quiet.setInboxTab('mine');
+    expect(new UiModel({ media: wideWindow }).inboxTab).toBe('done');
+    for (const raw of ['nope', 7, null, undefined, {}]) expect(parseInboxTab(raw)).toBe('needs');
+    localStorage.setItem(INBOX, 'not json');
+    expect(new UiModel({ media: wideWindow }).inboxTab).toBe('needs');
   });
 });

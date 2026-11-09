@@ -8,8 +8,6 @@ import { PullsScreen } from './pulls-screen.tsx';
 
 afterEach(cleanup);
 
-/** The issue list can be loaded once the project is known. */
-const loadable = (r: ReturnType<typeof mount>) => waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Load open issues').disabled).toBe(false), r);
 
 const review = (over: Partial<GitHubReview>): GitHubReview => ({
   id: 1,
@@ -156,18 +154,28 @@ describe('PullsScreen', () => {
     const r = mount(<PullsScreen />, svc({ githubIssues }));
     await waitFor(() => expect(r.container.textContent).toContain('No task has a pull request'), r);
     expect(r.$('h1')!.textContent).toContain('Pull requests');
-    await loadable(r);
-    await r.act(() => type(byLabel(r.container, 'Labels (comma separated, optional)'), ' bug '));
-    await r.act(() => byText(r.container, 'button', 'Load open issues').click());
+    // one explanation, with the way to turn pull requests on (decision P144)
+    expect(r.container.textContent).not.toContain('A finished task is pushed');
+    expect(r.$('[data-testid="pulls-empty-line"] a')!.getAttribute('href')).toBe('/project');
+    // the issues are read as the page opens, without a click (C11)
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('Could not list issues: the project has no GitHub origin'), r);
-    expect(githubIssues.calls).toEqual([['prj_1', 'bug']]);
+    expect(githubIssues.calls).toEqual([['prj_1']]);
+  });
+
+  it('asks GitHub for no issues when the repository has no origin on github.com, and says so', async () => {
+    const githubIssues = recorder<[string, string?], GitHubIssue[]>(() => []);
+    const noRemote = { projectId: 'prj_1', remote: '', github: false, branch: '', current: 'main', tracked: false, ahead: 0, behind: 0, checkedAt: 0, checking: false };
+    const r = mount(<PullsScreen />, svc({ githubIssues, repoSyncState: async () => noRemote }));
+    await waitFor(() => expect(r.$('[data-testid="gh-issues-no-origin"]')!.textContent).toContain('no origin remote on GitHub'), r);
+    expect(githubIssues.calls).toEqual([]);
+    expect(r.$('[role="alert"]')).toBeNull();
   });
 
   it('asks for a GitHub repository when the project has none', async () => {
     const r = mount(<PullsScreen />, svc({ projectList: async () => [{ id: 'prj_1', name: 'later', repoPath: '', hasRepo: false } as never] }));
     await waitFor(() => expect(r.$('[data-testid="pulls-no-repo"]')!.textContent).toContain('Attach a GitHub repository to see pull requests'), r);
     expect(r.$('[data-testid="pulls-no-repo"] a')!.getAttribute('href')).toBe('/project');
-    expect(r.container.textContent).not.toContain('Load open issues');
+    expect(r.container.textContent).not.toContain('Refresh issues');
   });
 
   it('shows the first task pull request, and another when it is chosen', async () => {
@@ -201,32 +209,128 @@ describe('PullsScreen', () => {
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('Could not read the pull request from GitHub: GitHub token missing'), r);
   });
 
-  it('lists open issues and imports one by its number', async () => {
+  it('lists open issues and imports one by its number as a backlog task, staying on the page', async () => {
     const issue: GitHubIssue = { number: 12, title: 'Crash on start', body: 'steps', html_url: 'https://github.com/o/r/issues/12', state: 'open', labels: null, author: '' };
-    const githubImportIssue = recorder(() => task({ id: 't9' }));
+    const githubImportIssue = recorder(() => task({ id: 't9', seq: 9 }));
     const imported: Task[] = [];
     const r = mount(<PullsScreen onImported={(x) => imported.push(x)} />, svc({ githubIssues: async () => [issue], githubImportIssue }));
-    await loadable(r);
-    await r.act(() => byText(r.container, 'button', 'Load open issues').click());
     await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(1), r);
     expect(r.$('[data-testid="gh-issue"]')!.textContent).toContain('by unknown');
     await r.act(() => byText(r.container, 'button', 'Import issue #12 as a task').click());
     await waitFor(() => expect(imported.map((x) => x.id)).toEqual(['t9']), r);
-    expect(githubImportIssue.calls).toEqual([['prj_1', 12]]);
+    expect(githubImportIssue.calls).toEqual([['prj_1', 12, undefined]]);
+    await waitFor(() => expect(r.$('[data-testid="gh-import-status"]')!.textContent).toContain('Issue #12 is task #9 in the backlog.'), r);
+    expect(byText(r.$('[data-testid="gh-import-status"]')!, 'a', 'Open the task').getAttribute('href')).toBe('/task/t9');
+    // the issue now links its task instead of offering a second import
+    expect(r.$('[data-testid="gh-issue-task"]')!.getAttribute('href')).toBe('/task/t9');
   });
 
   it('says there are no open issues, and shows an import refusal', async () => {
     const r = mount(<PullsScreen />, svc({ githubIssues: async () => [] }));
-    await loadable(r);
-    await r.act(() => byText(r.container, 'button', 'Load open issues').click());
     await waitFor(() => expect(r.container.textContent).toContain('No open issues.'), r);
 
     const issue: GitHubIssue = { number: 5, title: 'x', body: '', html_url: '', state: 'open', labels: [], author: 'a' };
     const r2 = mount(<PullsScreen onImported={() => undefined} />, svc({ githubIssues: async () => [issue], githubImportIssue: async () => Promise.reject(new Error('issue already imported')) }));
-    await loadable(r2);
-    await r2.act(() => byText(r2.container, 'button', 'Load open issues').click());
     await waitFor(() => expect(r2.$$('[data-testid="gh-issue"]').length).toBe(1), r2);
     await r2.act(() => byText(r2.container, 'button', 'Import issue #5 as a task').click());
     await waitFor(() => expect(r2.$('[role="alert"]')!.textContent).toContain('Import failed: issue already imported'), r2);
+  });
+
+  describe('Import and start (C11)', () => {
+    const agents = [
+      { id: 'a1', name: 'Ada', role: 'backend', adapter: 'claude', projectId: 'prj_1' },
+      { id: 'a2', name: 'Rex', role: 'reviewer', adapter: 'claude', projectId: 'prj_1' },
+    ];
+    const issues: GitHubIssue[] = [
+      { number: 12, title: 'Crash on start', body: '', html_url: '', state: 'open', labels: ['bug'], author: 'bob' },
+      { number: 13, title: 'Docs typo', body: '', html_url: '', state: 'open', labels: ['docs'], author: 'bob' },
+      { number: 14, title: 'Slow build', body: '', html_url: '', state: 'open', labels: ['Bug', 'perf'], author: 'bob' },
+    ];
+
+    it('starts an issue with the crew pair in one click and says who works on it', async () => {
+      const githubImportIssue = recorder(() => task({ id: 't9', seq: 9 }));
+      const r = mount(<PullsScreen />, svc({ githubIssues: async () => issues, githubImportIssue, agentList: async () => agents as never }));
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(3), r);
+      await waitFor(() => expect(r.container.textContent).toContain('Import and start has Ada build it and Rex review it.'), r);
+      await r.act(() => byText(r.container, 'button', 'Import issue #12 and start it').click());
+      await waitFor(() => expect(githubImportIssue.calls).toEqual([['prj_1', 12, { assignee: 'a1', reviewer: 'a2', start: true }]]), r);
+      await waitFor(() => expect(r.$('[data-testid="gh-import-status"]')!.textContent).toContain('Issue #12 is task #9. Ada builds it and Rex reviews it; it has started.'), r);
+    });
+
+    it('says when the task was made but did not start', async () => {
+      const githubImportIssue = recorder(() => ({ ...task({ id: 't9', seq: 9 }), startError: 'no licence' }));
+      const r = mount(<PullsScreen />, svc({ githubIssues: async () => issues, githubImportIssue, agentList: async () => agents as never }));
+      await waitFor(() => byText(r.container, 'button', 'Import issue #12 and start it'), r);
+      await r.act(() => byText(r.container, 'button', 'Import issue #12 and start it').click());
+      await waitFor(() => expect(r.$('[data-testid="gh-import-status"]')!.textContent).toContain('Issue #12 is task #9, but it did not start: no licence'), r);
+    });
+
+    it('offers no start without a pair, filters by label on the page, and imports the listed issues as backlog tasks', async () => {
+      const githubIssues = recorder(() => issues);
+      const githubImportIssue = recorder((_p: string, n: number) => task({ id: `t${n}`, seq: n }));
+      const r = mount(<PullsScreen />, svc({ githubIssues, githubImportIssue }, { agents: [] }));
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(3), r);
+      expect(r.container.textContent).toContain('Import and start needs a worker and a different reviewer');
+      expect(r.container.textContent).not.toContain('Import and start gives');
+      expect(Array.from(r.$$('button')).some((b) => b.textContent?.trim() === 'Import and start')).toBe(false);
+      await r.act(() => type(byLabel(r.container, 'Labels (comma separated, optional)'), 'bug'));
+      await waitFor(() => expect(Array.from(r.$$('[data-testid="gh-issue"]')).map((x) => x.getAttribute('data-number'))).toEqual(['12', '14']), r);
+      // filtering asks GitHub nothing new
+      expect(githubIssues.calls.length).toBe(1);
+      await r.act(() => byText(r.container, 'button', 'Import 2 as backlog tasks').click());
+      await waitFor(() => expect(githubImportIssue.calls).toEqual([['prj_1', 12, undefined], ['prj_1', 14, undefined]]), r);
+      await waitFor(() => expect(r.$('[data-testid="gh-import-status"]')!.textContent).toBe('Imported 2 issues as backlog tasks.'), r);
+      expect(r.$('[data-testid="gh-import-all"]')).toBeNull();
+      // Refresh issues asks GitHub again
+      await r.act(() => byText(r.container, 'button', 'Refresh issues').click());
+      await waitFor(() => expect(githubIssues.calls.length).toBe(2), r);
+    });
+
+    it('a refused issue does not stop the bulk import, says why, and is left out of the next one', async () => {
+      const githubImportIssue = recorder((_p: string, n: number) => (n === 12 ? Promise.reject(new Error('issue #12 has a high injection risk')) : task({ id: `t${n}`, seq: n })));
+      const more: GitHubIssue = { number: 15, title: 'More', body: '', html_url: '', state: 'open', labels: [], author: 'bob' };
+      const r = mount(<PullsScreen />, svc({ githubIssues: async () => [...issues, more], githubImportIssue }, { agents: [] }));
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(4), r);
+      await r.act(() => byText(r.container, 'button', 'Import 4 as backlog tasks').click());
+      await waitFor(() => expect(githubImportIssue.calls.map((c) => c[1])).toEqual([12, 13, 14, 15]), r);
+      await waitFor(() => expect(r.$('[data-testid="gh-import-status"]')!.textContent).toBe('Imported 3 issues as backlog tasks. #12 was not imported: issue #12 has a high injection risk.'), r);
+      // #12 keeps its own buttons, but no bulk import offers it again (one issue left is not a bulk)
+      expect(byText(r.container, 'button', 'Import issue #12 as a task')).toBeTruthy();
+      expect(r.$('[data-testid="gh-import-all"]')).toBeNull();
+    });
+
+    it('switching project shows none of the last project: no imported mark by number, no buttons on its issues', async () => {
+      const projects = [{ id: 'prj_1', name: 'gocalc' }, { id: 'prj_2', name: 'other' }] as never;
+      const later: { release?: (v: GitHubIssue[]) => void } = {};
+      const githubIssues = recorder((p: string) => (p === 'prj_1' ? [issues[0]!] : new Promise<GitHubIssue[]>((res) => { later.release = res; })));
+      const githubImportIssue = recorder(() => task({ id: 't9', seq: 9 }));
+      const s = svc({ projectList: async () => projects, githubIssues, githubImportIssue }, { agents: [] });
+      const r = mount(<PullsScreen />, s);
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(1), r);
+      await r.act(() => byText(r.container, 'button', 'Import issue #12 as a task').click());
+      await waitFor(() => expect(r.$('[data-testid="gh-issue-task"]')!.getAttribute('href')).toBe('/task/t9'), r);
+      await r.act(() => s.workspace.selectProject('prj_2'));
+      // while the other project's issues load, the last project's list is gone and nothing can be imported from it
+      await waitFor(() => expect(githubIssues.calls.map((c) => c[0])).toEqual(['prj_1', 'prj_2']), r);
+      expect(r.$$('[data-testid="gh-issue"]').length).toBe(0);
+      expect(r.$('[data-testid="gh-import-status"]')).toBeNull();
+      // the other project's own issue #12 is not marked as imported by the first project's task
+      await r.act(() => later.release?.([{ ...issues[0]!, title: 'Another project issue' }]));
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(1), r);
+      expect(r.$('[data-testid="gh-issue-task"]')).toBeNull();
+      expect(byText(r.container, 'button', 'Import issue #12 as a task')).toBeTruthy();
+      expect(githubImportIssue.calls).toEqual([['prj_1', 12, undefined]]);
+    });
+
+    it('opening the page again within a minute does not ask GitHub again', async () => {
+      const githubIssues = recorder(() => issues);
+      const s = svc({ githubIssues });
+      const r = mount(<PullsScreen />, s);
+      await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(3), r);
+      cleanup();
+      const again = mount(<PullsScreen />, s);
+      await waitFor(() => expect(again.$$('[data-testid="gh-issue"]').length).toBe(3), again);
+      expect(githubIssues.calls.length).toBe(1);
+    });
   });
 });

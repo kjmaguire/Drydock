@@ -71,7 +71,7 @@ func TestPRFlowWithoutCIAsksTheHumanAndAHumanWaiverPasses(t *testing.T) {
 	id := e.runPR(t, src, 4)
 	e.await(t, id, workflow.StatusWaitingHuman)
 	q := e.pendingOne(t, id)
-	if q.NodeID != "ci" || q.Spec.Kind != "question" || q.Spec.Title != "No CI ran on pull request #7 within 60ms. Check again, merge without CI this time, or stop." {
+	if q.NodeID != "ci" || q.Spec.Kind != "question" || q.Spec.Title != "No CI ran on pull request #7 within 60ms. Keep waiting, merge without CI this time, or stop." {
 		t.Fatalf("question %+v", q)
 	}
 	if p := payloadOf(t, q); p.Gate != "ci" || p.Reason != "none" || p.PR != 7 || p.Head == "" {
@@ -149,6 +149,74 @@ func TestPRFlowAnAgentCannotWaiveCIAndAHumanCanStop(t *testing.T) {
 	defer f.mu.Unlock()
 	if f.merges != 0 || f.merged {
 		t.Fatal("a stopped run merged")
+	}
+}
+
+// H13: the CI question about no CI at all takes a third answer, "this repository has no CI, remember it" ({"ci_none": true}):
+// this commit passes as a waiver with the person's name, and the project's CI setting becomes "none", recorded with the person
+// who answered, so the next pull request is not asked again. An agent's answer declares nothing, and a question about a
+// required check that never reported is not answered by it.
+func TestPRFlowNoCIAnswerWaivesAndRemembersForTheProject(t *testing.T) {
+	e, _ := gateRoles(t)
+	ctx := context.Background()
+	f := &githubFixture{noCI: true}
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 4)
+	e.await(t, id, workflow.StatusWaitingHuman)
+	if q := e.pendingOne(t, id); q.NodeID != "ci" || payloadOf(t, q).Reason != "none" {
+		t.Fatalf("question %+v", q)
+	}
+
+	// an agent cannot declare it: CI is checked again and the person is asked again
+	if err := e.answer(t, id, "approved", "agent:a2", `{"ci_none":true}`); err != nil {
+		t.Fatal(err)
+	}
+	e.await(t, id, workflow.StatusWaitingHuman)
+	if q := e.pendingOne(t, id); q.NodeID != "ci" {
+		t.Fatalf("an agent's declaration passed the gate: %+v", q)
+	}
+	if dev := pipeline.LoadDevSettings(ctx, e.db, "p1"); dev.CIMode != pipeline.CIRequired {
+		t.Fatalf("an agent declared no CI: %+v", dev)
+	}
+
+	if err := e.answer(t, id, "approved", "human:kyle", `{"ci_none":true}`); err != nil {
+		t.Fatal(err)
+	}
+	e.await(t, id, workflow.StatusWaitingHuman)
+	if q := e.pendingOne(t, id); q.NodeID != "approve" {
+		t.Fatalf("the declaration must lead to the merge approval: %+v", q)
+	}
+	ev := e.ciEvidence(t)
+	if len(ev) != 1 || ev[0].Passed == nil || !*ev[0].Passed || ev[0].Summary != "CI waived by human:kyle for this commit: no CI reported on it" {
+		t.Fatalf("the commit passes as a waiver with the person's name: %+v", ev)
+	}
+	dev := pipeline.LoadDevSettings(ctx, e.db, "p1")
+	if dev.CIMode != pipeline.CINone || dev.CINoneBy != "human:kyle" || dev.CINoneAt == 0 {
+		t.Fatalf("the project must remember no CI, recorded with who answered: %+v", dev)
+	}
+	if n := e.eventTypes(t)["projectdev.changed"]; n != 1 {
+		t.Fatalf("projectdev.changed published %d times", n)
+	}
+}
+
+func TestPRFlowNoCIAnswerDoesNotAnswerAMissingRequiredCheck(t *testing.T) {
+	e, _ := gateRoles(t)
+	f := &githubFixture{required: []string{"test", "deploy"}} // only "test" reports
+	src, _ := e.prSetup(t, f)
+	id := e.runPR(t, src, 4)
+	e.await(t, id, workflow.StatusWaitingHuman)
+	if q := e.pendingOne(t, id); payloadOf(t, q).Reason != "missing" {
+		t.Fatalf("question %+v", q)
+	}
+	if err := e.answer(t, id, "approved", "human:kyle", `{"ci_none":true}`); err != nil {
+		t.Fatal(err)
+	}
+	e.await(t, id, workflow.StatusWaitingHuman)
+	if q := e.pendingOne(t, id); q.NodeID != "ci" {
+		t.Fatalf("a repository with a required check is not one without CI: %+v", q)
+	}
+	if dev := pipeline.LoadDevSettings(context.Background(), e.db, "p1"); dev.CIMode != pipeline.CIRequired {
+		t.Fatalf("declared no CI on a missing check: %+v", dev)
 	}
 }
 
@@ -236,7 +304,7 @@ func TestPRFlowAsksWhenARequiredCheckNeverReports(t *testing.T) {
 	e.await(t, id, workflow.StatusWaitingHuman)
 	q := e.pendingOne(t, id)
 	p := payloadOf(t, q)
-	if q.NodeID != "ci" || q.Spec.Title != "The required check(s) deploy did not report on pull request #7 within 60ms. Check again, merge without CI this time, or stop." ||
+	if q.NodeID != "ci" || q.Spec.Title != "The required check(s) deploy did not report on pull request #7 within 60ms. Keep waiting, merge without CI this time, or stop." ||
 		p.Reason != "missing" || strings.Join(p.Missing, ",") != "deploy" {
 		t.Fatalf("question %+v", q)
 	}
@@ -378,7 +446,7 @@ func TestPRFlowAWaiverNeverCoversAFailedCheck(t *testing.T) {
 	id := e.runPR(t, short, 4)
 	e.await(t, id, workflow.StatusWaitingHuman)
 	q := e.pendingOne(t, id)
-	if q.NodeID != "ci" || q.Spec.Title != "CI on pull request #7 is still running after 150ms (e2e). Check again, merge without CI this time, or stop." || payloadOf(t, q).Reason != "running" {
+	if q.NodeID != "ci" || q.Spec.Title != "CI on pull request #7 is still running after 150ms (e2e). Keep waiting, merge without CI this time, or stop." || payloadOf(t, q).Reason != "running" {
 		t.Fatalf("question %+v", q)
 	}
 	f.mu.Lock()

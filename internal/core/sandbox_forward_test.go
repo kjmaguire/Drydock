@@ -85,6 +85,10 @@ func TestForwardingNeedsARunningSandboxAndAPerson(t *testing.T) {
 	if err := a.c.SandboxForwardView(ctx, r.task.ID, 3000, a.c.Human()); err == nil || !strings.Contains(err.Error(), "never in a browser") {
 		t.Fatalf("a window with no viewer says why it cannot open the app, and does not fall back to a browser: %v", err)
 	}
+	// "Open the app" in a window with no viewer is refused before anything is forwarded (X32)
+	if err := a.callErr("sandbox.forward.show", map[string]any{"taskId": r.task.ID, "port": 3000}); err == nil || !strings.Contains(err.Error(), "never in a browser") {
+		t.Fatalf("a window with no viewer opened the app: %v", err)
+	}
 	if err := a.callErr("sandbox.forward.open", map[string]any{"taskId": r.task.ID, "port": 70000}); err == nil {
 		t.Fatal("a port out of range")
 	}
@@ -96,10 +100,24 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 	t.Setenv("DRYDOCK_CONTAINER_CLI", bin)
 	r := &forwardRig{}
 	dir := t.TempDir()
+	// TEST DOUBLES for the viewer: it records what it was asked to show, says which addresses have a window, and ends one on Close
+	windows := map[string]bool{}
+	var closed []string
 	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "data"), User: "kyle", OpenSandboxApp: func(_ context.Context, app core.SandboxApp) error {
 		r.mu.Lock()
 		r.opened = append(r.opened, app)
+		windows[app.URL] = true
 		r.mu.Unlock()
+		return nil
+	}, SandboxAppShown: func(url string) bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return windows[url]
+	}, CloseSandboxApp: func(url string) error {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		closed = append(closed, url)
+		delete(windows, url)
 		return nil
 	}})
 	if err != nil {
@@ -124,7 +142,7 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 		t.Fatalf("%+v", f)
 	}
 	a.call("sandbox.forward.list", map[string]any{"taskId": r.task.ID}, &l)
-	if len(l.Forwards) != 1 || l.Forwards[0].HostPort != f.HostPort {
+	if len(l.Forwards) != 1 || l.Forwards[0].HostPort != f.HostPort || len(l.Viewing) != 0 {
 		t.Fatalf("%+v", l)
 	}
 
@@ -140,21 +158,44 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 	if len(r.shown()) != 1 {
 		t.Fatal("the refused request opened a window")
 	}
+	// the list says which port has its window open, so the page says Show (X314)
+	a.call("sandbox.forward.list", map[string]any{"taskId": r.task.ID}, &l)
+	if len(l.Viewing) != 1 || l.Viewing[0] != 3000 {
+		t.Fatalf("viewing %+v", l.Viewing)
+	}
 	if _, err := c.SandboxForwardOpen(context.Background(), r.task.ID, 3001, "agt_1"); err == nil {
 		t.Fatal("an agent forwarded a port")
 	}
 
-	a.call("sandbox.forward.close", map[string]any{"taskId": r.task.ID, "port": 3000}, nil)
-	a.call("sandbox.forward.list", map[string]any{"taskId": r.task.ID}, &l)
-	if len(l.Forwards) != 0 {
-		t.Fatalf("%+v", l)
+	// "Open the app" forwards and shows in one call: a port already forwarded stays the same forward (X32)
+	var shownF sandbox.Forward
+	a.call("sandbox.forward.show", map[string]any{"taskId": r.task.ID, "port": 3000}, &shownF)
+	if shownF.HostPort != f.HostPort || len(r.shown()) != 2 || r.shown()[1].URL != shown[0].URL {
+		t.Fatalf("show: %+v, %+v", shownF, r.shown())
+	}
+	if _, err := c.SandboxForwardShow(context.Background(), r.task.ID, 3002, "agt_1"); err == nil || !strings.Contains(err.Error(), "only a person") {
+		t.Fatalf("an agent opened the app: %v", err)
 	}
 
+	a.call("sandbox.forward.close", map[string]any{"taskId": r.task.ID, "port": 3000}, nil)
+	a.call("sandbox.forward.list", map[string]any{"taskId": r.task.ID}, &l)
+	if len(l.Forwards) != 0 || len(l.Viewing) != 0 {
+		t.Fatalf("%+v", l)
+	}
+	// Stop ends the window that showed the forward
+	r.mu.Lock()
+	if len(closed) != 1 || closed[0] != shown[0].URL {
+		t.Fatalf("closed %v", closed)
+	}
+	r.mu.Unlock()
+
 	// what the person did is in the audit log and the task's events: the port and where it went, as them
+	// (opened and viewed twice: sandbox.forward.open and .view, then .show, which records both again)
+	want := map[string]int{core.EventForwardOpened: 2, core.EventForwardViewed: 2, core.EventForwardClosed: 1}
 	for _, action := range []string{core.EventForwardOpened, core.EventForwardViewed, core.EventForwardClosed} {
 		var n int
 		var actor, detail string
-		if err := c.DB.Reader().QueryRow(`SELECT COUNT(*), COALESCE(MAX(actor),''), COALESCE(MAX(detail),'') FROM audit_log WHERE action=? AND subject=?`, action, r.task.ID).Scan(&n, &actor, &detail); err != nil || n != 1 || actor != "human:kyle" {
+		if err := c.DB.Reader().QueryRow(`SELECT COUNT(*), COALESCE(MAX(actor),''), COALESCE(MAX(detail),'') FROM audit_log WHERE action=? AND subject=?`, action, r.task.ID).Scan(&n, &actor, &detail); err != nil || n != want[action] || actor != "human:kyle" {
 			t.Fatalf("%s: audit rows %d by %q: %v", action, n, actor, err)
 		}
 		var d map[string]any
@@ -162,7 +203,7 @@ func TestAForwardedPortIsOpenedOnlyInTheViewerAndEverythingIsRecorded(t *testing
 			t.Fatalf("%s: %s", action, detail)
 		}
 		var ev int
-		if err := c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM events WHERE type=? AND task_id=?`, action, r.task.ID).Scan(&ev); err != nil || ev != 1 {
+		if err := c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM events WHERE type=? AND task_id=?`, action, r.task.ID).Scan(&ev); err != nil || ev != want[action] {
 			t.Fatalf("%s: events %d: %v", action, ev, err)
 		}
 	}

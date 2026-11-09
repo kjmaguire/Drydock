@@ -96,7 +96,7 @@ func ParseProcNetTCP(text string, v6 bool) ([]Row, error) {
 		if err != nil {
 			return nil, fmt.Errorf("peer: bad inode %q", f[9])
 		}
-		rows = append(rows, Row{Local: local, Remote: remote, Inode: inode})
+		rows = append(rows, Row{Local: local, Remote: remote, Inode: inode, Listen: f[3] == "0A"})
 	}
 	return rows, sc.Err()
 }

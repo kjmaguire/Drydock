@@ -178,6 +178,17 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			// Bash call in the default permission mode, and runs it after the human allowed the suggested rule and pressed Retry
 			// (the retry text comes from the UI). It is a TEST DOUBLE, never presented as Claude.
 			{Match: "drydock-e2e chat", Steps: []fakeagent.Step{{Say: "Hello from the scripted chat stand-in (a test double). I read: drydock-e2e chat."}}},
+			// The calm chat (ui/e2e/chats.spec.ts, decision P139): a run of tool calls (two reads, a command, an edit) that the
+			// page folds into one line and one "Changed 1 file" card, then an answer that ends with an offer (the suggested
+			// replies); "calm fail" makes a command that fails, whose line opens by itself. The edit is reported, not made.
+			{Match: "drydock-e2e calm fail", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"go vet ./..."}`), Result: "vet: calc.go:3: unreachable code", IsError: true}, {Say: "go vet failed."}}},
+			{Match: "drydock-e2e calm", Steps: []fakeagent.Step{
+				{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc.go"}`), Result: "package gocalc"},
+				{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc_test.go"}`), Result: "package gocalc"},
+				{Tool: "Bash", Input: json.RawMessage(`{"command":"go test ./..."}`), Result: "ok  \tgocalc\t0.003s"},
+				{Tool: "Edit", Input: json.RawMessage(`{"file_path":"calc.go","old_string":"return 0","new_string":"return a - b"}`), Result: "The file was updated."},
+				{Say: "Subtract now returns a - b. Want me to add a test for it?"},
+			}},
 			// A routed room reply (ui/e2e/round3.spec.ts, decision P63): the reply that carries the marker text.
 			{Match: "drydock-e2e routed reply", Steps: []fakeagent.Step{{Say: "Answered by the scripted room stand-in (a test double)."}}},
 			{Match: "drydock-e2e touch", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "I was not allowed to run that."}}},
@@ -379,6 +390,11 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		}
 	}
 	pickFile := func(_ context.Context, p core.FilePick) (string, error) {
+		// TEST DOUBLE of the file dialog for Import a project: it "chooses" the newest archive the harness's core exported
+		// ("" as if cancelled when there is none); the desktop app opens Windows' own dialog
+		if p.FilterPattern == "*.drydock-project.zip" {
+			return newestExport(filepath.Join(root, "data", "exports")), nil
+		}
 		name := "osv-scanner"
 		if strings.Contains(p.Title, "Opengrep") {
 			name = "opengrep"
@@ -436,12 +452,21 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	c, err := core.Open(context.Background(), core.Config{
 		PickFile:   pickFile,
 		PickFolder: pickFolder,
-		DevDrives:  devDrives,
-		DataDir:    filepath.Join(root, "data"),
-		User:       "e2e",
-		LeaseTTL:   3 * time.Second,
-		Adapters:   map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
-		WSL:        wslHost,
+		// TEST DOUBLES for "Reveal in Explorer" and "Open in your editor" (effort review X26): the shell starts nothing, and PATH
+		// holds only VS Code's command. The desktop app starts Explorer or the editor (app/openpath_windows.go).
+		OpenPath: func(context.Context, core.PathOpen) error { return nil },
+		LookPath: func(name string) (string, error) {
+			if name == "code" {
+				return filepath.Join(root, "bin", "code.exe"), nil
+			}
+			return "", fmt.Errorf("%s is not on PATH", name)
+		},
+		DevDrives: devDrives,
+		DataDir:   filepath.Join(root, "data"),
+		User:      "e2e",
+		LeaseTTL:  3 * time.Second,
+		Adapters:  map[string]agents.Adapter{"claude": &claude.Adapter{Exe: self, WSL: wslHost}},
+		WSL:       wslHost,
 		ScanTools: scan.Paths{OSV: scan.Tool{Path: self, Args: scantest.Args("osv-scanner", "--sleep-ms=1500")},
 			Opengrep: scan.Tool{Path: self, Args: scantest.Args("opengrep", "--sleep-ms=2500")}},
 		ScanRulesDir: scanRules,
@@ -652,4 +677,22 @@ func copyTree(src, dst string) error {
 		_, err = io.Copy(out, in)
 		return err
 	})
+}
+
+// newestExport is the newest .drydock-project.zip in dir ("" when there is none): the file dialog stand-in's choice.
+func newestExport(dir string) string {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	best, bestAt := "", time.Time{}
+	for _, e := range ents {
+		if !strings.HasSuffix(e.Name(), ".drydock-project.zip") {
+			continue
+		}
+		if st, err := e.Info(); err == nil && st.ModTime().After(bestAt) {
+			best, bestAt = filepath.Join(dir, e.Name()), st.ModTime()
+		}
+	}
+	return best
 }

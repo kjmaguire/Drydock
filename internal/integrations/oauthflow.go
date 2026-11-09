@@ -236,7 +236,16 @@ func (s *Service) OAuthStart(ctx context.Context, by, kind, baseURL string) (OAu
 					fmt.Fprintf(w, "<p>Signed in to %s. You can close this tab and return to Drydock.</p>", html.EscapeString(vendor(kind)))
 				}
 			}
-			safe.Go("integrations.Service.OAuthStart#2", func() { _ = srv.Close(); cancel() })
+			// Shutdown, not Close: Close cut the connection this answer is still being written on, so the browser (and a Windows CI
+			// run, 2026-11-09) got an empty reply instead of the page. Shutdown lets this answer finish, then stops the server.
+			safe.Go("integrations.Service.OAuthStart#2", func() {
+				sctx, scancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer scancel()
+				if srv.Shutdown(sctx) != nil {
+					_ = srv.Close()
+				}
+				cancel()
+			})
 		})
 		safe.Go("integrations.Service.OAuthStart#3", func() { _ = srv.Serve(ln) })
 		safe.Go("integrations.Service.OAuthStart#4", func() {

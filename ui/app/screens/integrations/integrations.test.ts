@@ -6,6 +6,7 @@ import { galleryCard, libServer, pay, projServer, rev } from '../mcp/fixtures.ts
 import {
   agentToolVendors,
   providerRowState,
+  reconnectAsked,
   cardsState,
   connectReply,
   filterCounts,
@@ -306,5 +307,15 @@ describe('providerRowState (OpenRouter on the Integrations page, decision P103)'
     expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
     expect(providerRowState([{ enabled: true, status: 'down' }])).toMatchObject({ text: 'Down', tone: 'err', bucket: 'needs', problem: 'OpenRouter did not answer its last check. Its page in Models checks it again.' });
     expect(providerRowState([{ enabled: false, status: 'up' }])).toEqual({ text: 'Disabled', tone: 'muted', bucket: 'setup' });
+    expect(providerRowState([{ enabled: true, status: 'degraded' }])).toMatchObject({ text: 'Having trouble', tone: 'warn', bucket: 'needs' });
+  });
+});
+
+describe('reconnectAsked (the Inbox opens a service with Reconnect open, F14)', () => {
+  it('is true only for ?reconnect=1', () => {
+    expect(reconnectAsked('?reconnect=1')).toBe(true);
+    expect(reconnectAsked('?item=x&reconnect=1')).toBe(true);
+    expect(reconnectAsked('')).toBe(false);
+    expect(reconnectAsked('?reconnect=0')).toBe(false);
   });
 });

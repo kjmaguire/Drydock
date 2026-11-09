@@ -13,6 +13,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Select, selectValues, type SelectOption } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ModelField } from '../shared/model-field.tsx';
+import { effortList, modelList } from './agent-edit.ts';
 import { CAP_LABEL, defaultRoutes, presetUntouched } from './team.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,16 +28,18 @@ export const effortOptions = (efforts: readonly string[], effort: string): Selec
 ];
 
 /** Model and effort inputs. Effort is a list when the adapter is known to accept only certain levels (a wrong one would fail
- *  the run); model is the adapter's aliases as a list with a typed entry, because full model names are accepted too. */
+ *  the run); model is the adapter's aliases as a list with a typed entry, because full model names are accepted too. They are
+ *  never disabled while the capabilities are unknown (still loading, or not read): the known lists of `adapter` are offered, or
+ *  typed text is taken (decision P137); only capabilities that were read and say "not verified" turn a field off. */
 export function ModelEffortFields(
-  handle: Handle<{ caps: Capabilities | undefined; model: string; effort: string; onModel: (v: string) => void; onEffort: (v: string) => void }>,
+  handle: Handle<{ caps: Capabilities | undefined; adapter?: string; model: string; effort: string; onModel: (v: string) => void; onEffort: (v: string) => void }>,
 ) {
   return () => {
-    const { caps, model, effort, onModel, onEffort } = handle.props;
-    const canModel = caps?.modelSelection === true;
-    const canEffort = caps?.effortControl === true;
-    const efforts = caps?.efforts ?? [];
-    const models = caps?.models ?? [];
+    const { caps, adapter = '', model, effort, onModel, onEffort } = handle.props;
+    const canModel = caps === undefined || caps.modelSelection === true;
+    const canEffort = caps === undefined || caps.effortControl === true;
+    const efforts = effortList(adapter, caps);
+    const models = modelList(adapter, caps);
     return (
       <>
         <Field label="Model">

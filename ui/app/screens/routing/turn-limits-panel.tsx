@@ -116,7 +116,7 @@ export function TurnLimitsPanel(handle: Handle) {
         testId="route-limits"
         description="What happens when the rules leave models tied, and how long one turn may run. Both are off until you set them."
       >
-        <ErrorNote error={settings.error} what="Could not read the routing settings" />
+        <ErrorNote error={settings.error} retry={settings.reload} what="Could not read the routing settings" />
         {!cur || !draft ? (
           settings.error ? null : <Loading />
         ) : (

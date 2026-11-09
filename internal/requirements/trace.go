@@ -52,7 +52,12 @@ func truncate(s string, n int) string {
 	return s
 }
 
+// criterionID is the id a criterion may carry ("AC1: ...", given by a spec or by tasks.NumberCriteria). The hash leaves it out, so
+// one criterion linked with its id and without it is one link.
+var criterionID = regexp.MustCompile(`(?i)^\s*AC\d+\s*[:.)\-]?\s*`)
+
 func criterionHash(c string) string {
+	c = criterionID.ReplaceAllString(c, "")
 	h := sha256.Sum256([]byte(strings.Join(strings.Fields(strings.ToLower(c)), " ")))
 	return hex.EncodeToString(h[:])
 }

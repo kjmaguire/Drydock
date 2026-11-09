@@ -143,7 +143,7 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   // run a task to completion so the channel is archived and the agent has runs and usage
   await createAndStartTask(page, 'Implement Subtract for R2', 'Worker R2', 'Reviewer R2');
   await expect(page.getByTestId('review-panel')).toBeVisible({ timeout: 90_000 });
-  await page.getByRole('button', { name: 'Approve' }).click();
+  await page.getByRole('button', { name: 'Merge' }).click();
   await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
 
   // the archived task channel still opens (room.get) and its composer is disabled
@@ -155,6 +155,8 @@ test('threads, direct messages, archived task channels, the inspector and usage 
 
   // the task's usage rows carry a source badge (the core says reported or estimated)
   await page.getByRole('link', { name: 'Task details' }).click();
+  // usage is under Run details, folded until opened (critique 2026-11-08)
+  await page.getByTestId('run-details').locator('summary').click();
   const usage = page.getByTestId('usage-row');
   await expect(usage.first()).toBeVisible();
   for (const src of await usage.evaluateAll((els) => els.map((e) => e.getAttribute('data-source')))) expect(['reported', 'estimated']).toContain(src);

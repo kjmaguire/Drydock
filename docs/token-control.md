@@ -738,7 +738,10 @@ step records Drydock's findings about how the criteria are written (`pipeline.Ac
 change: a criterion without an id (severity low, the scale of the security scan's findings: no test, review or handoff can name
 it; the finding suggests the next free id), and a criterion that names a check the project does not run (medium: the checks
 Verify detects, secrets and deps when switched on, e2e and preview when set up, and any kind the task already has a result of;
-the criterion stays open, never a silent pass). The reviewer is still asked to name the ids of the criteria that have one.
+the criterion stays open, never a silent pass). The reviewer is still asked to name the ids of the criteria that have one. Since
+2026-11-02 (W2) the core numbers a list written with no ids when a task is made or its criteria change (`tasks.NumberCriteria`
+on Create and Patch: `AC1: ...`, `AC2: ...` in order), so the no-id finding names only a criterion left out of a list the person
+numbered in part, or one of a task stored before.
 
 **Tests.** `internal/pipeline/p128_test.go` with the scripted Claude stand-in: the review step's two findings and the lint-named
 criterion confirmed by Verify's lint (`TestTheReviewStepFindsCriteriaWithoutAnIDOrWithAnUnknownCheck`), what a named check

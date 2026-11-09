@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { RolePolicyView } from '../../api/mcpClient.ts';
 import { customIdProblem } from '../agents/agents.ts';
-import { cellLabel, changedColumns, columnNote, nextCell, ruleProblem } from './role-tools.ts';
+import { cellLabel, changedColumns, columnNote, customized, nextCell, ruleProblem } from './role-tools.ts';
 
 const view = (over: Partial<RolePolicyView> = {}): RolePolicyView => ({
   projectId: 'prj_1',
@@ -41,6 +41,13 @@ describe('the per-role tool table (P115)', () => {
   it('lists the changed cells of a row, even one set to its default', () => {
     expect(changedColumns(view(), 'pm')).toEqual(['read_range', 'docs']);
     expect(changedColumns(view(), 'qa')).toEqual([]);
+  });
+
+  it("is customized (open by itself, decision P144) when a cell or a rule differs from Drydock's table", () => {
+    expect(customized(view())).toBe(true);
+    const plain = view({ rows: [{ role: 'qa', label: 'QA', cells: { read_range: { allowed: true, default: true, changed: false } } }] });
+    expect(customized(plain)).toBe(false);
+    expect(customized({ ...plain, rules: [{ id: 'r1', name: 'n', expr: 'role == "qa"' }] as RolePolicyView['rules'] })).toBe(true);
   });
 
   it('says why a column gives nothing now', () => {

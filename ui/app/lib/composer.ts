@@ -64,7 +64,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'status', args: '<text>', help: 'Post a [STATUS]' },
   { name: 'result', args: '<text>', help: 'Post a [RESULT]' },
   { name: 'invite', args: '@agent', help: 'Add an agent of this project to the room' },
-  { name: 'mode', args: 'auto | sequential', help: 'Change how agents take turns in this room' },
+  { name: 'mode', args: 'auto | sequential | moderator', help: 'Change how agents take turns in this room' },
   { name: 'help', args: '', help: 'List these commands' },
 ];
 
@@ -141,7 +141,7 @@ export function parseSlash(input: string): Parsed {
       return h ? { kind: 'invite', handle: h[1]! } : { kind: 'error', message: '/invite needs one @agent.' };
     }
     case 'mode':
-      return arg === 'auto' || arg === 'sequential' ? { kind: 'mode', mode: arg } : { kind: 'error', message: '/mode takes auto or sequential (other modes are set in the room panel).' };
+      return arg === 'auto' || arg === 'sequential' || arg === 'moderator' ? { kind: 'mode', mode: arg } : { kind: 'error', message: '/mode takes auto, sequential or moderator.' };
     case 'help':
       return { kind: 'help' };
     default:

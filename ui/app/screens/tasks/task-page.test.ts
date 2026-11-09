@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { TASK_LABELS_MAX } from '../../api/types.ts';
-import { addLabel, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, findingsByCriterion, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
+import { addLabel, changeLine, changesDraft, checkMark, checkName, checksFact, criteriaRows, mergedTitle, reviewerFact, shortSha, criteriaWithState, criterionWhy, findingsByCriterion, personName, runMs, runNumber, sandboxStartWords, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
 
 describe('the status pill of the task page', () => {
   it('says Building while the agent works, Running checks while a check runs, and which run it is on', () => {
@@ -129,5 +129,65 @@ describe('a label a person types', () => {
     expect(addLabel(['parser'], 'PARSER')).toEqual({ error: 'The task already has the label parser.' });
     expect(addLabel([], 'x'.repeat(25))).toEqual({ error: 'A label is at most 24 characters.' });
     expect(addLabel(Array.from({ length: TASK_LABELS_MAX }, (_, i) => `l${i}`), 'more')).toEqual({ error: 'A task has at most 8 labels.' });
+  });
+});
+
+describe('what Request changes starts from', () => {
+  it('a line per criterion not met, then per one still open; met and waived ones are left out', () => {
+    const rows = [
+      { text: 'AC1: a', status: 'open' as const },
+      { text: 'AC2: b', status: 'met' as const },
+      { text: 'AC3: c', status: 'not_met' as const },
+      { text: 'AC4: d', status: 'waived' as const },
+    ];
+    expect(changesDraft(rows)).toBe('- Not met: AC3: c\n- Not confirmed yet: AC1: a');
+    expect(changeLine(rows[1]!)).toBe('');
+    expect(changesDraft([])).toBe('');
+  });
+});
+
+describe('sandboxStartWords (X39)', () => {
+  it('says the step the sandbox start is at, and nothing once it is ready or failed', () => {
+    expect(sandboxStartWords({ steps: ['pulling node:24', 'starting the db service'] })).toBe('Starting the sandbox: starting the db service');
+    expect(sandboxStartWords({ steps: [] })).toBe('Starting the sandbox');
+    expect(sandboxStartWords({ steps: ['pulling node:24'], ready: true })).toBe(undefined);
+    expect(sandboxStartWords({ steps: ['pulling node:24'], failed: true })).toBe(undefined);
+    expect(sandboxStartWords(undefined)).toBe(undefined);
+  });
+});
+
+describe('the merge moment (critique 2026-11-08)', () => {
+  it('says how the newest pass of checks went, leaving out the checks it did not get to', () => {
+    expect(checksFact([])).toEqual({ text: 'No checks ran', tone: 'muted', kind: 'checks' });
+    expect(checksFact([{ kind: 'test', status: 'not_run' }])).toEqual({ text: 'No checks ran', tone: 'muted', kind: 'checks' });
+    expect(checksFact([{ kind: 'test', status: 'passed' }])).toEqual({ text: '1 of 1 check passed', tone: 'ok', kind: 'checks' });
+    expect(
+      checksFact([
+        { kind: 'build', status: 'passed' },
+        { kind: 'test', status: 'passed' },
+        { kind: 'lint', status: 'failed' },
+        { kind: 'preview', status: 'not_run' },
+      ]),
+    ).toEqual({ text: '2 of 3 checks passed · lint failed', tone: 'err', kind: 'checks' });
+    // a check still running or inconclusive is not a pass: the fact is not green
+    expect(checksFact([{ kind: 'test', status: 'passed' }, { kind: 'e2e', status: 'running' }])).toEqual({ text: '1 of 2 checks passed', tone: 'muted', kind: 'checks' });
+  });
+
+  it("says the newest reviewer verdict in words, never the core's SHIP or REVISE", () => {
+    const name = (id: string) => (id === 'a-rev' ? 'Code Reviewer' : '');
+    expect(reviewerFact([], name)).toBe(undefined);
+    const older = { reviewer: 'a-rev', verdict: 'REVISE', attempt: 1, created: 5 };
+    const newer = { reviewer: 'a-rev', verdict: 'SHIP', attempt: 2, created: 1 };
+    expect(reviewerFact([newer, older], name)).toEqual({ text: 'Code Reviewer approved', tone: 'ok', kind: 'reviewer' });
+    expect(reviewerFact([older], name)).toEqual({ text: 'Code Reviewer asked for changes', tone: 'err', kind: 'reviewer' });
+    expect(reviewerFact([{ reviewer: 'gone', verdict: 'NEEDS_HUMAN', attempt: 1, created: 1 }], name)).toEqual({ text: 'The reviewer: needs human', tone: 'muted', kind: 'reviewer' });
+  });
+
+  it('closes a merged task with where it landed', () => {
+    expect(mergedTitle({ into: 'main' })).toBe('Merged into main');
+    expect(mergedTitle({ pr: 12 })).toBe('Merged through pull request #12');
+    expect(mergedTitle({})).toBe('Merged');
+    expect(shortSha('ef14966aa0b1c2')).toBe('ef14966');
+    expect(shortSha(undefined)).toBe('');
   });
 });

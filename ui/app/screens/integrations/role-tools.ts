@@ -19,6 +19,11 @@ export function changedColumns(view: RolePolicyView, role: string): string[] {
   return view.columns.filter((c) => row.cells[c.key]?.changed).map((c) => c.key);
 }
 
+/** This project's table differs from Drydock's: a changed cell in any row, or a rule (decision P144: then it opens by itself). */
+export function customized(view: Pick<RolePolicyView, 'rows' | 'columns' | 'rules'>): boolean {
+  return view.rules.length > 0 || view.rows.some((r) => view.columns.some((c) => r.cells[c.key]?.changed));
+}
+
 /** Why a column gives nothing right now, or '' when it does. */
 export function columnNote(view: RolePolicyView, key: string): string {
   if (key === 'act' && !view.actTools) return 'Off while agents may not act in this project';

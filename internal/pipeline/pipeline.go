@@ -583,7 +583,7 @@ func Verify(d Deps) workflow.NodeHandler {
 		}
 		specs = append(specs, d.extraChecks(ctx, repo, t)...)
 		if specs, err = d.sandboxChecks(ctx, t, specs); err != nil {
-			return sandboxTrouble(in, err)
+			return sandboxTrouble(in, t, err)
 		}
 		// every result of this pass carries its round, so a reader tells this pass's results from an earlier one's (a pass stops at
 		// the first failure, so the kinds after it keep an older result): CheckRound

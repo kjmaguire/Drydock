@@ -1,11 +1,11 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { Plan, ProposedTask } from '../../api/extTypes.ts';
+import type { DevSettings, Milestone, Plan, ProposedTask, TickResult } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { PlanReview, PlanScreen } from './plan-screen.tsx';
+import { AfterAccept, PlanReview, PlanScreen } from './plan-screen.tsx';
 
 afterEach(cleanup);
 
@@ -47,12 +47,21 @@ function servicesWith(client: Partial<Client>) {
 
 const box = (root: ParentNode, label: string) => byLabel<HTMLInputElement>(root, label);
 
+// the planner the Plan page remembers per project lives in this browser's storage (X45)
+const forgetPlanner = () => {
+  try {
+    localStorage.removeItem('drydock.planner.prj_1');
+  } catch {
+    // storage blocked: nothing remembered
+  }
+};
+
 describe('PlanReview', () => {
   it('accepting sends exactly the selected, dependency-closed tasks and only the edits to them', async () => {
     const calls: [string, string[], Record<string, ProposedTask>][] = [];
     let done = 0;
     const s = testServices({
-      planAccept: async (id, accept, edits) => (calls.push([id, accept ?? [], edits ?? {}]), {}),
+      planAccept: async (id, accept, edits) => (calls.push([id, accept ?? [], edits ?? {}]), plan({ status: 'ACCEPTED' })),
     });
     const p = plan({
       proposal: {
@@ -153,6 +162,140 @@ describe('PlanReview', () => {
   });
 });
 
+describe('PlanReview: who can take each task (X46)', () => {
+  const qa = { ...pt('q'), title: 'Task q', role: 'qa' };
+  const withCrew = (over: Partial<Plan> = {}) =>
+    plan({ proposal: { tasks: [pt('a'), pt('b', ['a']), qa], notes: '' }, assignable: { a: true, b: true, q: false }, crewRoles: ['backend', 'reviewer'], ...over });
+
+  it('names a task nobody on the crew can take, with Add one and Change role, and Accept counts them', async () => {
+    const r = mount(<PlanReview plan={withCrew({ plannedBy: 'Priya' })} onDone={() => undefined} />, testServices());
+    r.root.flush();
+    expect(r.$('[data-testid="plan-by"]')!.textContent).toBe('Planned by Priya');
+    const warn = r.$$('[data-testid="plan-task-nobody"]');
+    expect(warn.length).toBe(1);
+    expect(warn[0]!.closest('[data-testid="plan-task"]')!.getAttribute('data-key')).toBe('q');
+    expect(warn[0]!.textContent).toContain('No qa agent on the crew');
+    expect(byText(r.container, 'a', 'Add one').getAttribute('href')).toBe('/team?new=agent');
+    byText(r.container, 'button', 'Accept 3 tasks · 1 has nobody');
+    // clearing the task takes it out of the count
+    await r.act(() => box(r.container, 'Create Task q').click());
+    byText(r.container, 'button', 'Accept 2 tasks');
+    await r.act(() => box(r.container, 'Create Task q').click());
+    // Change role opens the editor with the crew's roles; choosing one someone has clears the warning
+    await r.act(() => byText(r.container, 'button', 'Change the role of Task q').click());
+    type(byLabel<HTMLElement>(r.container, 'Role'), 'backend');
+    await r.act(() => byText(r.container, 'button', 'Keep my edits').click());
+    expect(r.$$('[data-testid="plan-task-nobody"]').length).toBe(0);
+    byText(r.container, 'button', 'Accept 3 tasks');
+  });
+
+  it('claims nothing when the core did not say who can take the tasks', () => {
+    const r = mount(<PlanReview plan={plan()} onDone={() => undefined} />, testServices());
+    r.root.flush();
+    expect(r.$('[data-testid="plan-task-nobody"]')).toBe(null);
+    byText(r.container, 'button', 'Accept 4 tasks');
+  });
+});
+
+describe('Accept and start (X47)', () => {
+  const dev = { maxParallel: 2, autoSchedule: false, respond: true } as DevSettings;
+  const accepted = plan({ status: 'ACCEPTED', createdTasks: { a: 'task_a', b: 'task_b' } });
+
+  it('Accept and start sends start and hands the scheduler pass back', async () => {
+    const calls: (boolean | undefined)[] = [];
+    let answer: Plan | undefined;
+    const tick: TickResult = { promoted: [], started: ['task_a'], skipped: [], active: 1, capacity: 2, max: 2 };
+    const s = testServices({ planAccept: async (_id, _a, _e, start) => (calls.push(start), { ...accepted, start: tick }) });
+    const r = mount(<PlanReview plan={plan()} onDone={(a) => (answer = a)} />, s);
+    await r.act(() => byText(r.container, 'button', 'Accept and start').click());
+    await waitFor(() => expect(answer?.start?.started).toEqual(['task_a']), r);
+    expect(calls).toEqual([true]);
+  });
+
+  it('the accepted card starts the ready tasks now, says what waits, and switches automatic starts only on a click', async () => {
+    const ticks: string[] = [];
+    const saved: DevSettings[] = [];
+    const s = servicesWith({
+      projectdevGet: async () => dev,
+      projectdevSet: async (_p, d) => (saved.push(d), d),
+      schedulerTick: async (p) => (ticks.push(p), { promoted: ['task_a'], started: ['task_a'], skipped: [{ taskId: 'task_b', reason: 'no worker or reviewer assigned' }], active: 1, capacity: 1, max: 2 }),
+    });
+    const r = mount(<PlanReview plan={accepted} onDone={() => undefined} />, s);
+    const startBtn = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', 'Start now (up to 2 at once)'), r);
+    expect(saved).toEqual([]);
+    const sw = byLabel<HTMLElement>(r.container, 'Start the rest as each one finishes');
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    await r.act(() => startBtn.click());
+    const st = await waitFor(() => must(r.$('[data-testid="plan-started"]')), r);
+    expect(ticks).toEqual(['prj_1']);
+    expect(st.textContent).toContain('Started 1 task. 1 task waits:');
+    expect(st.textContent).toContain('Task b');
+    expect(st.textContent).toContain('no worker or reviewer assigned');
+    await r.act(() => sw.click());
+    await waitFor(() => expect(saved.map((d) => d.autoSchedule)).toEqual([true]), r);
+    expect(saved[0]!.maxParallel).toBe(2);
+  });
+
+  it('says on the accepted card when tasks could not be linked to the requirement, and nothing when all were (X48)', () => {
+    const missed = plan({ status: 'ACCEPTED', createdTasks: { a: 'task_a', b: 'task_b' }, requirementIds: ['req_1'], unlinked: [{ taskId: 'task_a', requirementId: 'req_1' }] });
+    const r = mount(<AfterAccept plan={missed} />, testServices({ projectdevGet: async () => dev }));
+    const note = must(r.$('[data-testid="plan-unlinked"]'));
+    expect(note.textContent).toContain('1 task could not be linked to its requirement in the trace.');
+    expect(must(note.querySelector('a')).getAttribute('href')).toBe('/requirements');
+    cleanup();
+    const ok = mount(<AfterAccept plan={{ ...missed, unlinked: null }} />, testServices({ projectdevGet: async () => dev }));
+    expect(ok.$('[data-testid="plan-unlinked"]')).toBe(null);
+  });
+
+  it('shows the pass of an Accept and start without another click', () => {
+    const r = mount(<AfterAccept plan={accepted} started={{ promoted: [], started: ['task_a', 'task_b'], skipped: [], active: 2, capacity: 2, max: 2 }} />, testServices({ projectdevGet: async () => dev }));
+    r.root.flush();
+    expect(r.$('[data-testid="plan-started"]')!.textContent).toContain('Started 2 tasks.');
+  });
+
+  it("names the planned tasks that wait for their dependencies, not only the skipped ready ones", () => {
+    const all = plan({ status: 'ACCEPTED', createdTasks: { a: 'task_a', b: 'task_b', c: 'task_c', d: 'task_d' } });
+    const r = mount(
+      <AfterAccept plan={all} started={{ promoted: [], started: ['task_a'], skipped: [{ taskId: 'task_d', reason: 'at the limit' }], active: 1, capacity: 1, max: 1 }} />,
+      testServices({ projectdevGet: async () => dev }),
+    );
+    r.root.flush();
+    const st = must(r.$('[data-testid="plan-started"]'));
+    expect(st.textContent).toContain('Started 1 task. 3 tasks wait:');
+    expect(st.textContent).toContain('at the limit');
+    expect(Array.from(r.$$('[data-testid="plan-waits-for"]')).map((li) => li.textContent)).toEqual(['Task b waits for Task a', 'Task c waits for Task b']);
+  });
+
+  it('a failed pass after Accept and start says the tasks were created, and Start now tries again', async () => {
+    const ticks: string[] = [];
+    const s = testServices({
+      projectdevGet: async () => dev,
+      schedulerTick: async (p) => (ticks.push(p), { promoted: [], started: ['task_a'], skipped: [], active: 1, capacity: 2, max: 2 }),
+    });
+    const r = mount(<AfterAccept plan={accepted} startError="database is locked" />, s);
+    r.root.flush();
+    expect(must(r.$('[data-testid="plan-start-failed"]')).textContent).toContain('The tasks were created; starting them failed: database is locked');
+    expect(r.$('[data-testid="plan-started"]')).toBe(null);
+    await r.act(() => byText(r.container, 'button', 'Start now').click());
+    await waitFor(() => must(r.$('[data-testid="plan-started"]')), r);
+    expect(ticks).toEqual(['prj_1']);
+    expect(r.$('[data-testid="plan-start-failed"]')).toBe(null);
+  });
+
+  it('creates a milestone from the plan with its created tasks (X49)', async () => {
+    const made: unknown[][] = [];
+    const s = testServices({
+      projectdevGet: async () => dev,
+      milestoneCreate: async (...args) => (made.push(args), { id: 'ms_1', title: 'Add arithmetic', taskIds: ['task_a', 'task_b'] } as Milestone),
+    });
+    const r = mount(<AfterAccept plan={accepted} />, s);
+    await r.act(() => byText(r.container, 'button', 'Create a milestone from this plan').click());
+    await waitFor(() => must(r.$('[data-testid="plan-milestone"]')), r);
+    expect(made).toEqual([['prj_1', 'Add arithmetic', undefined, undefined, ['task_a', 'task_b']]]);
+    expect(r.$('[data-testid="plan-milestone"]')!.textContent).toContain('created with 2 tasks');
+  });
+});
+
 describe('PlanScreen', () => {
   const agent: Agent = {
     id: 'agt_pm',
@@ -187,11 +330,13 @@ describe('PlanScreen', () => {
     const r = mount(<PlanScreen />, s);
     await waitFor(() => byText(r.container, 'h2', 'No plans yet.'), r);
     expect(r.$('[data-testid="plan-stepper"]')!.getAttribute('data-stage')).toBe('GOAL');
-    await waitFor(() => byText(r.container, '[role="option"]', 'Priya (pm)'), r);
+    // one agent on the crew: no choice to make, it plans
+    await waitFor(() => expect(r.$('[data-testid="plan-planner"]')!.textContent).toBe('Priya plans.'), r);
+    expect(r.$('[data-testid="plan-no-planner"]')).toBe(null);
     type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'Add arithmetic');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
-    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '']]), r);
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '', []]]), r);
     await waitFor(() => expect(r.$('[role="status"]')!.textContent).toContain('planner is working'), r);
     expect(r.$('[data-testid="plan-stepper"]')!.getAttribute('data-stage')).toBe('PLANNING');
     expect(byLabel<HTMLTextAreaElement>(r.container, 'Goal').value).toBe('');
@@ -204,7 +349,7 @@ describe('PlanScreen', () => {
   it('sends the chosen planner agent and lets the human switch between plans', async () => {
     const proposed: unknown[][] = [];
     const s = servicesWith({
-      agentList: async () => [agent],
+      agentList: async () => [agent, { ...agent, id: 'agt_be', name: 'Dana', role: 'backend' }],
       planPropose: async (...args) => (proposed.push(args), { planId: 'plan_1', runId: 'r', plannerAgentId: 'agt_pm' }),
       planList: async () => [plan({ id: 'old', goal: 'Old goal', status: 'REJECTED', createdAt: 1 }), plan({ id: 'new', goal: 'New goal', createdAt: 2 })],
     });
@@ -219,7 +364,7 @@ describe('PlanScreen', () => {
     type(byLabel<HTMLElement>(r.container, 'Planner agent'), 'agt_pm');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
-    await waitFor(() => expect(proposed).toEqual([['prj_1', 'More', 'no deps', 'agt_pm']]), r);
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'More', 'no deps', 'agt_pm', []]]), r);
   });
 
   it('a proposal waiting for review leads; the goal form folds under it, and comes first again once the plan is decided (UI review P1-9)', async () => {
@@ -239,6 +384,123 @@ describe('PlanScreen', () => {
     const goal2 = byLabel<HTMLTextAreaElement>(r.container, 'Goal');
     expect(goal2.closest('details')).toBeNull();
     expect(r.$('[data-testid="plan"]')!.compareDocumentPosition(goal2) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  });
+
+  it('Accept and start hands its pass to the accepted card the screen remounts, with no second click (X47)', async () => {
+    let status = 'PROPOSED';
+    const ticks: string[] = [];
+    const tick: TickResult = { promoted: ['task_a'], started: ['task_a', 'task_d'], skipped: [], active: 2, capacity: 2, max: 2 };
+    const createdTasks = { a: 'task_a', b: 'task_b', c: 'task_c', d: 'task_d' };
+    const s = servicesWith({
+      agentList: async () => [agent],
+      projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true }) as DevSettings,
+      schedulerTick: async (p) => (ticks.push(p), tick),
+      planList: async () => [plan({ status, ...(status === 'ACCEPTED' ? { createdTasks } : {}) })],
+      planAccept: async () => ((status = 'ACCEPTED'), plan({ status, createdTasks, start: tick })),
+    });
+    const r = mount(<PlanScreen />, s);
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('PROPOSED'), r);
+    await r.act(() => byText(r.container, 'button', 'Accept and start').click());
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('ACCEPTED'), r, 3000);
+    const st = await waitFor(() => must(r.$('[data-testid="plan-started"]')), r);
+    expect(st.textContent).toContain('Started 2 tasks. 2 tasks wait:');
+    expect(st.textContent).toContain('Task b');
+    expect(ticks).toEqual([]);
+  });
+
+  it("an Accept and start whose pass failed shows the accepted card and the failure, not 'Not sent' (X47)", async () => {
+    let status = 'PROPOSED';
+    const createdTasks = { a: 'task_a', b: 'task_b', c: 'task_c', d: 'task_d' };
+    const s = servicesWith({
+      agentList: async () => [agent],
+      projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true }) as DevSettings,
+      planList: async () => [plan({ status, ...(status === 'ACCEPTED' ? { createdTasks } : {}) })],
+      planAccept: async () => ((status = 'ACCEPTED'), plan({ status, createdTasks, startError: 'database is locked' })),
+    });
+    const r = mount(<PlanScreen />, s);
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('PROPOSED'), r);
+    await r.act(() => byText(r.container, 'button', 'Accept and start').click());
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('ACCEPTED'), r, 3000);
+    const failed = await waitFor(() => must(r.$('[data-testid="plan-start-failed"]')), r);
+    expect(failed.textContent).toContain('The tasks were created; starting them failed: database is locked');
+    expect(r.container.textContent).not.toContain('Not sent');
+  });
+
+  it('a crew without a planner says so with Add a planner, and the lead plans for now (X45)', async () => {
+    forgetPlanner();
+    const proposed: unknown[][] = [];
+    const lead = { ...agent, id: 'agt_lead', name: 'Lena', role: 'team lead' };
+    const s = servicesWith({
+      agentList: async () => [{ ...agent, id: 'agt_be', name: 'Dana', role: 'backend' }, lead],
+      planPropose: async (...args) => (proposed.push(args), { planId: 'p', runId: 'r', plannerAgentId: 'agt_lead', fallback: true }),
+      planList: async () => [],
+    });
+    const r = mount(<PlanScreen />, s);
+    const note = await waitFor(() => must(r.$('[data-testid="plan-no-planner"]')), r);
+    expect(note.textContent).toContain('No planner on the crew');
+    const add = r.$('[data-testid="plan-add-planner"]') as HTMLAnchorElement;
+    expect(add.textContent).toBe('Add a planner');
+    expect(new URL(add.href).searchParams.get('describe')).toBe('Plans each feature and writes the spec before anyone codes.');
+    // automatic names the agent the core picks: the lead before anyone
+    await waitFor(() => expect(byLabel<HTMLElement>(r.container, 'Planner agent').textContent).toContain('Automatic: Lena'), r);
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'Add arithmetic');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '', []]]), r);
+  });
+
+  it('an empty crew cannot propose and is pointed at Add a planner (X45)', async () => {
+    const r = mount(<PlanScreen />, servicesWith({ agentList: async () => [], planList: async () => [] }));
+    const note = await waitFor(() => must(r.$('[data-testid="plan-no-planner"]')), r);
+    expect(note.textContent).toContain('A plan needs one agent on the crew.');
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'x');
+    r.root.flush();
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Propose a plan').disabled).toBe(true);
+  });
+
+  it('remembers the planner chosen for the project (X45)', async () => {
+    forgetPlanner();
+    const crew = [agent, { ...agent, id: 'agt_be', name: 'Dana', role: 'backend' }];
+    const first = mount(<PlanScreen />, servicesWith({ agentList: async () => crew, planList: async () => [] }));
+    await waitFor(() => byLabel<HTMLElement>(first.container, 'Planner agent'), first);
+    type(byLabel<HTMLElement>(first.container, 'Planner agent'), 'agt_be');
+    first.root.flush();
+    cleanup();
+    const proposed: unknown[][] = [];
+    const r = mount(
+      <PlanScreen />,
+      servicesWith({ agentList: async () => crew, planList: async () => [], planPropose: async (...args) => (proposed.push(args), { planId: 'p', runId: 'r', plannerAgentId: 'agt_be' }) }),
+    );
+    await waitFor(() => expect(valueOf(byLabel(r.container, 'Planner agent'))).toBe('agt_be'), r);
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'x');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'x', '', 'agt_be', []]]), r);
+    forgetPlanner();
+  });
+
+  it("plans from the project's requirement documents chosen as chips (X48)", async () => {
+    const proposed: unknown[][] = [];
+    const doc = (id: string, title: string, archived = false) => ({ id, projectId: 'prj_1', title, archived }) as never;
+    const r = mount(
+      <PlanScreen />,
+      servicesWith({
+        agentList: async () => [agent],
+        planList: async () => [],
+        requirementList: async () => [doc('req_a', 'Calculator PRD'), doc('req_b', 'Security notes'), doc('req_c', 'Old', true)],
+        planPropose: async (...args) => (proposed.push(args), { planId: 'p', runId: 'r', plannerAgentId: 'agt_pm' }),
+      }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="plan-req-chip"]').length).toBe(2), r);
+    const chip = byText<HTMLButtonElement>(r.container, '[data-testid="plan-req-chip"]', 'Calculator PRD');
+    expect(chip.getAttribute('aria-pressed')).toBe('false');
+    await r.act(() => chip.click());
+    expect(byText(r.container, '[data-testid="plan-req-chip"]', 'Calculator PRD').getAttribute('aria-pressed')).toBe('true');
+    expect(r.$('[data-testid="plan-req-note"]')!.textContent).toBe('Accepted tasks are linked to it in the trace.');
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'Add arithmetic');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
+    await waitFor(() => expect(proposed).toEqual([['prj_1', 'Add arithmetic', '', '', ['req_a']]]), r);
   });
 
   it('read-only turns Propose off', async () => {

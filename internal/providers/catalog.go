@@ -149,6 +149,17 @@ func (r *Registry) Models(ctx context.Context, providerID string) ([]Model, erro
 	return out, rows.Err()
 }
 
+// CatalogFetchedAt is when the provider's catalog was last read from its listing (the newest row's fetch time); zero when
+// it has none yet. The health loop reads it to refresh a catalog once a day (decision D4).
+func (r *Registry) CatalogFetchedAt(ctx context.Context, providerID string) (time.Time, error) {
+	var v sql.NullInt64
+	err := r.db.Reader().QueryRowContext(ctx, `SELECT MAX(fetched_at) FROM model_catalog WHERE provider_id=? AND source<>'user'`, providerID).Scan(&v)
+	if err != nil || !v.Valid {
+		return time.Time{}, err
+	}
+	return fromMS(v.Int64), nil
+}
+
 // SetUserPrice records a user-edited price (USD per million tokens); catalog refreshes never overwrite it.
 func (r *Registry) SetUserPrice(ctx context.Context, providerID, model string, in, out, cacheRead, cacheWrite float64) error {
 	now := storage.Now()

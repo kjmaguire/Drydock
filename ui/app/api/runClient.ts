@@ -232,9 +232,38 @@ export interface RoomExportView {
   content: string;
   sha256: string;
   createdAt: string;
+  /** Who asked for it: "human:<name>", or the rule's scope "system:task-archive" (minutes kept when a task's room closed, X19). */
+  scope?: string;
+  receiptId?: string;
+  createdBy?: string;
+}
+
+/** A decision of one of the project's rooms (room.adrCandidatesForProject, X110). */
+export interface RoomDecision {
+  title: string;
+  status: string;
+  context: string;
+  decision: string;
+  consequences: string;
+  alternatives: string[];
+  source_message_ids: string[];
+  proposed_by: string;
+  roomId: string;
+  roomName: string;
+  roomKind: string;
+  taskId?: string;
+  messageId: string;
+  /** The room is archived: a task room whose task closed (its decisions stay listed). */
+  archived?: boolean;
 }
 
 export interface RunClient {
+  /** A room's kept exports, newest first (X19: the Minutes list). */
+  roomExports(roomId: string): Promise<RoomExportView[]>;
+  /** Checks a kept export against its hash and the messages it covers. */
+  roomExportVerify(id: string): Promise<{ ok: boolean; error: string }>;
+  /** Every decision of the project's rooms that are not archived (X110). */
+  roomDecisions(projectId: string): Promise<RoomDecision[]>;
   roomExport(roomId: string, kind: 'minutes' | 'adr_candidates' | 'pr_description', title?: string): Promise<RoomExportView>;
   runExplain(taskId: string, runId?: string): Promise<RunExplanation>;
   runPrompt(taskId: string, runId: string, nodeId: string, step: number, attempt: number): Promise<string>;
@@ -266,6 +295,9 @@ export function createRunClient(t: Transport): RunClient {
       return { ...a, threads: arr(a?.threads).map((th) => ({ ...th, events: arr(th.events) })) };
     },
     roomExport: (roomId, kind, title = '') => t.call('room.export', { roomId, kind, title }),
+    roomExports: async (roomId) => arr(await t.call<RoomExportView[] | null>('room.exports', { roomId })),
+    roomExportVerify: (id) => t.call('room.exportVerify', { id }),
+    roomDecisions: async (projectId) => arr(await t.call<RoomDecision[] | null>('room.adrCandidatesForProject', { projectId })),
     runExplain: async (taskId, runId = '') => {
       const r = await t.call<RunExplanation>('run.explain', { taskId, runId });
       return {

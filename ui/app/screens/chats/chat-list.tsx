@@ -19,7 +19,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Menu, type MenuItem } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { comboFor, shortcutOf } from '../../lib/keys.ts';
-import { chatCliText, chatRowLine, chatTitle, listWhen, snippetParts } from './chats.ts';
+import { chatCliText, chatRowLine, chatTitle, listWhen, readChatFilter, snippetParts, writeChatFilter } from './chats.ts';
 import { ImportClaudeDialog } from './chat-import.tsx';
 
 const colCss = css({
@@ -101,6 +101,9 @@ const rowCss = css({
   '& .run i': { width: '6px', height: '6px', borderRadius: '50%', background: t.success, animation: 'dd-chat-pulse 1.2s ease-in-out infinite' },
   '@keyframes dd-chat-pulse': { '50%': { opacity: '0.35' } },
   '& .err': { width: '6px', height: '6px', borderRadius: '50%', background: t.danger, flex: 'none' },
+  // answers the person has not seen (D8): a dot after the title
+  '& .unread': { width: '7px', height: '7px', borderRadius: '50%', background: t.accent, flex: 'none' },
+  '& a[data-unread] .title > span': { fontWeight: '600' },
 });
 // the actions button sits over the row's time and shows on hover or focus
 const moreCss = css({
@@ -151,8 +154,9 @@ export function ChatList(
   const renameAct = action(handle);
   const deleteAct = action(handle);
   // every chat by default: a chat need not belong to a project (decision P107); the project's pill narrows the list to it
-  let all = true;
-  let archived = false;
+  // the filter is kept per viewer (D7): coming back to Chats shows the list as it was left
+  let { all, archived } = readChatFilter();
+  const keepFilter = () => writeChatFilter({ all, archived });
   let typed = '';
   let q = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -167,7 +171,7 @@ export function ChatList(
   const scope = () => (all || !handle.props.projectId ? '' : handle.props.projectId);
   const chats = query(handle, {
     load: () => s.client.chatList({ projectId: scope(), includeArchived: archived }),
-    when: (e) => e.type === 'chat.created' || e.type === 'chat.updated' || e.type === 'chat.deleted' || e.type === 'chat.turn_started' || e.type === 'chat.turn',
+    when: (e) => e.type === 'chat.created' || e.type === 'chat.updated' || e.type === 'chat.deleted' || e.type === 'chat.turn_started' || e.type === 'chat.turn' || e.type === 'chat.read',
     key: () => [scope(), archived],
     debounceMs: 150,
   });
@@ -256,14 +260,21 @@ export function ChatList(
   const row = (c: ChatListItem) => {
     const { selectedId } = handle.props;
     const title = chatTitle(c);
+    const unread = c.unread ?? 0;
     return (
       <li key={c.id} class="chat-row" mix={rowCss} data-testid="chat-row" data-chat-id={c.id} data-pinned={c.pinned ? 'true' : undefined}>
-        <a href={routes.chat.href({ id: c.id })} aria-current={selectedId === c.id ? 'page' : undefined} aria-label={`${title}${c.status === 'running' ? ', running' : ''}${c.pinned ? ', pinned' : ''}`}>
+        <a
+          href={routes.chat.href({ id: c.id })}
+          aria-current={selectedId === c.id ? 'page' : undefined}
+          data-unread={unread > 0 ? 'true' : undefined}
+          aria-label={`${title}${c.status === 'running' ? ', running' : ''}${c.pinned ? ', pinned' : ''}${unread > 0 ? `, ${unread} unread` : ''}`}
+        >
           <span class="title">
             {c.pinned ? <Icon icon={Pin} size={11} /> : null}
             <span>{title}</span>
             {c.archived ? <Badge>archived</Badge> : null}
             {c.status === 'error' ? <span class="err" title={c.lastError || 'The last turn failed'} /> : null}
+            {unread > 0 ? <span class="unread" data-testid="chat-unread" title={`${unread} unread`} /> : null}
           </span>
           <span class="line">
             <span title={new Date(c.updatedAt).toLocaleString()}>
@@ -333,14 +344,14 @@ export function ChatList(
           </label>
           <div mix={filterRow} role="group" aria-label="Filter chats">
             {projectId ? (
-              <button type="button" mix={[pillCss, on('click', () => ((all = false), void handle.update()))]} aria-pressed={!all ? 'true' : 'false'} title={`Only the chats of ${scopeName || 'this project'}`}>
+              <button type="button" mix={[pillCss, on('click', () => ((all = false), keepFilter(), void handle.update()))]} aria-pressed={!all ? 'true' : 'false'} title={`Only the chats of ${scopeName || 'this project'}`}>
                 {scopeName || 'This project'}
               </button>
             ) : null}
-            <button type="button" mix={[pillCss, on('click', () => ((all = true), void handle.update()))]} aria-pressed={all || !projectId ? 'true' : 'false'}>
+            <button type="button" mix={[pillCss, on('click', () => ((all = true), keepFilter(), void handle.update()))]} aria-pressed={all || !projectId ? 'true' : 'false'}>
               All chats
             </button>
-            <button type="button" mix={[pillCss, on('click', () => ((archived = !archived), void handle.update()))]} aria-pressed={archived ? 'true' : 'false'} style={{ marginLeft: 'auto' }}>
+            <button type="button" mix={[pillCss, on('click', () => ((archived = !archived), keepFilter(), void handle.update()))]} aria-pressed={archived ? 'true' : 'false'} style={{ marginLeft: 'auto' }}>
               Archived
             </button>
           </div>
@@ -352,7 +363,7 @@ export function ChatList(
               <div mix={groupCss} aria-live="polite">
                 {hits.loading && !hits.data ? 'Searching...' : `${hits.data?.length ?? 0} ${hits.data?.length === 1 ? 'match' : 'matches'}`}
               </div>
-              <ErrorNote error={hits.error} />
+              <ErrorNote error={hits.error} retry={hits.reload} />
               <ul mix={listCss} aria-label="Search results">
                 {(hits.data ?? []).map(hitRow)}
               </ul>
@@ -361,7 +372,7 @@ export function ChatList(
             <Loading label="Loading chats..." />
           ) : (
             <>
-              <ErrorNote error={chats.error} />
+              <ErrorNote error={chats.error} retry={chats.reload} />
               {openChat ? (
                 <>
                   <div mix={groupCss}>{openChat.projectId ? 'Open, from another project' : 'Open, not in a project'}</div>
@@ -374,7 +385,7 @@ export function ChatList(
                 <div mix={emptyCss}>
                   <p>{archived ? 'No chats here.' : projectId && !all ? 'No chats in this project yet.' : 'No chats yet.'}</p>
                   <Button size="sm" mix={[on('click', () => onNew())]}>
-                    Start a chat
+                    New chat
                   </Button>
                   {!archived ? (
                     <p style={{ margin: '12px 0 0' }}>

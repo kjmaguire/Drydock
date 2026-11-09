@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -62,7 +63,7 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 	a := open(t, "")
 	m := a.c.Methods()
 	for _, name := range []string{"budget.list", "budget.set", "budget.delete", "budget.status", "budget.resume", "evals.report", "evals.export", "route.explain", "route.decisions",
-		"route.rules.list", "route.rules.set", "route.rules.delete", "route.preview", "route.previews", "route.cheap.select", "route.cheap.get", "route.settings.get", "route.settings.set", "route.retention.list", "route.retention.clear", "checks.settings.get", "checks.settings.set",
+		"route.rules.list", "route.rules.set", "route.rules.delete", "route.rules.describe", "route.preview", "route.previews", "route.cheap.select", "route.cheap.get", "route.settings.get", "route.settings.set", "route.retention.list", "route.retention.clear", "checks.settings.get", "checks.settings.set",
 		"telemetry.status", "telemetry.enable", "telemetry.preview", "telemetry.export", "telemetry.otlp.set", "telemetry.otlp.test", "chat.importList", "chat.import",
 		"local.model.set", "local.embeddings.start", "local.embeddings.stop", "local.hfToken.set", "local.hfToken.remove",
 		// decision P114
@@ -88,7 +89,9 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 		// decision P130
 		"room.stop", "room.setMuted", "room.joinRules", "room.joinRule.add", "room.joinRule.remove", "room.answerJoin",
 		// decision P132
-		"connection.history", "keys.get", "keys.set"} {
+		"connection.history", "keys.get", "keys.set",
+		// effort review G1
+		"notify.get", "notify.set"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}
@@ -612,4 +615,31 @@ func count(c *core.Core, q string, args ...any) int {
 	var n int
 	c.DB.Reader().QueryRow(q, args...).Scan(&n)
 	return n
+}
+
+// The rule editor's pickers read what a rule can say from the core (F9): the scopes with project names, the turn kinds, the
+// workspace's roles, the tiers, efforts and action keys.
+func TestRouteRulesDescribeGivesTheEditorItsTables(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DRYDOCK_FAKE_AGENT", "1")
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "d"), User: "kyle", LeaseTTL: 3 * time.Second,
+		Credentials: providers.NewMemoryCredentialStoreForTests(),
+		Adapters:    map[string]agents.Adapter{"claude": &claude.Adapter{Exe: os.Args[0]}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	a := &app{t: t, c: c}
+	s := a.econSetup()
+	var d core.RuleTables
+	a.call("route.rules.describe", struct{}{}, &d)
+	if len(d.Scopes) != 2 || d.Scopes[0].Value != "workspace" || d.Scopes[1].Value != "project:"+s.project.ID || d.Scopes[1].Label != "gocalc" {
+		t.Fatalf("scopes %+v", d.Scopes)
+	}
+	if strings.Join(d.Roles, ",") != "backend,reviewer" || d.RunKinds[0] != "agent_task" || !slices.Contains(d.RunKinds, "room_reply") {
+		t.Fatalf("roles %v, run kinds %v", d.Roles, d.RunKinds)
+	}
+	if strings.Join(d.Tiers, ",") != "premium,cheap,free" || len(d.Efforts) != 4 || d.Actions[0].Key != "prefer_tier" || d.Actions[0].Kind != "tier" {
+		t.Fatalf("tables %+v", d)
+	}
 }

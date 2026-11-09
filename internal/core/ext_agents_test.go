@@ -566,6 +566,60 @@ func TestPlanAcceptSchedulerAndHumanMergesThroughTheUIMethods(t *testing.T) {
 	}
 }
 
+// The Plan screen's reads say which proposed task the crew can take and who planned it, and "Accept and start" (plan.accept
+// with start) creates the tasks and asks the scheduler once: within the project's limit, only the task whose dependencies are
+// done starts.
+func TestPlanAcceptAndStartStartsTheReadyTasks(t *testing.T) {
+	a, _ := openDev(t, devScript())
+	repo := newGreenRepo(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	a.agent(p.ID, "Priya", "pm")
+	a.agent(p.ID, "Dana", "backend")
+	a.agent(p.ID, "Rex", "reviewer")
+	var dev pipeline.DevSettings
+	a.call("projectdev.set", map[string]any{"projectId": p.ID, "settings": pipeline.DevSettings{MaxParallel: 1, Respond: true}}, &dev)
+	var prop map[string]any
+	a.call("plan.propose", map[string]any{"projectId": p.ID, "goal": "Add Multiply and then Divide to gocalc"}, &prop)
+	planID := prop["planId"].(string)
+	var view struct {
+		pipeline.Plan
+		Assignable map[string]bool      `json:"assignable"`
+		CrewRoles  []string             `json:"crewRoles"`
+		PlannedBy  string               `json:"plannedBy"`
+		Start      *pipeline.TickResult `json:"start"`
+	}
+	a.waitFor("the proposal", func() bool {
+		a.call("plan.get", map[string]string{"planId": planID}, &view)
+		return view.Status == "PROPOSED"
+	})
+	if !view.Assignable["mul"] || !view.Assignable["div"] || view.PlannedBy != "Priya" || strings.Join(view.CrewRoles, ",") != "pm,backend,reviewer" {
+		t.Fatalf("plan view %+v", view)
+	}
+	var list []struct {
+		ID         string          `json:"id"`
+		Assignable map[string]bool `json:"assignable"`
+	}
+	a.call("plan.list", map[string]string{"projectId": p.ID}, &list)
+	if len(list) != 1 || !list[0].Assignable["mul"] {
+		t.Fatalf("plan.list %+v", list)
+	}
+	a.waitFor("the plan review in Needs you", func() bool {
+		var needs []room.NeedsYouItem
+		a.call("needsyou.list", map[string]string{"projectId": p.ID}, &needs)
+		return len(needs) > 0
+	})
+	a.call("plan.accept", map[string]any{"planId": planID, "start": true}, &view)
+	if view.Status != "ACCEPTED" || view.Start == nil {
+		t.Fatalf("accept and start %+v", view)
+	}
+	mul := view.Created["mul"]
+	if len(view.Start.Started) != 1 || view.Start.Started[0] != mul {
+		t.Fatalf("only the task without dependencies starts: %+v", view.Start)
+	}
+	a.waitPending(mul, "approve")
+}
+
 // A real Claude Code planner (haiku, the user's own login) proposes a plan for a tiny goal; the strict validator accepts
 // its JSON (or, if it needs a retry, the retry is visible in the prompt count). Skipped, with the reason, when claude is
 // not installed and logged in. The plan is rejected at the end: this test creates no tasks.

@@ -1,4 +1,4 @@
-import { css, type Handle, type RemixNode } from 'remix/component';
+import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { t } from './tokens.ts';
 
 const disclosureCss = css({
@@ -30,10 +30,20 @@ const disclosureCss = css({
  * style their own `<details>` four times over. A page puts here what is worth having at hand but not worth reading on arrival.
  */
 export function Disclosure(handle: Handle<{ summary: RemixNode; open?: boolean; wide?: boolean; testId?: string; children?: RemixNode }>) {
+  // what the person opened or closed stays so when the parent renders again (a render would otherwise put `open` back to the
+  // prop, closing a group the person had just opened)
+  let toggled: boolean | undefined;
   return () => {
     const { summary, open, wide, testId, children } = handle.props;
     return (
-      <details mix={disclosureCss} open={open} data-wide={wide ? '' : undefined} data-testid={testId}>
+      <details
+        mix={[disclosureCss, on('toggle', (e) => {
+          toggled = (e.currentTarget as HTMLDetailsElement).open;
+        })]}
+        open={toggled ?? open}
+        data-wide={wide ? '' : undefined}
+        data-testid={testId}
+      >
         <summary>{summary}</summary>
         <div class="disclosure-body">{children}</div>
       </details>

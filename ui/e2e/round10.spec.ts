@@ -12,7 +12,13 @@ test('the dock: Monaco diff, logs and a terminal in the task worktree', async ({
 
   // the task page shows the change in Monaco's diff editor, both sides
   const diff = page.getByTestId('diff-viewer').first();
-  await expect(diff.getByRole('button', { name: /calc\.go/ })).toBeVisible();
+  await expect(diff.getByRole('list', { name: 'Changed files' }).getByRole('button', { name: /calc\.go/ })).toBeVisible();
+  // the file in the worktree, outside Drydock (X26): Explorer, the editor the harness's stand-in PATH has, Copy path
+  await diff.getByTestId('diff-file-open').click();
+  await expect(page.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Open in Visual Studio Code' })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Open in Visual Studio Code' }).click();
+  await expect(page.getByText('Could not open it')).toHaveCount(0);
   const editor = diff.getByTestId('monaco-diff');
   // (in a narrow pane Monaco shows the diff inline even when side by side is chosen, so both texts are looked for anywhere)
   await expect(editor).toContainText(/return\sa\s-\sb/, { timeout: 60_000 });
@@ -27,14 +33,16 @@ test('the dock: Monaco diff, logs and a terminal in the task worktree', async ({
   const logs = page.getByTestId('logs-panel');
   await logs.getByRole('button', { name: /Check:\s*test/ }).click();
   await expect(logs.getByTestId('log-text')).toContainText('ok');
-  await logs.getByRole('button', { name: /Agent:\s*work/ }).first().click();
+  // an agent stream is named by its agent (X210)
+  await logs.getByRole('button', { name: /Agent:\s*Worker One · work/ }).first().click();
   await expect(logs.getByTestId('log-text')).toContainText('implemented Subtract');
   await expect(logs.getByTestId('log-text')).not.toContainText('"kind"');
 
-  // a real shell in the task's worktree
+  // a real shell in the task's worktree: asking for the tab opens one (G6)
   await page.getByRole('tab', { name: 'Terminal' }).click();
   const term = page.getByTestId('terminal-panel');
-  await term.getByRole('button', { name: 'New terminal in the task' }).click();
+  await expect(term.getByRole('tab', { selected: true })).toBeVisible({ timeout: 30_000 });
+  await expect(term.getByRole('tab')).toHaveCount(1);
   const xterm = term.getByTestId('xterm');
   await expect(xterm.locator('.xterm-rows')).toBeVisible();
   await xterm.click();

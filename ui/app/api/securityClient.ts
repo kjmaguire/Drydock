@@ -12,6 +12,7 @@ import type {
   ScanFindingContext,
   ScanReport,
   ScanSummary,
+  ScanSchedule,
   SecurityTools,
 } from './securityTypes.ts';
 
@@ -21,6 +22,7 @@ const counts = (c: ScanCounts | null | undefined): ScanCounts => ({ ...ZERO, ...
 const finding = (f: ScanFinding): ScanFinding => ({ ...f, ids: arr(f.ids), unfixed: arr(f.unfixed) });
 const report = (r: ScanReport): ScanReport => ({ ...r, engines: arr(r.engines), findings: arr(r.findings).map(finding), counts: counts(r.counts) });
 const summary = (s: ScanSummary): ScanSummary => ({ ...s, counts: counts(s.counts) });
+const schedule = (s: ScanSchedule): ScanSchedule => ({ ...s, last: s.last ? summary(s.last) : undefined });
 const context = (c: ScanFindingContext): ScanFindingContext => ({
   ...c,
   finding: finding(c.finding),
@@ -39,11 +41,16 @@ export interface SecurityClient {
   /** The last scans, newest first. */
   securityScanList(projectId: string, limit?: number): Promise<ScanSummary[]>;
   securityScanReport(id: string): Promise<ScanReport>;
+  /** The project's rule by which its scan starts after a merge, a sync with new commits or weekly (H5). */
+  securityScheduleGet(projectId: string): Promise<ScanSchedule>;
+  securityScheduleSet(projectId: string, rule: Pick<ScanSchedule, 'afterMerge' | 'afterSync' | 'weekly'>): Promise<ScanSchedule>;
   // Folder scans (decision P61): any folder on this computer, without a project. The scan only reads files.
   /** The scan tools on this computer, as folder scans use them. */
   securityWorkspaceTools(): Promise<SecurityTools>;
   /** Reads the newest release of OSV-Scanner and Opengrep now and installs a newer one in the background; the tools after. */
   securityToolsUpdate(): Promise<SecurityTools>;
+  /** Installs (or updates) one scan tool now, in the background; the Inbox's Retry for a failed install (H7). */
+  securityToolInstall(tool: string): Promise<unknown>;
   /** Starts a scan of a folder by its full path. Refused for a relative path, a file, a whole drive or Drydock's data folder. */
   securityFolderScanStart(folder: string): Promise<ScanReport>;
   securityFolderScanCancel(folder: string): Promise<ScanReport>;
@@ -83,8 +90,12 @@ export function createSecurityClient(t: Transport): SecurityClient {
     },
     securityScanList: async (projectId, limit = 10) => arr(await t.call<ScanSummary[] | null>('security.scan.list', { projectId, limit })).map(summary),
     securityScanReport: async (id) => report(await t.call<ScanReport>('security.scan.report', { id })),
+    securityScheduleGet: async (projectId) => schedule(await t.call<ScanSchedule>('security.schedule.get', { projectId })),
+    securityScheduleSet: async (projectId, r) =>
+      schedule(await t.call<ScanSchedule>('security.schedule.set', { projectId, afterMerge: r.afterMerge, afterSync: r.afterSync, weekly: r.weekly })),
     securityWorkspaceTools: () => t.call('security.tools', {}),
     securityToolsUpdate: () => t.call('security.tools.checkUpdates', {}),
+    securityToolInstall: (tool) => t.call('security.tool.install', { tool }),
     securityFolderScanStart: async (folder) => report(await t.call<ScanReport>('security.scan.start', { folder })),
     securityFolderScanCancel: async (folder) => report(await t.call<ScanReport>('security.scan.cancel', { folder })),
     securityFolderScanGet: async (folder) => {

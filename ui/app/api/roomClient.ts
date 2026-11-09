@@ -40,6 +40,8 @@ export interface RoomClient {
   roomJoinRules(projectId: string): Promise<JoinRule[]>;
   roomJoinRuleAdd(rule: { projectId: string; agentId: string; pathPrefix?: string; state?: string }): Promise<JoinRule>;
   roomJoinRuleRemove(id: string): Promise<void>;
+  /** The repository's folders two levels deep ("cmd/", "cmd/drydock/"): directory names only, for a join rule's folder (X17). */
+  repoFolders(projectId: string): Promise<string[]>;
   /** Lets the agent into the channel as an observer (allow) or declines its request. */
   roomAnswerJoin(id: string, allow: boolean): Promise<JoinRequest>;
 }
@@ -53,6 +55,7 @@ export function createRoomClient(t: Transport): RoomClient {
     roomJoinRuleRemove: async (id) => {
       await t.call('room.joinRule.remove', { id });
     },
+    repoFolders: async (projectId) => arr(await t.call<string[] | null>('repo.folders', { projectId })),
     roomAnswerJoin: (id, allow) => t.call<JoinRequest>('room.answerJoin', { id, allow }),
   };
 }

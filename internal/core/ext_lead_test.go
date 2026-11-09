@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
@@ -116,5 +117,73 @@ func TestLeadStandupPostsInGeneral(t *testing.T) {
 	a.call("lead.tick", map[string]string{"projectId": p.ID}, &tick)
 	if len(tick.Stalled)+len(tick.Unassigned) != 0 {
 		t.Fatalf("nothing to do yet (autoSchedule is off): %+v", tick)
+	}
+}
+
+// H11: the stand-up schedule is off until the person sets it; then the lead's stand-up is started once on a weekday from the
+// chosen hour while the project has active tasks, and its message says it was posted by schedule.
+func TestLeadStandupOnASchedule(t *testing.T) {
+	a, _ := openDev(t, leadScript())
+	ctx := context.Background()
+	repo := newRepo(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	var sch core.StandupSchedule
+	a.call("lead.standup.schedule.get", map[string]string{"projectId": p.ID}, &sch)
+	if sch.Enabled || sch.HourLocal != 9 {
+		t.Fatalf("default schedule %+v: off, at 9", sch)
+	}
+	if _, err := a.c.Call(ctx, "lead.standup.schedule.set", mustJSON(map[string]any{"projectId": p.ID, "enabled": true, "hourLocal": 24})); err == nil {
+		t.Fatal("an hour of 24 was accepted")
+	}
+	var runs []string
+	count := func(ctx context.Context, projectID string) error { runs = append(runs, projectID); return nil }
+	monday10 := time.Date(2026, 11, 2, 10, 0, 0, 0, time.Local) // a Monday
+	a.c.TestRunScheduledStandups(ctx, monday10, count)
+	if len(runs) != 0 {
+		t.Fatal("a stand-up ran while the schedule is off")
+	}
+	a.call("lead.standup.schedule.set", map[string]any{"projectId": p.ID, "enabled": true, "hourLocal": 9}, &sch)
+	if !sch.Enabled || sch.HourLocal != 9 {
+		t.Fatalf("saved %+v", sch)
+	}
+	a.c.TestRunScheduledStandups(ctx, monday10, count)
+	if len(runs) != 0 {
+		t.Fatal("a stand-up ran with no active task")
+	}
+	var lead core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "x"}, &task)
+	a.c.Tasks.Transition(ctx, task.ID, tasks.Ready, tasks.TransitionOpts{By: "system"})
+	a.c.TestRunScheduledStandups(ctx, time.Date(2026, 11, 2, 8, 59, 0, 0, time.Local), count) // before the hour
+	a.c.TestRunScheduledStandups(ctx, time.Date(2026, 11, 7, 10, 0, 0, 0, time.Local), count) // a Saturday
+	if len(runs) != 0 {
+		t.Fatalf("ran outside the schedule: %v", runs)
+	}
+	a.c.TestRunScheduledStandups(ctx, monday10, count)
+	a.c.TestRunScheduledStandups(ctx, monday10.Add(3*time.Hour), count) // once a day
+	if len(runs) != 1 {
+		t.Fatalf("runs on Monday %v, want one", runs)
+	}
+	// the next weekday: the real lead's stand-up, marked as posted by schedule
+	a.c.TestRunScheduledStandups(ctx, monday10.Add(24*time.Hour), nil)
+	var msgs []room.Message
+	general := ""
+	rooms, _ := a.c.Room.ListRooms(ctx, p.ID, false)
+	for _, r := range rooms {
+		if r.Name == "general" {
+			general = r.ID
+		}
+	}
+	a.call("room.messages", map[string]any{"roomId": general, "limit": 200}, &msgs)
+	found := false
+	for _, m := range msgs {
+		if m.Author.Key() == room.Agent(lead.ID).Key() && strings.HasPrefix(m.Body, "Stand-up from the team lead (posted by schedule):") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the scheduled stand-up was not posted in #general as posted by schedule")
 	}
 }

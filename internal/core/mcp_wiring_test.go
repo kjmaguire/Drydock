@@ -636,8 +636,8 @@ func TestRealMCPClientAgainstTheSharedGatewayOverRealData(t *testing.T) {
 	var req struct{ ID string }
 	a.call("requirement.add", map[string]any{"projectId": p.ID, "title": "Calculator PRD", "text": "# Calc\n\n## Subtract\n\nThe calculator shall subtract two integers using wraparound arithmetic.\n"}, &req)
 	var mem struct{ ID string }
+	// a person's own entry is accepted when it is added (E10)
 	a.call("memory.propose", map[string]any{"projectId": p.ID, "kind": "convention", "title": "Use gofmt", "body": "Always run gofmt before committing Go code."}, &mem)
-	a.call("memory.accept", map[string]string{"id": mem.ID}, nil)
 	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
 	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "go-style"}, nil)
 

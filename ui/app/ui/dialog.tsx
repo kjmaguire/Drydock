@@ -18,6 +18,15 @@ const dialogCss = css({
   '@keyframes dd-pop': { from: { opacity: '0', transform: 'translateY(6px) scale(0.98)' }, to: { opacity: '1', transform: 'none' } },
 });
 const wideDialog = css({ width: 'min(880px, calc(100vw - 32px))' });
+// a side panel (the agent editor, decision P137): the full height at the window's right edge, sliding in
+const sideDialog = css({
+  width: 'min(460px, calc(100vw - 32px))',
+  height: 'calc(100vh - 24px)',
+  maxHeight: 'calc(100vh - 24px)',
+  margin: '12px 12px 12px auto',
+  '&[open]': { animation: `dd-slide ${t.med} ${t.ease}` },
+  '@keyframes dd-slide': { from: { opacity: '0', transform: 'translateX(16px)' }, to: { opacity: '1', transform: 'none' } },
+});
 const headCss = css({
   display: 'flex',
   alignItems: 'center',
@@ -26,14 +35,14 @@ const headCss = css({
   borderBottom: `1px solid ${t.border}`,
   '& h2': { flex: '1', fontSize: t.textLg },
 });
-const bodyCss = css({ padding: t.s5, overflow: 'auto', display: 'grid', gap: t.s4 });
+const bodyCss = css({ flex: '1 1 auto', minHeight: '0', padding: t.s5, overflow: 'auto', display: 'grid', gap: t.s4 });
 
 /**
  * A modal dialog on the native <dialog> (focus trap, Escape and the top layer come from the browser). Controlled: render
  * it with open and handle onClose (Escape, the close button, a click on the backdrop that was pressed on it too). The
- * dialog is named by its heading (aria-labelledby), or by `label` when one is given.
+ * dialog is named by its heading (aria-labelledby), or by `label` when one is given. `side` makes it a panel at the right edge.
  */
-export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose: () => void; wide?: boolean; children?: RemixNode; label?: string }>) {
+export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose: () => void; wide?: boolean; side?: boolean; children?: RemixNode; label?: string; testId?: string }>) {
   let node: HTMLDialogElement | undefined;
   // a press that started on the backdrop (the <dialog> element itself, outside the panel): a drag that starts inside the panel
   // (selecting text in a field) and ends on the backdrop is also a click on the dialog, and must not close it
@@ -46,11 +55,12 @@ export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose
   };
   return () => {
     handle.queueTask(sync);
-    const { title, onClose, wide, children, label } = handle.props;
+    const { title, onClose, wide, side, children, label, testId } = handle.props;
     return (
       <dialog
         aria-label={label}
         aria-labelledby={label ? undefined : titleId}
+        data-testid={testId}
         mix={[
           dialogCss,
           ref((n) => {
@@ -70,6 +80,7 @@ export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose
             if (closing) onClose();
           }),
           wide ? wideDialog : undefined,
+          side ? sideDialog : undefined,
         ]}
       >
         {handle.props.open ? (

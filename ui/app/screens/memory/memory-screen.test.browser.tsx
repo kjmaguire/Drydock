@@ -131,13 +131,13 @@ describe('MemoryScreen', () => {
     expect(card!.querySelector('[data-testid="memory-body"]')!.textContent).toBe('😀😀😀\\u{202e}end');
   });
 
-  it('proposing memory sends kind, title and body', async () => {
+  it('Add to memory sends kind, title and body, and says the entry is in the memory (E10: a person\'s own entry is accepted)', async () => {
     const proposed: unknown[][] = [];
     const r = mount(
       <MemoryScreen />,
       servicesWith({
         memoryList: async () => [],
-        memoryPropose: async (...args) => (proposed.push(args), mem({})),
+        memoryPropose: async (...args) => (proposed.push(args), mem({ status: 'accepted', title: 'Use SQLite' })),
       }),
     );
     await waitFor(() => byText(r.container, 'h2', 'Nothing here.'), r);
@@ -146,9 +146,75 @@ describe('MemoryScreen', () => {
     type(byLabel(r.container, 'Title'), 'Use SQLite');
     type(byLabel<HTMLTextAreaElement>(r.container, 'Body'), 'One writer');
     r.root.flush();
-    await r.act(() => byText(r.container, 'button', 'Propose').click());
+    expect(byText(r.container, 'h2', 'Add to memory')).not.toBeNull();
+    await r.act(() => byText(r.container, 'button', 'Add to memory').click());
     await waitFor(() => expect(proposed).toEqual([['prj_1', 'decision', 'Use SQLite', 'One writer']]), r);
     await waitFor(() => expect(byLabel(r.container, 'Title').value).toBe(''), r);
+    expect(r.$('[data-testid="memory-said"]')!.textContent).toBe('"Use SQLite" is in the project\'s memory: agents see it from their next session.');
+  });
+
+  it('Accept all N accepts every open proposal at once, and Undo makes them proposals again (E10)', async () => {
+    let entries = [mem({ id: 'm1', title: 'One' }), mem({ id: 'm2', title: 'Two' }), mem({ id: 'm3', title: 'Old', status: 'accepted' })];
+    const calls: unknown[][] = [];
+    const r = mount(
+      <MemoryScreen />,
+      servicesWith({
+        memoryList: async (_p, status) => entries.filter((e) => !status || e.status === status),
+        memoryAcceptMany: async (ids) => (calls.push(['accept', ids]), (entries = entries.map((e) => (ids.includes(e.id) ? { ...e, status: 'accepted' } : e))), ids),
+        memoryUnacceptMany: async (ids) => (calls.push(['undo', ids]), (entries = entries.map((e) => (ids.includes(e.id) ? { ...e, status: 'proposed' } : e))), ids),
+      }),
+    );
+    const bar = await waitFor(() => {
+      const b = r.$('[data-testid="memory-proposals"]');
+      if (!b) throw new Error('no bar');
+      return b;
+    }, r);
+    expect(bar.textContent).toContain('2 memory proposals waiting for you.');
+    await r.act(() => byText(bar, 'button', 'Accept all 2').click());
+    await waitFor(() => expect(calls).toEqual([['accept', ['m1', 'm2']]]), r);
+    await waitFor(() => expect(r.$('[data-testid="memory-proposals"]')).toBeNull(), r);
+    const said = r.$('[data-testid="memory-said"]')!;
+    expect(said.textContent).toContain('2 entries accepted: agents see them from their next session.');
+    await r.act(() => byText(said, 'button', 'Undo').click());
+    await waitFor(() => expect(calls[1]).toEqual(['undo', ['m1', 'm2']]), r);
+    await waitFor(() => expect(r.$('[data-testid="memory-proposals"]')!.textContent).toContain('2 memory proposals'), r);
+    expect(r.$('[data-testid="memory-said"]')!.textContent).toBe('2 entries are proposals again.');
+  });
+
+  it('Accept all sends more than 200 proposals in groups the core takes, and Undo does the same (E10 review)', async () => {
+    let entries = Array.from({ length: 230 }, (_, i) => mem({ id: `m${i}`, title: `Entry ${i}` }));
+    const calls: [string, number][] = [];
+    const r = mount(
+      <MemoryScreen />,
+      servicesWith({
+        memoryList: async (_p, status) => entries.filter((e) => !status || e.status === status),
+        memoryAcceptMany: async (ids) => {
+          if (ids.length > 200) throw new Error(`at most 200 entries at once, not ${ids.length}`);
+          calls.push(['accept', ids.length]);
+          entries = entries.map((e) => (ids.includes(e.id) ? { ...e, status: 'accepted' } : e));
+          return ids;
+        },
+        memoryUnacceptMany: async (ids) => {
+          if (ids.length > 200) throw new Error(`at most 200 entries at once, not ${ids.length}`);
+          calls.push(['undo', ids.length]);
+          entries = entries.map((e) => (ids.includes(e.id) ? { ...e, status: 'proposed' } : e));
+          return ids;
+        },
+      }),
+    );
+    const bar = await waitFor(() => {
+      const b = r.$('[data-testid="memory-proposals"]');
+      if (!b) throw new Error('no bar');
+      return b;
+    }, r);
+    await r.act(() => byText(bar, 'button', 'Accept all 230').click());
+    await waitFor(() => expect(calls).toEqual([['accept', 200], ['accept', 30]]), r);
+    await waitFor(() => expect(r.$('[data-testid="memory-proposals"]')).toBeNull(), r);
+    const said = r.$('[data-testid="memory-said"]')!;
+    expect(said.textContent).toContain('230 entries accepted');
+    await r.act(() => byText(said, 'button', 'Undo').click());
+    await waitFor(() => expect(calls.slice(2)).toEqual([['undo', 200], ['undo', 30]]), r);
+    await waitFor(() => expect(r.$('[data-testid="memory-said"]')!.textContent).toBe('230 entries are proposals again.'), r);
   });
 
   it('filters by status, searches within it and clears the search', async () => {
@@ -174,7 +240,7 @@ describe('MemoryScreen', () => {
     const show = r.$('[role="group"][aria-label="Show"]')!;
     await r.act(() => byText(show, 'button', 'accepted').click());
     await waitFor(() => expect(r.$('[data-testid="memory"]')!.getAttribute('data-title')).toBe('Listed accepted'), r);
-    expect(listed).toEqual(['', 'accepted']);
+    expect(listed.filter((x) => x !== 'proposed')).toEqual(['', 'accepted']);
     type(byLabel(r.container, 'Search memory'), 'gofmt');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Search').click());

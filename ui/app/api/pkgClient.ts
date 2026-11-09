@@ -45,9 +45,13 @@ export interface PkgClient {
   projectImportPreview(path: string): Promise<ImportPreview>;
   projectImport(req: { path: string; repoPath: string; name?: string }): Promise<ImportResult>;
   supportbundlePreview(opts: { eventLimit?: number; includeRun?: string }): Promise<BundlePreview>;
+  /** The newest runs that failed or were stopped part way, for the support page's run picker (X56). */
+  supportbundleRecentRuns(): Promise<{ runs: RecentRun[] }>;
   /** The crash reports on this machine, newest first. */
   crashList(): Promise<{ reports: CrashReport[] }>;
   crashDelete(name: string): Promise<{ deleted: boolean }>;
+  /** One crash report's text, secrets already redacted by the core. Shown as text, never as markup. */
+  crashRead(name: string): Promise<{ name: string; text: string }>;
   /** The notices a person acknowledges once (D1: Claude Code runs as you, under your own terms). */
   noticeStatus(): Promise<{ notices: NoticeState[] }>;
   noticeAcknowledge(id: string, version: number): Promise<NoticeState>;
@@ -56,6 +60,17 @@ export interface PkgClient {
    * send the request again with `overwrite` once the person has said it may be replaced.
    */
   supportbundleCreate(opts: { dest?: string; eventLimit?: number; includeRun?: string; acknowledgeRun?: boolean; overwrite?: boolean }): Promise<BundleResult>;
+}
+
+/** A run the support page offers to include: ids and names only (core.RecentRun). */
+export interface RecentRun {
+  runId: string;
+  taskId?: string;
+  projectId?: string;
+  title?: string;
+  project?: string;
+  status: string;
+  updatedAt: number;
 }
 
 export function createPkgClient(t: Transport): PkgClient {
@@ -90,11 +105,16 @@ export function createPkgClient(t: Transport): PkgClient {
     projectImportPreview: (path) => call('project.importPreview', { path }),
     projectImport: (req) => call('project.import', { path: req.path, repoPath: req.repoPath, name: req.name ?? '' }),
     supportbundlePreview: (o) => call('supportbundle.preview', { eventLimit: o.eventLimit ?? 0, includeRun: o.includeRun ?? '' }),
+    supportbundleRecentRuns: async () => {
+      const r = await call<{ runs: RecentRun[] | null }>('supportbundle.recentRuns', {});
+      return { runs: arr(r?.runs) };
+    },
     crashList: async () => {
       const r = await call<{ reports: CrashReport[] | null }>('crash.list', {});
       return { reports: arr(r.reports) };
     },
     crashDelete: (name) => call('crash.delete', { name }),
+    crashRead: (name) => call('crash.read', { name }),
     noticeStatus: async () => {
       const r = await call<{ notices: NoticeState[] | null }>('notice.status', {});
       return { notices: arr(r.notices) };

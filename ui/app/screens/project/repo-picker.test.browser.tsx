@@ -1,31 +1,47 @@
-import { expect } from 'remix/assert';
-import type { Handle } from 'remix/component';
-import { afterEach, describe, it } from 'remix/test';
-import type { Client } from '../../api/client.ts';
-import type { GitHubRepo } from '../../api/types.ts';
-import { byLabel, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
-import { RepoPicker } from './repo-picker.tsx';
-import { repo } from './wizard-fixtures.ts';
+import { expect } from "remix/assert";
+import type { Handle } from "remix/component";
+import { afterEach, describe, it } from "remix/test";
+import type { Client } from "../../api/client.ts";
+import type { GitHubRepo } from "../../api/types.ts";
+import {
+  byLabel,
+  cleanup,
+  mount,
+  testServices,
+  type,
+  waitFor,
+} from "../../test/render.tsx";
+import { RepoPicker } from "./repo-picker.tsx";
+import { repo } from "./wizard-fixtures.ts";
 
 afterEach(cleanup);
 
 /** The picker inside a tiny holder that keeps the selection and folder like the wizard does. */
 function setup(client: Partial<Client>) {
-  const picked: GitHubRepo[] = [];
-  const state = { selected: undefined as GitHubRepo | undefined, dir: '' };
+  const picked: (GitHubRepo | undefined)[] = [];
+  const state = { selected: undefined as GitHubRepo | undefined, dir: "" };
   const s = testServices(client);
   const r = mount(<Holder state={state} picked={picked} />, s);
   return { r, picked, state };
 }
 
-function Holder(handle: Handle<{ state: { selected: GitHubRepo | undefined; dir: string }; picked: GitHubRepo[] }>) {
+function Holder(
+  handle: Handle<{
+    state: { selected: GitHubRepo | undefined; dir: string };
+    picked: (GitHubRepo | undefined)[];
+  }>,
+) {
   return () => {
     const { state, picked } = handle.props;
     return (
       <RepoPicker
         selected={state.selected}
         cloneDir={state.dir}
-        onSelect={(x) => (picked.push(x), (state.selected = x), void handle.update())}
+        onSelect={(x) => (
+          picked.push(x),
+          (state.selected = x),
+          void handle.update()
+        )}
         onCloneDir={(d) => ((state.dir = d), void handle.update())}
         unavailableHint="Choose Local folder or Later instead."
       />
@@ -33,69 +49,330 @@ function Holder(handle: Handle<{ state: { selected: GitHubRepo | undefined; dir:
   };
 }
 
-const signedIn = { githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }) };
+const signedIn = {
+  githubStatus: async () => ({
+    installed: true,
+    loggedIn: true,
+    login: "kyle",
+  }),
+};
 
-describe('the GitHub repository picker', () => {
-  it('explains, in the core words, when gh is not installed', async () => {
-    const { r } = setup({ githubStatus: async () => ({ installed: false, loggedIn: false, login: '', error: 'the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`' }) });
-    const note = await waitFor(() => { const n = r.$('[data-testid="github-unavailable"]'); if (!n) throw new Error('not yet'); return n; }, r);
-    expect(note.textContent).toContain('GitHub is not available.');
-    expect(note.textContent).toContain('install it from https://cli.github.com');
-    expect(note.textContent).toContain('Cloning uses your own GitHub CLI sign-in, and Drydock stores no token for it.');
-    expect(note.textContent).not.toContain('stores no GitHub token'); // not an absolute claim: the GitHub MCP server keeps its own (audit L45)
-    expect(note.textContent).toContain('Choose Local folder or Later instead.');
+describe("the GitHub repository picker", () => {
+  it("takes a typed repository and offers Try again when GitHub refuses the list (W9)", async () => {
+    let owners = 0;
+    const { r, state } = setup({
+      ...signedIn,
+      githubOwners: async () => {
+        owners++;
+        if (owners === 1) throw new Error("HTTP 403: Resource not accessible by integration");
+        return ["kyle"];
+      },
+      githubRepos: async () => [repo("kyle/pay")],
+      githubCloneDir: async () => "D:\\src",
+    });
+    await waitFor(() => expect(r.container.textContent).toContain("HTTP 403"), r);
+    // the list cannot be read: a repository can still be typed, as its address
+    const field = byLabel<HTMLInputElement>(r.container, "Repository (owner/name or URL)");
+    type(field, "https://github.com/acme/billing-api.git");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("acme/billing-api");
+    await waitFor(() => expect(r.$('[data-testid="clone-target"]')!.textContent).toBe("D:\\src\\billing-api"), r);
+    type(field, "not a repository");
+    r.root.flush();
+    expect(r.container.textContent).toContain("Type it as owner/name, or paste its github.com address.");
+    // Try again reads the list again
+    await r.act(() => (r.$('[data-testid="repos-retry"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
+    expect(r.$('[data-testid="repos-retry"]')).toBeNull();
+    expect(owners).toBe(2);
   });
 
-  it('says when gh is installed but not signed in', async () => {
-    const { r } = setup({ githubStatus: async () => ({ installed: true, loggedIn: false, login: '', error: 'gh is not signed in: run `gh auth login`' }) });
-    const note = await waitFor(() => { const n = r.$('[data-testid="github-unavailable"]'); if (!n) throw new Error('not yet'); return n; }, r);
-    expect(note.textContent).toContain('GitHub is not signed in.');
-    expect(note.textContent).toContain('run `gh auth login`');
+  it("forgets a typed repository once the field no longer names one (W9)", async () => {
+    const { r, state } = setup({
+      ...signedIn,
+      githubOwners: async () => ["kyle"],
+      githubRepos: async () => [repo("kyle/pay")],
+      githubCloneDir: async () => "D:\\src",
+    });
+    await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
+    const field = byLabel<HTMLInputElement>(r.container, "Repository (owner/name or URL)");
+    type(field, "acme/billing-api");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("acme/billing-api");
+    // edited into something that is not a repository: nothing is selected
+    type(field, "acme/");
+    r.root.flush();
+    expect(state.selected).toBeUndefined();
+    expect(r.$('[data-testid="clone-target"]')).toBeNull();
+    // typed again, then cleared to choose from the list
+    type(field, "acme/billing-api");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("acme/billing-api");
+    type(field, "");
+    r.root.flush();
+    expect(state.selected).toBeUndefined();
+    // a row of the list stays chosen while the field is empty or edited
+    const row = r.$('[data-testid="gh-repo"] input') as HTMLInputElement;
+    await r.act(() => row.click());
+    expect(state.selected?.fullName).toBe("kyle/pay");
+    type(field, "x");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("kyle/pay");
+  });
+
+  it("explains, in the core words, when gh is not installed", async () => {
+    const { r } = setup({
+      githubStatus: async () => ({
+        installed: false,
+        loggedIn: false,
+        login: "",
+        error:
+          "the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`",
+      }),
+    });
+    const note = await waitFor(() => {
+      const n = r.$('[data-testid="github-unavailable"]');
+      if (!n) throw new Error("not yet");
+      return n;
+    }, r);
+    expect(note.textContent).toContain("GitHub is not available.");
+    expect(note.textContent).toContain(
+      "install it from https://cli.github.com",
+    );
+    expect(note.textContent).toContain(
+      "Cloning uses your own GitHub CLI sign-in, and Drydock stores no token for it.",
+    );
+    expect(note.textContent).not.toContain("stores no GitHub token"); // not an absolute claim: the GitHub MCP server keeps its own (audit L45)
+    expect(note.textContent).toContain("Choose Local folder or Later instead.");
+  });
+
+  it("says when gh is installed but not signed in", async () => {
+    const { r } = setup({
+      githubStatus: async () => ({
+        installed: true,
+        loggedIn: false,
+        login: "",
+        error: "gh is not signed in: run `gh auth login`",
+      }),
+    });
+    const note = await waitFor(() => {
+      const n = r.$('[data-testid="github-unavailable"]');
+      if (!n) throw new Error("not yet");
+      return n;
+    }, r);
+    expect(note.textContent).toContain("GitHub is not signed in.");
+    expect(note.textContent).toContain("run `gh auth login`");
   });
 
   it('says GitHub did not answer (not "not signed in") when it timed out', async () => {
-    const { r } = setup({ githubStatus: async () => ({ installed: true, loggedIn: false, unreachable: true, login: '', error: 'GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later' }) });
-    const note = await waitFor(() => { const n = r.$('[data-testid="github-unavailable"]'); if (!n) throw new Error('not yet'); return n; }, r);
-    expect(note.textContent).toContain('GitHub did not answer.');
-    expect(note.textContent).not.toContain('not signed in');
+    const { r } = setup({
+      githubStatus: async () => ({
+        installed: true,
+        loggedIn: false,
+        unreachable: true,
+        login: "",
+        error:
+          "GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later",
+      }),
+    });
+    const note = await waitFor(() => {
+      const n = r.$('[data-testid="github-unavailable"]');
+      if (!n) throw new Error("not yet");
+      return n;
+    }, r);
+    expect(note.textContent).toContain("GitHub did not answer.");
+    expect(note.textContent).not.toContain("not signed in");
   });
 
-  it('lists the repositories of the first owner, with private and archived marks, and picks one; the clone folder defaults from the core', async () => {
+  it("lists the repositories of the first owner, with private and archived marks, and picks one; the clone folder defaults from the core", async () => {
     const calls: [string, string][] = [];
     const { r, picked } = setup({
       ...signedIn,
-      githubOwners: async () => ['kyle', 'acme'],
-      githubRepos: async (owner = '', q = '') => (calls.push([owner, q]), [repo(`${owner}/pay`, { private: true }), repo(`${owner}/old`, { archived: true, description: '' })]),
-      githubCloneDir: async () => 'C:\\Users\\kyle\\source\\repos',
+      githubOwners: async () => ["kyle", "acme"],
+      githubRepos: async (owner = "", q = "") => (
+        calls.push([owner, q]),
+        [
+          repo(`${owner}/pay`, { private: true }),
+          repo(`${owner}/old`, { archived: true, description: "" }),
+        ]
+      ),
+      githubCloneDir: async () => "C:\\Users\\kyle\\source\\repos",
     });
-    await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(2), r);
-    expect(calls).toEqual([['kyle', '']]);
-    expect(r.$('[data-testid="repo-picker"]')!.textContent).toContain('Signed in to GitHub as kyle');
+    await waitFor(
+      () => expect(r.$$('[data-testid="gh-repo"]').length).toBe(2),
+      r,
+    );
+    expect(calls).toEqual([["kyle", ""]]);
+    expect(r.$('[data-testid="repo-picker"]')!.textContent).toContain(
+      "Signed in to GitHub as kyle",
+    );
     const [pay, old] = Array.from(r.$$('[data-testid="gh-repo"]'));
-    expect(pay!.textContent).toContain('private');
-    expect(pay!.textContent).toContain('pay description');
-    expect(old!.textContent).toContain('archived');
-    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'Clone into').value).toBe('C:\\Users\\kyle\\source\\repos'), r);
-    await r.act(() => byLabel<HTMLInputElement>(r.container, 'kyle/pay').click());
-    expect(picked.map((x) => x.fullName)).toEqual(['kyle/pay']);
-    await waitFor(() => expect(r.$('[data-testid="clone-target"]')!.textContent).toBe('C:\\Users\\kyle\\source\\repos\\pay'), r);
+    expect(pay!.textContent).toContain("private");
+    expect(pay!.textContent).toContain("pay description");
+    expect(old!.textContent).toContain("archived");
+    await waitFor(
+      () =>
+        expect(byLabel<HTMLInputElement>(r.container, "Clone into").value).toBe(
+          "C:\\Users\\kyle\\source\\repos",
+        ),
+      r,
+    );
+    await r.act(() =>
+      byLabel<HTMLInputElement>(r.container, "kyle/pay").click(),
+    );
+    expect(picked.map((x) => x?.fullName)).toEqual(["kyle/pay"]);
+    await waitFor(
+      () =>
+        expect(r.$('[data-testid="clone-target"]')!.textContent).toBe(
+          "C:\\Users\\kyle\\source\\repos\\pay",
+        ),
+      r,
+    );
   });
 
-  it('searches after a pause and switches owner', async () => {
+  it("chooses the clone folder with the window folder dialog and shows the full path it makes (P143)", async () => {
+    const asked: string[] = [];
+    const dirs: string[] = [];
+    const { r, state } = setup({
+      ...signedIn,
+      githubOwners: async () => ["kyle"],
+      githubRepos: async () => [repo("kyle/pay")],
+      githubCloneDir: async () => "C:\\Users\\kyle\\source\\repos",
+      fsFolderHints: async () => ({
+        canPick: true,
+        windows: true,
+        devDrives: [],
+      }),
+      fsPickFolder: async (title: string, dir?: string) => (asked.push(title), dirs.push(dir ?? ""), "D:\\code"),
+    });
+    await waitFor(
+      () => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1),
+      r,
+    );
+    await r.act(() =>
+      byLabel<HTMLInputElement>(r.container, "kyle/pay").click(),
+    );
+    const choose = await waitFor(() => {
+      const b = r.$('[data-testid="clone-choose"]') as HTMLButtonElement | null;
+      if (!b) throw new Error("no Choose folder yet");
+      return b;
+    }, r);
+    expect(choose.textContent).toContain("Choose folder");
+    await r.act(() => choose.click());
+    await waitFor(() => expect(state.dir).toBe("D:\\code"), r);
+    expect(asked).toEqual(["Choose the folder to clone into"]);
+    // the dialog opened at the clone folder in the field (B5)
+    expect(dirs).toEqual(["C:\\Users\\kyle\\source\\repos"]);
+    await waitFor(
+      () =>
+        expect(byLabel<HTMLInputElement>(r.container, "Clone into").value).toBe(
+          "D:\\code",
+        ),
+      r,
+    );
+    expect(r.$('[data-testid="clone-target"]')!.textContent).toBe(
+      "D:\\code\\pay",
+    );
+  });
+
+  it("has no Choose folder where the window has no folder dialog", async () => {
+    const { r } = setup({
+      ...signedIn,
+      githubOwners: async () => ["kyle"],
+      githubRepos: async () => [],
+      githubCloneDir: async () => "/home/kyle/src",
+      fsFolderHints: async () => ({
+        canPick: false,
+        windows: false,
+        devDrives: [],
+      }),
+    });
+    await waitFor(
+      () =>
+        expect(byLabel<HTMLInputElement>(r.container, "Clone into").value).toBe(
+          "/home/kyle/src",
+        ),
+      r,
+    );
+    expect(r.$('[data-testid="clone-choose"]')).toBe(null);
+  });
+
+  it("searches after a pause and switches owner", async () => {
     const calls: [string, string][] = [];
     const { r } = setup({
       ...signedIn,
-      githubOwners: async () => ['kyle', 'acme'],
-      githubRepos: async (owner = '', q = '') => (calls.push([owner, q]), q === 'zzz' ? [] : [repo(`${owner}/pay`)]),
-      githubCloneDir: async () => '/home/kyle/src',
+      githubOwners: async () => ["kyle", "acme"],
+      githubRepos: async (owner = "", q = "") => (
+        calls.push([owner, q]),
+        q === "zzz" ? [] : [repo(`${owner}/pay`)]
+      ),
+      githubCloneDir: async () => "/home/kyle/src",
     });
-    await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
-    type(byLabel(r.container, 'Search repositories'), 'pa');
-    type(byLabel(r.container, 'Search repositories'), 'pay');
-    await waitFor(() => expect(calls).toEqual([['kyle', ''], ['kyle', 'pay']]), r, 3000);
-    type(byLabel<HTMLElement>(r.container, 'Owner'), 'acme');
-    await waitFor(() => expect(calls.at(-1)).toEqual(['acme', 'pay']), r);
-    type(byLabel(r.container, 'Search repositories'), 'zzz');
-    await waitFor(() => expect(r.container.textContent).toContain('Nothing matches "zzz" for acme.'), r, 3000);
+    await waitFor(
+      () => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1),
+      r,
+    );
+    type(byLabel(r.container, "Search repositories"), "pa");
+    type(byLabel(r.container, "Search repositories"), "pay");
+    await waitFor(
+      () =>
+        expect(calls).toEqual([
+          ["kyle", ""],
+          ["kyle", "pay"],
+        ]),
+      r,
+      3000,
+    );
+    type(byLabel<HTMLElement>(r.container, "Owner"), "acme");
+    await waitFor(() => expect(calls.at(-1)).toEqual(["acme", "pay"]), r);
+    type(byLabel(r.container, "Search repositories"), "zzz");
+    await waitFor(
+      () =>
+        expect(r.container.textContent).toContain(
+          'Nothing matches "zzz" for acme.',
+        ),
+      r,
+      3000,
+    );
+  });
+
+  it("stacks a long list of repositories without rows running into each other (owner report: rows overlapped)", async () => {
+    // the test page carries no stylesheet; this is app.css's rule that gives every label around a radio a 28px floor, which a
+    // grid list of a set height shrank each row to
+    const style = document.createElement("style");
+    style.textContent =
+      '@layer base, rmx, app; @layer base { :where(label:has(> input[type="radio"])) { display: inline-flex; align-items: center; min-height: 28px; } }';
+    document.head.append(style);
+    try {
+      const many = Array.from({ length: 12 }, (_, i) =>
+        repo(`kyle/repo-${i}`, {
+          private: i % 2 === 0,
+          description: i === 0 ? "A long description ".repeat(10) : `repo ${i}`,
+        }),
+      );
+      const { r } = setup({
+        ...signedIn,
+        githubOwners: async () => ["kyle"],
+        githubRepos: async () => many,
+        githubCloneDir: async () => "C:\\src",
+      });
+      await waitFor(
+        () => expect(r.$$('[data-testid="gh-repo"]').length).toBe(12),
+        r,
+      );
+      const rows = Array.from(r.$$('[data-testid="gh-repo"]')) as HTMLElement[];
+      for (const [i, row] of rows.entries()) {
+        const box = row.getBoundingClientRect();
+        const body = row.querySelector("span")!.getBoundingClientRect();
+        expect(box.height + 0.5 >= body.height).toBe(true); // the row holds its name, description and date
+        const next = rows[i + 1];
+        if (next)
+          expect(next.getBoundingClientRect().top + 0.5 >= box.bottom).toBe(
+            true,
+          );
+      }
+    } finally {
+      style.remove();
+    }
   });
 });

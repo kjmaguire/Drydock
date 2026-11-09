@@ -117,6 +117,31 @@ func (s *Service) GrantTurns(ctx context.Context, messageID string, bounds Conte
 	return dec, grants, nil
 }
 
+// GrantAskedTurn grants one turn a person asked for (X12): the named agent answers the person's own message, whether or not
+// the turn-taking rules would have chosen it (nobody was mentioned, replies went to someone else, or its turn failed, came back
+// empty or was interrupted). It keeps room-protocol s6 rule 1: the turn runs on a grant like any other. Only a person's
+// message can be answered this way, in a room that is not archived, by an agent of the room that is not muted; the round is
+// the first (a person's message resets the counter, rule 3).
+func (s *Service) GrantAskedTurn(ctx context.Context, messageID, agentID string, bounds ContextBounds) (TurnDecision, TurnGrant, error) {
+	trig, err := s.GetMessage(ctx, messageID)
+	if err != nil {
+		return TurnDecision{}, TurnGrant{}, err
+	}
+	if trig.Author.Kind != AuthorHuman {
+		return TurnDecision{}, TurnGrant{}, fmt.Errorf("%w: an agent is asked to answer a person's message only", ErrForbidden)
+	}
+	rm, err := s.GetRoom(ctx, trig.RoomID)
+	if err != nil {
+		return TurnDecision{}, TurnGrant{}, err
+	}
+	dec := TurnDecision{Round: 1, Speakers: []Speaker{{Member: agentID, Reason: ReasonAsked}}, Why: "asked by a person"}
+	g, err := s.issue(ctx, rm, trig, agentID, dec.Round, rm.ModeParams.rounds(), string(ReasonAsked), "", bounds, nil)
+	if err != nil {
+		return TurnDecision{}, TurnGrant{}, err
+	}
+	return dec, g, nil
+}
+
 // GroupTurn is a bounded discussion between named agents in one thread (a group-collaboration workflow node).
 type GroupTurn struct {
 	RoomID string

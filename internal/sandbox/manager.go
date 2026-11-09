@@ -41,6 +41,17 @@ type Spec struct {
 	// Worktree is the host path of the task worktree, mounted at Workdir.
 	Worktree string
 	Config   Config
+	// Progress, if set, is told each step of creating the sandbox (effort review X39), in plain words: "pulling node:24",
+	// "starting the db service", "starting the workspace", "running setup (1 of 2)". A sandbox that is reused says nothing. The
+	// words name images and services from the definition, never a setup command's text.
+	Progress func(step string)
+}
+
+// say tells the spec's Progress a step.
+func (s Spec) say(step string) {
+	if s.Progress != nil {
+		s.Progress(step)
+	}
 }
 
 // Box is a running sandbox.
@@ -182,11 +193,21 @@ func (m *Manager) labels(b *Box, role, hash string) []string {
 func (m *Manager) create(ctx context.Context, b *Box, info Info, hash string) error {
 	c := b.Spec.Config
 	e := m.Engine
-	if err := e.ensureImage(ctx, c.Image); err != nil {
+	pull := func(image string) error {
+		if e.HasImage(ctx, image) {
+			return nil
+		}
+		b.Spec.say("pulling " + strings.TrimSpace(image))
+		if err := e.Pull(ctx, image); err != nil {
+			return fmt.Errorf("could not get image %s: %w", image, err)
+		}
+		return nil
+	}
+	if err := pull(c.Image); err != nil {
 		return err
 	}
 	for _, name := range c.ServiceNames() {
-		if err := e.ensureImage(ctx, c.Services[name].Image); err != nil {
+		if err := pull(c.Services[name].Image); err != nil {
 			return fmt.Errorf("service %s: %w", name, err)
 		}
 	}
@@ -226,6 +247,7 @@ func (m *Manager) create(ctx context.Context, b *Box, info Info, hash string) er
 	}
 	for _, name := range c.ServiceNames() {
 		svc := c.Services[name]
+		b.Spec.say("starting the " + name + " service")
 		args := append([]string{"run", "-d", "--name", b.Base + "-svc-" + name, "--network", b.Network, "--network-alias", name}, m.labels(b, "service", "")...)
 		args = append(append(args, hardenArgs()...), limitArgs(c, 4096)...)
 		for _, k := range sortedKeys(svc.Env) {
@@ -237,6 +259,7 @@ func (m *Manager) create(ctx context.Context, b *Box, info Info, hash string) er
 			return fmt.Errorf("service %s: %w", name, err)
 		}
 	}
+	b.Spec.say("starting the workspace")
 	args := append([]string{"run", "-d", "--name", b.Workspace, "--hostname", "workspace", "--network", b.Network}, m.labels(b, "workspace", hash)...)
 	args = append(append(append(args, "--init"), hardenArgs()...), limitArgs(c, c.Pids)...)
 	args = append(args, "--mount", "type=bind,source="+b.Spec.Worktree+",target="+Workdir)
@@ -265,7 +288,8 @@ func (m *Manager) create(ctx context.Context, b *Box, info Info, hash string) er
 	if setupTimeout <= 0 {
 		setupTimeout = 20 * time.Minute
 	}
-	for _, cmd := range c.Setup {
+	for i, cmd := range c.Setup {
+		b.Spec.say(fmt.Sprintf("running setup (%d of %d)", i+1, len(c.Setup)))
 		res, err := m.exec(ctx, b, ExecRequest{Command: cmd, Timeout: setupTimeout}, "setup")
 		sr := SetupResult{Command: cmd, ExitCode: res.ExitCode, Output: res.Output, Duration: res.Duration}
 		if err != nil {

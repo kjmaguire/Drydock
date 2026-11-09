@@ -193,7 +193,7 @@ jobs:
           check-latest: true # the runner's cached 24.x can be older than a security release
       - name: install wails3 CLI
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
           wails3 version
           wails3 doctor
       - name: scaffold and build hello app

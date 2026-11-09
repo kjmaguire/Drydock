@@ -122,17 +122,17 @@ describe('the project switcher', () => {
     await waitFor(() => expect(s.workspace.projectId).toBe('p2'), r);
   });
 
-  it('goes to the new project form and to the app settings', async () => {
+  it('goes to New project and to the app settings', async () => {
     const { open, items, navigated, r, trigger } = await setup();
     await open();
     await r.act(() => items().find((e) => e.textContent!.includes('New project'))!.click());
-    await waitFor(() => expect(navigated).toEqual(['/project/new']), r);
+    await waitFor(() => expect(navigated).toEqual(['/home?new=project']), r);
     await waitFor(() => expect(shown(r)).toBe(false), r);
     await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'), r);
     // the menu finishes its selection (flash, close, back to idle) a moment after it hides: open() clicks until it opens
     await open();
     await r.act(() => items().find((e) => e.textContent!.includes('App settings'))!.click());
-    await waitFor(() => expect(navigated).toEqual(['/project/new', '/settings']), r);
+    await waitFor(() => expect(navigated).toEqual(['/home?new=project', '/settings']), r);
   });
 
   it('says "No project" and still offers Home and a new project when there is none', async () => {

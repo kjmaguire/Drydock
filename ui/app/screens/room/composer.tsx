@@ -16,6 +16,7 @@ import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { checkFiles, formatSize, MAX_FILES } from './messages.ts';
+import { defaultModerator } from './turn-taking.ts';
 
 // The textarea keeps its native textbox role (ARIA in HTML allows no role="combobox" on a <textarea>) and drives the
 // suggestion list the way a textbox may: aria-haspopup, aria-autocomplete, aria-controls and aria-activedescendant.
@@ -193,6 +194,8 @@ export interface ComposerProps {
   answering?: string;
   stopping?: boolean;
   onStop?: () => void;
+  /** Agents do not answer in this project's rooms (X13): the hint does not offer @ to reach them. */
+  repliesOff?: boolean;
 }
 
 export function Composer(handle: Handle<ComposerProps>) {
@@ -328,7 +331,8 @@ export function Composer(handle: Handle<ComposerProps>) {
           break;
         }
         case 'mode':
-          await s.client.roomSetMode({ roomId: room.id, mode: p.mode });
+          // a moderator room starts with the team lead when it is here, otherwise with you (X14), as the Room tab does
+          await s.client.roomSetMode(p.mode === 'moderator' ? { roomId: room.id, mode: p.mode, moderator: defaultModerator(handle.props.members, agents) } : { roomId: room.id, mode: p.mode });
           note = `The room is now in ${p.mode} mode.`;
           reset();
           break;
@@ -635,7 +639,13 @@ export function Composer(handle: Handle<ComposerProps>) {
               <span mix={hintCss} aria-hidden="true">
                 {disabled ? '' : (
                   <>
-                    <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send · <kbd>/</kbd> for commands · <kbd>@</kbd> to mention
+                    <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send · <kbd>/</kbd> for commands
+                    {handle.props.repliesOff ? null : (
+                      <>
+                        {' '}
+                        · <kbd>@</kbd> to mention
+                      </>
+                    )}
                   </>
                 )}
               </span>

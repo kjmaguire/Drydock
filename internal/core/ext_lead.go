@@ -81,7 +81,36 @@ func startLead(ctx context.Context, c *Core) (map[string]Method, func(), error) 
 			return out
 		})
 	})
+	// the stand-up schedule a person set (H11): checked on the monitor's beat, at most one stand-up per project and day
+	wg.Add(1)
+	safe.Go("core.startLead#standups", func() {
+		defer wg.Done()
+		tk := time.NewTicker(LeadMonitorEvery)
+		defer tk.Stop()
+		for {
+			select {
+			case <-loopCtx.Done():
+				return
+			case now := <-tk.C:
+				c.runScheduledStandups(loopCtx, now, func(ctx context.Context, projectID string) error {
+					_, err := l.ScheduledStandup(ctx, projectID)
+					return err
+				})
+			}
+		}
+	})
 	methods := map[string]Method{
+		"lead.standup.schedule.get": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			if _, err := c.GetProject(ctx, p.ProjectID); err != nil {
+				return nil, err
+			}
+			return c.standupSchedule(ctx, p.ProjectID), nil
+		}),
+		"lead.standup.schedule.set": bind(func(ctx context.Context, p StandupSchedule) (any, error) {
+			return c.setStandupSchedule(ctx, p)
+		}),
 		"lead.standup": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
 		}) (any, error) {

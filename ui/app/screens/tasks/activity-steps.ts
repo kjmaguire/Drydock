@@ -379,3 +379,25 @@ export function activityRows(threads: readonly AguiThread[], toggled: ReadonlySe
 
 /** A turn line's own text: "Turn 2 · 4 tool calls, 1 failed · done" (turnSummary). */
 export { turnSummary } from './activity.ts';
+
+/**
+ * A reviewer's structured verdict when that is all a text says: `{"verdict":"SHIP","feedback":""}`, bare or in a json code fence
+ * (what the core's ParseVerdict reads). The Activity shows it in words, not as JSON (critique 2026-11-08). Undefined for any
+ * other text, which stays as the agent wrote it.
+ */
+export function verdictOf(text: string): { verdict: 'SHIP' | 'REVISE'; feedback: string } | undefined {
+  const body = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+  if (!body.startsWith('{') || !body.endsWith('}')) return undefined;
+  try {
+    const v = JSON.parse(body) as { verdict?: unknown; feedback?: unknown };
+    const verdict = typeof v.verdict === 'string' ? v.verdict.toUpperCase() : '';
+    if (verdict !== 'SHIP' && verdict !== 'REVISE') return undefined;
+    return { verdict, feedback: typeof v.feedback === 'string' ? v.feedback.trim() : '' };
+  } catch {
+    return undefined;
+  }
+}

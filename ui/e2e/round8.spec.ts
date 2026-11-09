@@ -10,7 +10,7 @@ test('collision guard: a task that changes the same file as an earlier running t
 
   // the first task runs to the human's approval and stays there, so it is still active
   await createAndStartTask(page, 'First change to calc', 'Worker G', 'Reviewer G');
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 90_000 });
 
   // the second changes the same file: it does not reach review, it waits and names the task and the file
   await createAndStartTask(page, 'Second change to calc', 'Worker G', 'Reviewer G');
@@ -24,7 +24,7 @@ test('collision guard: a task that changes the same file as an earlier running t
 
   // the human lets it go on: it carries on to its own approval
   await note.getByRole('button', { name: 'Let it go on now' }).click();
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId('blocked-note')).toHaveCount(0);
 
   // the first task was never disturbed: it is still waiting for its approval

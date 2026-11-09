@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { BundleCreated, BundlePreview, BundleResult } from '../../api/pkgTypes.ts';
-import { byLabel, byText, cleanup, errorOf, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, errorOf, fromMenu, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { SupportScreen } from './support-screen.tsx';
 
 afterEach(cleanup);
@@ -60,16 +60,21 @@ function tid(root: ParentNode, id: string, optional = false): HTMLElement | null
 const btn = (root: ParentNode, name: string) => byText<HTMLButtonElement>(root, 'button', name);
 const noButton = (root: ParentNode, name: string) => !Array.from(root.querySelectorAll('button')).some((b) => (b.textContent ?? '').trim() === name);
 const show = (client: Partial<Client>) => mount(<SupportScreen />, testServices({ crashList: async () => ({ reports: [] }), ...client }));
+/** The page previews by itself (X57): on opening, and shortly after a choice changes. */
+const previewed = async (r: ReturnType<typeof show>) => {
+  await waitFor(() => expect(tid(r.container, 'bundle-preview').getAttribute('data-fresh')).toBe('true'), r);
+};
 
 describe('SupportScreen', () => {
-  it('says it is never uploaded and previews files and the scrub report without writing anything', async () => {
+  it('says it is never uploaded and previews files and the scrub report when the page opens, without writing anything (X57)', async () => {
     const previews: unknown[] = [];
     let creates = 0;
     const r = show({ supportbundlePreview: async (o) => (previews.push(o), bundlePreview()), supportbundleCreate: async () => (creates++, null as never) });
     expect(tid(r.container, 'bundle-never-uploaded').textContent).toContain('never uploads');
     expect(r.$('h1')!.textContent).toContain('Support bundle');
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
+    // no button is pressed: the preview is there, with Create under it
     const pv = await waitFor(() => tid(r.container, 'bundle-preview'), r);
+    await waitFor(() => btn(r.container, 'Create the bundle'), r);
     expect(pv.textContent).toContain('Nothing has been written yet');
     expect(Array.from(r.container.querySelectorAll('[data-testid="bundle-file"]')).map((x) => x.textContent)).toEqual(['summary.json1.2 KB', 'logs/drydock.log2.9 KB']);
     expect(tid(r.container, 'scrub-total').textContent).toBe('2');
@@ -88,14 +93,35 @@ describe('SupportScreen', () => {
       supportbundlePreview: async () => bundlePreview(),
       supportbundleCreate: async (o) => (creates.push(o), { path: 'C:\\data\\support\\b.zip', size: 4000, files: bundlePreview().files, report: bundlePreview().report, notice: 'x' }),
     });
-    expect(noButton(r.container, 'Create the bundle')).toBe(true);
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
-    await waitFor(() => tid(r.container, 'bundle-preview'), r);
+    await previewed(r);
     await r.act(() => btn(r.container, 'Create the bundle').click());
     expect((await waitFor(() => tid(r.container, 'bundle-path'), r)).textContent).toBe('C:\\data\\support\\b.zip');
     expect(creates).toEqual([{ eventLimit: undefined, includeRun: undefined, dest: undefined, acknowledgeRun: false }]);
     expect(tid(r.container, 'bundle-created').textContent).toContain('not been uploaded');
     expect(tid(r.container, 'bundle-created').textContent).toContain('2 files');
+    // A11: the path is not left to select by mouse: Copy path is always there
+    expect(tid(r.container, 'bundle-saved').querySelector('[data-testid="saved-copy"]')!.textContent).toBe('Copy path');
+  });
+
+  it('chooses where to save with the Save dialog and shows the bundle in its folder (A11)', async () => {
+    const creates: { dest?: string }[] = [];
+    const shown: string[] = [];
+    const r = show({
+      fsFolderHints: async () => ({ canPick: false, windows: true, devDrives: [], canPickSave: true, canReveal: true }),
+      fsPickSave: async () => 'E:\\bugs\\drydock-support.zip',
+      fsReveal: async (p: string) => void shown.push(p),
+      supportbundlePreview: async () => bundlePreview(),
+      supportbundleCreate: async (o) => (creates.push(o), { path: 'E:\\bugs\\drydock-support.zip', size: 4000, files: bundlePreview().files, report: bundlePreview().report, notice: 'x' }),
+    });
+    await previewed(r);
+    const choose = await waitFor(() => tid(r.container, 'bundle-choose-save') as HTMLButtonElement, r);
+    await r.act(() => choose.click());
+    await waitFor(() => expect((byLabel(r.container, 'Save to (optional full path; empty uses the support folder in the Drydock data folder)') as HTMLInputElement).value).toBe('E:\\bugs\\drydock-support.zip'), r);
+    await r.act(() => btn(r.container, 'Create the bundle').click());
+    const showBtn = await waitFor(() => tid(r.container, 'saved-show') as HTMLButtonElement, r);
+    expect(creates[0]!.dest).toBe('E:\\bugs\\drydock-support.zip');
+    await r.act(() => showBtn.click());
+    await waitFor(() => expect(shown).toEqual(['E:\\bugs\\drydock-support.zip']), r);
   });
 
   it('makes including a run opt-in: shows the scan result first and needs an acknowledgement', async () => {
@@ -105,11 +131,16 @@ describe('SupportScreen', () => {
       supportbundlePreview: async (o) => (previews.push(o), bundlePreview({ warning: 'Including a run adds its events with payloads and its raw output.', includesRun: 'run_1' })),
       supportbundleCreate: async (o) => (creates.push(o), { path: 'b.zip', size: 1, files: null, report: bundlePreview().report, notice: 'x' }),
     });
+    await previewed(r);
     await r.act(() => type(byLabel(r.container, /Include one run/), ' run_1 '));
     await r.act(() => type(byLabel(r.container, /Recent events to list/), '200'));
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
+    // one preview for both changes, once the typing stopped
     expect((await waitFor(() => tid(r.container, 'bundle-run-warning'), r)).textContent).toContain('raw output');
-    expect(previews).toEqual([{ eventLimit: 200, includeRun: 'run_1' }]);
+    await previewed(r);
+    expect(previews).toEqual([
+      { eventLimit: undefined, includeRun: undefined },
+      { eventLimit: 200, includeRun: 'run_1' },
+    ]);
     expect(btn(r.container, 'Create the bundle').disabled).toBe(true);
     await r.act(() => byLabel(r.container, /I have read the scrub report/).click());
     expect(btn(r.container, 'Create the bundle').disabled).toBe(false);
@@ -128,8 +159,7 @@ describe('SupportScreen', () => {
       supportbundlePreview: async () => bundlePreview(),
       supportbundleCreate: async (o) => (creates.push(o), { path: 'D:\\x.zip', size: 1, files: [], report: bundlePreview().report, notice: 'x' }),
     });
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
-    await waitFor(() => tid(r.container, 'bundle-preview'), r);
+    await previewed(r);
     await r.act(() => type(byLabel(r.container, /^Save to/), ' D:\\x.zip '));
     await r.act(() => btn(r.container, 'Create the bundle').click());
     await waitFor(() => expect(creates).toEqual([{ eventLimit: undefined, includeRun: undefined, dest: 'D:\\x.zip', acknowledgeRun: false }]), r);
@@ -137,19 +167,42 @@ describe('SupportScreen', () => {
 
   it('shows the core refusal for an unknown run', async () => {
     const r = show({
-      supportbundlePreview: async () => {
-        throw new Error('there is no run run_x');
+      supportbundlePreview: async (o) => {
+        if (o.includeRun) throw new Error('there is no run run_x');
+        return bundlePreview();
       },
     });
+    await previewed(r);
     await r.act(() => type(byLabel(r.container, /Include one run/), 'run_x'));
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
     await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('there is no run run_x'), r);
+  });
+
+  it('a superseded preview that fails late leaves no error, and Preview again stays busy until the newest preview answers (X57 review)', async () => {
+    const waiting = new Map<string, { ok: (p: BundlePreview) => void; no: (e: Error) => void }>();
+    const r = show({
+      supportbundlePreview: (o) => {
+        if (!o.includeRun) return Promise.resolve(bundlePreview());
+        return new Promise<BundlePreview>((ok, no) => waiting.set(o.includeRun!, { ok, no }));
+      },
+    });
+    await previewed(r);
+    await r.act(() => type(byLabel(r.container, /Include one run/), 'run_ab'));
+    await waitFor(() => expect(waiting.has('run_ab')).toBe(true), r);
+    await r.act(() => type(byLabel(r.container, /Include one run/), 'run_abc'));
+    await waitFor(() => expect(waiting.has('run_abc')).toBe(true), r);
+    // the older preview fails after the newer one started: nothing of it is shown, and the page is still busy
+    await r.act(() => waiting.get('run_ab')!.no(new Error('there is no run run_ab')));
+    expect(r.container.textContent).not.toContain('there is no run run_ab');
+    expect(btn(r.container, 'Building the preview...').disabled).toBe(true);
+    await r.act(() => waiting.get('run_abc')!.ok(bundlePreview({ includesRun: 'run_abc' })));
+    await previewed(r);
+    expect(r.container.textContent).not.toContain('there is no run run_ab');
+    expect(btn(r.container, 'Preview again').disabled).toBe(false);
   });
 
   it('shows what was written: the files in the bundle, its own scrub report with the files left out, and nothing about a replaced file when none was', async () => {
     const r = show({ supportbundlePreview: async () => bundlePreview(), supportbundleCreate: async () => bundleWritten() });
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
-    await waitFor(() => tid(r.container, 'bundle-preview'), r);
+    await previewed(r);
     await r.act(() => btn(r.container, 'Create the bundle').click());
     const w = await waitFor(() => tid(r.container, 'bundle-written'), r);
     expect(tid(r.container, 'bundle-path').textContent).toBe('C:\\data\\support\\b.zip');
@@ -185,10 +238,6 @@ describe('SupportScreen', () => {
     }
     const create = async (r: ReturnType<typeof show>) => {
       await r.act(() => btn(r.container, 'Create the bundle').click());
-    };
-    const previewed = async (r: ReturnType<typeof show>) => {
-      await r.act(() => btn(r.container, 'Preview the bundle').click());
-      await waitFor(() => tid(r.container, 'bundle-preview'), r);
     };
 
     it('writes nothing and shows nothing as created, but asks which file is there and whether it may be replaced', async () => {
@@ -274,8 +323,9 @@ describe('SupportScreen', () => {
         supportbundlePreview: async () => bundlePreview({ includesRun: 'run_1', warning: 'Including a run adds its events with payloads and its raw output.' }),
         supportbundleCreate: async (o): Promise<BundleResult> => (creates.push(o as Record<string, unknown>), { exists: true, path: 'C:\\data\\support\\b.zip', size: 10 }),
       });
-      await r.act(() => type(byLabel(r.container, /Include one run/), 'run_1'));
       await previewed(r);
+      await r.act(() => type(byLabel(r.container, /Include one run/), 'run_1'));
+      await waitFor(() => byLabel(r.container, /I have read the scrub report/), r);
       await r.act(() => byLabel(r.container, /I have read the scrub report/).click());
       await create(r);
       await waitFor(() => tid(r.container, 'bundle-exists'), r);
@@ -311,25 +361,29 @@ describe('SupportScreen', () => {
     });
   });
 
-  it('refuses events text that is not a whole number under the field, asks the core for nothing, and takes the keyboard to the field (M25)', async () => {
+  it('refuses events text that is not a whole number under the field and asks the core for nothing; Preview again takes the keyboard to the field (M25, X57)', async () => {
     const previews: unknown[] = [];
     const r = show({ supportbundlePreview: async (o) => (previews.push(o), bundlePreview()) });
+    await previewed(r);
+    previews.length = 0;
     const field = () => byLabel(r.container, /Recent events to list/);
+    // the count is folded under More options while it is the default
+    expect(tid(r.container, 'bundle-more').hasAttribute('open')).toBe(false);
     for (const text of ['5OO', '1,000', '2.5', '-3', '0', '1e3', '$5']) {
       await r.act(() => type(field(), text));
-      await r.act(() => btn(r.container, 'Preview the bundle').click());
+      // said under the field once the typing stopped, without taking the keyboard away
       await waitFor(() => expect(errorOf(field())).toContain('whole number greater than zero'), r);
-      expect(document.activeElement).toBe(field());
-      expect(r.container.querySelector('[data-testid="bundle-preview"]')).toBeNull();
+      await r.act(() => btn(r.container, 'Preview again').click());
+      await waitFor(() => expect(document.activeElement).toBe(field()), r);
+      expect(tid(r.container, 'bundle-preview').getAttribute('data-fresh')).toBe('false');
     }
     expect(previews).toEqual([]);
+    expect(tid(r.container, 'bundle-more').hasAttribute('open')).toBe(true);
     // typing again clears the message at once; a whole number is sent as it is, and so is an empty field (the core's default)
     await r.act(() => type(field(), ' 200 '));
     expect(errorOf(field())).toBeNull();
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
-    await waitFor(() => tid(r.container, 'bundle-preview'), r);
+    await waitFor(() => expect(previews).toEqual([{ eventLimit: 200, includeRun: undefined }]), r);
     await r.act(() => type(field(), ''));
-    await r.act(() => btn(r.container, 'Preview the bundle').click());
     await waitFor(() => expect(previews.length).toBe(2), r);
     expect(previews).toEqual([
       { eventLimit: 200, includeRun: undefined },
@@ -348,7 +402,9 @@ describe('SupportScreen', () => {
     expect(group.textContent).toContain('index out of range');
     expect(group.textContent).toContain('support bundle');
     expect(r.container.querySelectorAll('[data-testid="crash-report"]').length).toBe(1);
-    await r.act(() => group.querySelector<HTMLButtonElement>('button[aria-label^="Delete the crash report"]')!.click());
+    // Delete is in the row's menu, not beside the report
+    expect(group.querySelector('button[aria-label^="Delete the crash report"]')).toBeNull();
+    await fromMenu(r, group.querySelector<HTMLElement>('[data-testid="crash-more"]')!, 'Delete');
     await waitFor(() => {
       if (tid(r.container, 'crash-reports', true)) throw new Error('still listed');
     }, r);
@@ -357,8 +413,83 @@ describe('SupportScreen', () => {
 
   it('draws no crash group when there is no report', async () => {
     const r = show({});
-    await waitFor(() => btn(r.container, 'Preview the bundle'), r);
+    await waitFor(() => btn(r.container, 'Preview again'), r);
     await r.act(() => undefined);
     expect(tid(r.container, 'crash-reports', true)).toBe(null);
+  });
+
+  it('shows a crash report\'s redacted text in place, as text, with Copy, and Report this goes to the bundle (X510)', async () => {
+    const reads: string[] = [];
+    const r = show({
+      supportbundlePreview: async () => bundlePreview(),
+      crashList: async () => ({ reports: [{ name: 'crash-20261027T090000Z-100.txt', time: '2026-10-27T09:00:00Z', size: 2048, summary: 'panic: boom' }] }),
+      crashRead: async (name) => (reads.push(name), { name, text: 'Drydock crash report\npanic: boom <img src=x onerror=alert(1)>\ngoroutine 1 [running]:' }),
+    });
+    const group = await waitFor(() => tid(r.container, 'crash-reports'), r);
+    const showBtn = group.querySelector<HTMLButtonElement>('button[aria-label^="Show the crash report"]')!;
+    await r.act(() => showBtn.click());
+    const text = await waitFor(() => tid(r.container, 'crash-text'), r);
+    expect(reads).toEqual(['crash-20261027T090000Z-100.txt']);
+    expect(text.querySelector('pre')!.textContent).toContain('panic: boom <img src=x onerror=alert(1)>');
+    expect(text.querySelector('img')).toBeNull();
+    expect(Array.from(text.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Copy']);
+    // Hide folds it; Show again does not read it again
+    await r.act(() => group.querySelector<HTMLButtonElement>('button[aria-label^="Hide the crash report"]')!.click());
+    expect(tid(r.container, 'crash-text', true)).toBeNull();
+    await r.act(() => group.querySelector<HTMLButtonElement>('button[aria-label^="Show the crash report"]')!.click());
+    await waitFor(() => tid(r.container, 'crash-text'), r);
+    expect(reads.length).toBe(1);
+    // Report this: the bundle carries the report; the keyboard goes to Create
+    await previewed(r);
+    await r.act(() => btn(group, 'Report this').click());
+    expect(document.activeElement).toBe(tid(r.container, 'bundle-create'));
+  });
+});
+
+describe('Report this: the run picked, not typed (X56)', () => {
+  const recentRuns = async () => ({
+    runs: [
+      { runId: 'run_f', taskId: 't1', title: 'Add Divide', project: 'gocalc', status: 'FAILED', updatedAt: Date.now() - 60_000 },
+      { runId: 'run_p', taskId: 't2', title: 'Fetch the feed', project: 'gocalc', status: 'PAUSED', updatedAt: Date.now() - 120_000 },
+    ],
+  });
+
+  it('opened with ?run= previews with that run at once and keeps the acknowledgement before Create', async () => {
+    const previews: unknown[] = [];
+    const r = mount(
+      <SupportScreen run="run_f" />,
+      testServices({ crashList: async () => ({ reports: [] }), supportbundleRecentRuns: recentRuns, supportbundlePreview: async (o) => (previews.push(o), bundlePreview({ includesRun: 'run_f' })) }),
+    );
+    await previewed(r);
+    expect(previews[0]).toEqual({ eventLimit: undefined, includeRun: 'run_f' });
+    const pick = await waitFor(() => tid(r.container, 'bundle-run-pick'), r);
+    expect(valueOf(pick)).toBe('run_f');
+    expect(optionsOf(pick).map((o) => o.label)).toEqual(['No run', 'Add Divide (failed)gocalc, 1 min ago', 'Fetch the feed (stopped part way)gocalc, 2 min ago', 'Another run id...']);
+    // no id field to type in while a listed run is picked
+    expect(r.container.textContent).not.toContain('Include one run');
+    expect(btn(r.container, 'Create the bundle').disabled).toBe(true);
+    expect(byLabel(r.container, /I have read the scrub report above for run run_f/)).toBeTruthy();
+  });
+
+  it('picks another listed run from the list, and Another run id... shows the field for a typed one', async () => {
+    const previews: unknown[] = [];
+    const r = mount(
+      <SupportScreen />,
+      testServices({ crashList: async () => ({ reports: [] }), supportbundleRecentRuns: recentRuns, supportbundlePreview: async (o) => (previews.push(o), bundlePreview()) }),
+    );
+    await previewed(r);
+    const pick = await waitFor(() => tid(r.container, 'bundle-run-pick'), r);
+    expect(valueOf(pick)).toBe('');
+    await r.act(() => choose(pick, 'run_p'));
+    await waitFor(() => expect(previews.at(-1)).toEqual({ eventLimit: undefined, includeRun: 'run_p' }), r);
+    await r.act(() => choose(tid(r.container, 'bundle-run-pick'), 'other'));
+    await r.act(() => type(byLabel(r.container, /Include one run/), 'run_typed'));
+    await waitFor(() => expect(previews.at(-1)).toEqual({ eventLimit: undefined, includeRun: 'run_typed' }), r);
+  });
+
+  it('a run the list does not have, from the address, is in the id field', async () => {
+    const r = mount(<SupportScreen run="run_old" />, testServices({ crashList: async () => ({ reports: [] }), supportbundleRecentRuns: recentRuns, supportbundlePreview: async () => bundlePreview() }));
+    await waitFor(() => expect(valueOf(tid(r.container, 'bundle-run-pick'))).toBe('other'), r);
+    expect((byLabel(r.container, /Include one run/) as HTMLInputElement).value).toBe('run_old');
   });
 });

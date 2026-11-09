@@ -2,14 +2,15 @@
 // tasks' test evidence. The text is outside text: stored with secrets redacted, shown inert, and passages that look like
 // instructions to an agent are quarantined until the human releases them. "Verified" is the core's judgement only.
 
-import { css, on, type Handle } from 'remix/component';
+import { css, on, ref, type Handle } from 'remix/component';
 import { Archive, ArchiveRestore, Check, ChevronRight, FileText, Link2, Search, ShieldAlert, Upload } from 'lucide';
 import type { Requirement, RequirementHit, RequirementTrace } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
 import { formatDateTime, plural } from '../../lib/format.ts';
+import { requirementHref } from '../../lib/route.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, StatusChip, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -21,7 +22,22 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, linkedTaskIds, titleFromFile } from './requirements.ts';
+import {
+  dismissedSuggestions,
+  dismissSuggestion,
+  documentProblem,
+  evidenceOutcome,
+  fileProblem,
+  isDocument,
+  isGWT,
+  isReadable,
+  linkCriteria,
+  linkedTaskIds,
+  linkLabel,
+  suggestionWhy,
+  titleFromFile,
+  UNREADABLE,
+} from './requirements.ts';
 
 // --- trace ---
 
@@ -213,6 +229,17 @@ const twoCol = css({
   alignItems: 'start',
 });
 const subForm = css({ display: 'grid', gap: t.s3 });
+const ownCss = css({
+  display: 'grid',
+  gap: t.s2,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  fontSize: t.textMd,
+  '& label': { display: 'flex', alignItems: 'flex-start', gap: t.s2 },
+  '& input': { marginTop: '3px', flex: 'none' },
+});
+const summaryCss = css({ cursor: 'pointer', width: 'fit-content', color: t.textMuted, fontSize: t.textSm, fontWeight: '500', marginBottom: t.s2 });
 
 /** Which passage a button speaks of, for its accessible name: the heading it sits under (the document's own words, so hidden characters are written out and a long chain is cut). */
 function passageName(headingPath: string): string {
@@ -221,7 +248,61 @@ function passageName(headingPath: string): string {
 }
 const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onChanged: () => void }>) {
+/**
+ * Reads a chosen, dropped or pasted file the way Add requirements always has: a PDF or DOCX by the core (requirement.extract,
+ * its pages as "## Page N"), anything else as text here. The text lands in a box to be read before it is sent. A refusal before
+ * reading is returned as `error`; the core's refusal is shown by the action. Undefined: nothing to show.
+ */
+async function readRequirementFile(
+  client: ReturnType<typeof services>['client'],
+  act: ReturnType<typeof action>,
+  f: File,
+): Promise<{ text: string; title: string } | { error: string } | undefined> {
+  if (!isReadable(f.name, f.type)) return { error: UNREADABLE };
+  const doc = isDocument(f.name);
+  const error = doc ? documentProblem(f.size) : fileProblem(f.size);
+  if (error) return { error };
+  if (doc) return act.run('read', async () => client.requirementExtract(f.name, new Uint8Array(await f.arrayBuffer())));
+  return { text: await f.text(), title: titleFromFile(f.name) };
+}
+
+/**
+ * The drop and paste handlers of a text box that also takes a file (text dropped or pasted goes in as usual). A dropped file is
+ * always handled (one of another kind is refused by readRequirementFile, never read as text). A paste takes a file only when the
+ * clipboard holds no text and the file is one this box reads: copying cells from Excel or a slide from PowerPoint also puts an
+ * image on the clipboard, and the text is what the person meant.
+ */
+const takesFiles = (onFile: (f: File) => void) => [
+  on<HTMLTextAreaElement, 'dragover'>('dragover', (e) => {
+    if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) e.preventDefault();
+  }),
+  on<HTMLTextAreaElement, 'drop'>('drop', (e) => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) (e.preventDefault(), onFile(f));
+  }),
+  on<HTMLTextAreaElement, 'paste'>('paste', (e) => {
+    const cd = e.clipboardData;
+    if (!cd || Array.from(cd.types ?? []).includes('text/plain')) return;
+    const f = cd.files?.[0];
+    if (f && isReadable(f.name, f.type)) (e.preventDefault(), onFile(f));
+  }),
+];
+
+const ACCEPT = '.md,.markdown,.txt,.pdf,.docx,text/plain,text/markdown';
+
+// "Likely covered by #12": a row per suggested task with Link (or Choose, when it has no Given/When/Then criteria) and Dismiss
+const suggestCss = css({
+  display: 'grid',
+  gap: t.s2,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  fontSize: t.textSm,
+  '& li': { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, minWidth: '0' },
+  '& li > span:first-child': { minWidth: '0', overflowWrap: 'anywhere' },
+});
+
+function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onChanged: () => void; focusLink?: boolean }>) {
   const s = services(handle);
   const act = action(handle);
   const key = () => [handle.props.r.id, handle.props.r.version];
@@ -248,9 +329,47 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     key: id,
     when: (e) => e.type.startsWith('requirement.'),
   });
+  // the suggestions the person dismissed for this requirement (this browser only): sent to the core, which leaves them out
+  // before it ranks and caps, so dismissing the top ones brings up the next ones
+  let dismissed = dismissedSuggestions(id());
+  let dismissedFor = id();
+  const currentDismissed = () => {
+    if (dismissedFor !== id()) (dismissedFor = id()), (dismissed = dismissedSuggestions(id()));
+    return dismissed;
+  };
+  // open tasks whose words match a passage (X43): text matches the person links or dismisses, never linked by themselves
+  const suggestions = query(handle, {
+    load: () => s.client.requirementSuggestLinks(id(), 5, [...currentDismissed()]),
+    key,
+    when: (e) => e.type.startsWith('requirement.') || e.type === 'task.created',
+    debounceMs: 500,
+  });
   let newText = '';
+  let newFile = '';
+  let newErr = '';
+  let focused = false;
+  const onNewFile = async (f: File) => {
+    newErr = '';
+    newFile = '';
+    void handle.update();
+    const x = await readRequirementFile(s.client, act, f);
+    if (!x) return;
+    if ('error' in x) newErr = x.error;
+    else (newText = x.text), (newFile = f.name);
+    void handle.update();
+  };
   let taskId = '';
   let criteria = '';
+  // the chosen task's criteria the person keeps ticked (by index); the box for other criteria opens when the task has none,
+  // and stays open while it holds typed lines, so Link never sends lines the person cannot see
+  let ticked = new Set<number>();
+  let otherOpen = false;
+  const choose = (v: string) => {
+    taskId = v;
+    const crit = handle.props.tasks.find((x) => x.id === v)?.acceptance ?? [];
+    ticked = new Set(crit.map((c, i) => (isGWT(c) ? i : -1)).filter((i) => i >= 0));
+    otherOpen = (!!v && crit.length === 0) || criteria.trim() !== '';
+  };
   const set = (fn: () => void) => {
     fn();
     void handle.update();
@@ -267,6 +386,13 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     const { r, tasks } = handle.props;
     const busy = act.busy !== '';
     const linkList = links.data ?? [];
+    currentDismissed();
+    const linkedIds = new Set(linkList.map((l) => l.taskId));
+    const suggested = (suggestions.data ?? []).filter((sg) => !dismissed.has(sg.taskId) && !linkedIds.has(sg.taskId));
+    const chosen = tasks.find((x) => x.id === taskId);
+    const own = chosen?.acceptance ?? [];
+    const plan = linkCriteria(own, ticked, criteria);
+    const canLink = !busy && !!chosen && plan.criteria.length > 0 && plan.refused.length === 0;
     return (
       <section mix={detailCss} aria-label={`Requirement ${r.title}`} data-testid="requirement-detail">
         <header>
@@ -325,19 +451,81 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
 
         <div>
           <h3>Trace</h3>
-          {trace.data ? <TraceView t={trace.data} /> : trace.error ? <ErrorNote error={trace.error} /> : <Loading />}
+          {trace.data ? <TraceView t={trace.data} /> : trace.error ? <ErrorNote error={trace.error} retry={trace.reload} /> : <Loading />}
         </div>
 
         <div mix={twoCol}>
-          <div mix={subForm}>
+          <div
+            mix={[
+              subForm,
+              ref((node) => {
+                // opened from Knowledge's "no task yet": the keyboard goes to the task to link, once
+                if (!handle.props.focusLink || focused) return;
+                focused = true;
+                handle.queueTask(() => {
+                  const el = node as HTMLElement;
+                  el.scrollIntoView?.({ block: 'center' });
+                  el.querySelector<HTMLElement>('[role="combobox"]')?.focus();
+                });
+              }),
+            ]}
+            data-testid="req-link-panel"
+          >
             <h3>Link criteria to a task</h3>
+            {suggested.length > 0 ? (
+              <ul mix={suggestCss} aria-label="Tasks that likely cover this requirement" data-testid="req-suggestions">
+                {suggested.map((sg) => {
+                  const own = (tasks.find((x) => x.id === sg.taskId)?.acceptance ?? []).filter(isGWT);
+                  return (
+                    <li key={sg.taskId} data-testid="req-suggestion" data-task={sg.taskId}>
+                      <span>
+                        Likely covered by{' '}
+                        <a href={routes.task.href({ id: sg.taskId })} title={sg.title}>
+                          #{sg.seq} {clip(sg.title, 60)}
+                        </a>
+                      </span>
+                      <span mix={faint}>{suggestionWhy(sg)}</span>
+                      {own.length > 0 ? (
+                        <Button
+                          size="sm"
+                          icon={Link2}
+                          disabled={busy}
+                          aria-label={`Link #${sg.seq} ${sg.title}`}
+                          mix={on('click', async () => {
+                            const x = await act.run('link', () => s.client.requirementLink(r.id, sg.taskId, own));
+                            if (x) (done(), suggestions.reload());
+                          })}
+                        >
+                          Link
+                        </Button>
+                      ) : (
+                        <Button size="sm" disabled={busy} aria-label={`Choose #${sg.seq} ${sg.title} to write its criteria`} mix={on('click', () => set(() => choose(sg.taskId)))}>
+                          Choose
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Dismiss #${sg.seq} ${sg.title}`}
+                        mix={on('click', () => {
+                          set(() => (dismissed = dismissSuggestion(r.id, sg.taskId)));
+                          suggestions.reload();
+                        })}
+                      >
+                        Dismiss
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
             <form
               mix={[
                 subForm,
                 on('submit', async (e) => {
                   e.preventDefault();
-                  if (busy || !taskId || !criteria.trim()) return;
-                  const x = await act.run('link', () => s.client.requirementLink(r.id, taskId, criteriaLines(criteria)));
+                  if (!canLink) return;
+                  const x = await act.run('link', () => s.client.requirementLink(r.id, taskId, plan.criteria));
                   if (x) {
                     criteria = '';
                     done();
@@ -352,17 +540,61 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                     label="Task to link"
                     value={taskId}
                     options={[{ value: '', label: 'Choose a task' }, ...tasks.map((tk) => ({ value: tk.id, label: `#${tk.seq} ${tk.title}` }))]}
-                    onChange={(v) => set(() => (taskId = v))}
+                    onChange={(v) => set(() => choose(v))}
                   />
                 )}
               </Field>
               <TaskTotalNotice>Older tasks cannot be chosen here.</TaskTotalNotice>
-              <Field label="Criteria (one per line; they must appear in this requirement)">
-                {(fid) => <textarea id={fid} rows={3} value={criteria} mix={on('input', (e) => set(() => (criteria = e.currentTarget.value)))} />}
-              </Field>
+              {chosen && own.length > 0 ? (
+                <ul mix={ownCss} aria-label={`Acceptance criteria of #${chosen.seq}`} data-testid="req-own-criteria">
+                  {own.map((c, i) => {
+                    const ok = isGWT(c);
+                    return (
+                      <li key={i}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={ok && ticked.has(i)}
+                            disabled={!ok}
+                            mix={on('change', (e) =>
+                              set(() => {
+                                ticked = new Set(ticked);
+                                if (e.currentTarget.checked) ticked.add(i);
+                                else ticked.delete(i);
+                              }),
+                            )}
+                          />
+                          <span>{c}</span>
+                        </label>
+                        {ok ? null : <span mix={faint}>Not written as Given, when, then, so it cannot be linked.</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : chosen ? (
+                <p mix={faint}>#{chosen.seq} has no acceptance criteria yet. Write them below.</p>
+              ) : null}
+              <details
+                open={otherOpen}
+                data-testid="req-other-criteria"
+                mix={on('toggle', (e) => {
+                  const o = (e.currentTarget as HTMLDetailsElement).open;
+                  if (o !== otherOpen) set(() => (otherOpen = o));
+                })}
+              >
+                <summary mix={summaryCss}>Write other criteria…</summary>
+                <Field label="Criteria (one per line, each with Given, when and then)">
+                  {(fid) => <textarea id={fid} rows={3} value={criteria} mix={on('input', (e) => set(() => (criteria = e.currentTarget.value)))} />}
+                </Field>
+              </details>
+              {plan.refused.length > 0 ? (
+                <Notice tone="warn">
+                  {plan.refused.length === 1 ? 'This line is' : 'These lines are'} not written as Given, when, then: {plan.refused.map((c) => `"${clip(c, 60)}"`).join(', ')}
+                </Notice>
+              ) : null}
               <div mix={formActions}>
-                <Button type="submit" icon={Link2} disabled={busy || !taskId || !criteria.trim()}>
-                  Link
+                <Button type="submit" icon={Link2} disabled={!canLink}>
+                  {linkLabel(plan.criteria.length, chosen?.seq)}
                 </Button>
               </div>
             </form>
@@ -417,13 +649,35 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                   const x = await act.run('update', () => s.client.requirementUpdate(r.id, newText));
                   if (x) {
                     newText = '';
+                    newFile = '';
                     done();
                   }
                 }),
               ]}
             >
+              <div mix={uploadCss}>
+                <label mix={buttonStyle('secondary', 'sm')}>
+                  <Icon icon={Upload} size={14} />
+                  Choose a file
+                  <input
+                    type="file"
+                    class="sr-only"
+                    accept={ACCEPT}
+                    aria-label={`Upload a new version of "${r.title}" (its text is shown here before it is saved)`}
+                    data-testid="req-version-file"
+                    mix={on('change', (e) => {
+                      const f = e.currentTarget.files?.[0];
+                      if (f) void onNewFile(f);
+                    })}
+                  />
+                </label>
+                <span class="hint">
+                  {act.busy === 'read' ? 'Reading the file...' : newFile ? `Read ${newFile}. Check the text before you save it.` : 'A revised file, or paste the new text.'}
+                </span>
+              </div>
+              {newErr ? <ErrorNote error={newErr} /> : null}
               <Field label="Replacement text">
-                {(fid) => <textarea id={fid} rows={4} value={newText} mix={on('input', (e) => set(() => (newText = e.currentTarget.value)))} />}
+                {(fid) => <textarea id={fid} rows={4} value={newText} mix={[on('input', (e) => set(() => (newText = e.currentTarget.value))), ...takesFiles((f) => void onNewFile(f))]} />}
               </Field>
               <div mix={formActions}>
                 <Button type="submit" disabled={busy || !newText.trim()}>
@@ -514,7 +768,14 @@ const hitsCss = css({
   },
 });
 
-export function RequirementsScreen(handle: Handle) {
+export interface RequirementsScreenProps {
+  /** The ?open= value: the requirement shown open (X414). */
+  open?: string;
+  /** The ?focus= value: "link" puts the keyboard in the open requirement's Link criteria panel. */
+  focus?: string;
+}
+
+export function RequirementsScreen(handle: Handle<RequirementsScreenProps>) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.project);
@@ -530,7 +791,19 @@ export function RequirementsScreen(handle: Handle) {
   let text = '';
   let fileErr = '';
   let fileName = '';
-  let open: string | undefined;
+  // the open requirement is in the address (?open=<id>), so Reload, Back and a link from Knowledge open it (X414)
+  let open: string | undefined = handle.props.open;
+  let named = handle.props.open;
+  let focusLink = handle.props.focus === 'link';
+  const setOpen = (id: string | undefined) => {
+    open = id;
+    focusLink = false;
+    try {
+      if (window.location.pathname === requirementHref()) window.history.replaceState(window.history.state, '', requirementHref(id));
+    } catch {
+      /* the address is a convenience */
+    }
+  };
   let search = '';
   let hits: RequirementHit[] | undefined;
   const set = (fn: () => void) => {
@@ -538,23 +811,14 @@ export function RequirementsScreen(handle: Handle) {
     void handle.update();
   };
 
-  const onFile = async (input: HTMLInputElement) => {
-    const f = input.files?.[0];
-    if (!f) return;
-    const doc = isDocument(f.name);
-    fileErr = doc ? documentProblem(f.size) : fileProblem(f.size);
+  const onFile = async (f: File) => {
+    fileErr = '';
     fileName = '';
-    if (fileErr) return set(() => undefined);
-    if (doc) {
-      // the core reads a PDF's or DOCX's text (pages as "## Page N"); it lands in the box to be read before it is added
-      const x = await act.run('read', async () => s.client.requirementExtract(f.name, new Uint8Array(await f.arrayBuffer())));
-      if (!x) return;
-      text = x.text;
-      if (!title.trim()) title = x.title;
-    } else {
-      text = await f.text();
-      if (!title.trim()) title = titleFromFile(f.name);
-    }
+    const x = await readRequirementFile(s.client, act, f);
+    if (!x) return set(() => undefined);
+    if ('error' in x) return set(() => (fileErr = x.error));
+    text = x.text;
+    if (!title.trim()) title = x.title;
     fileName = f.name;
     void handle.update();
   };
@@ -566,13 +830,19 @@ export function RequirementsScreen(handle: Handle) {
       title = '';
       text = '';
       fileName = '';
-      open = r.id;
+      setOpen(r.id);
       q.reload();
       void handle.update();
     }
   };
 
   return () => {
+    if (handle.props.open !== named) {
+      // the address changed while the page stayed (a link to another requirement)
+      named = handle.props.open;
+      open = named;
+      focusLink = handle.props.focus === 'link';
+    }
     const list = q.data ?? [];
     const sel = list.find((r) => r.id === open);
     const busy = act.busy !== '';
@@ -582,7 +852,7 @@ export function RequirementsScreen(handle: Handle) {
         <p mix={muted}>
           Link criteria to tasks and see which have passing test evidence.
         </p>
-        <ErrorNote error={q.error ?? act.error} what="Requirements" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Requirements" />
         {q.loading && !q.data ? <Loading /> : null}
         {q.data && list.length === 0 ? (
           <div mix={card}>
@@ -613,7 +883,7 @@ export function RequirementsScreen(handle: Handle) {
                   size="sm"
                   variant="ghost"
                   aria-expanded={open === r.id ? 'true' : 'false'}
-                  mix={on('click', () => set(() => (open = open === r.id ? undefined : r.id)))}
+                  mix={on('click', () => set(() => setOpen(open === r.id ? undefined : r.id)))}
                 >
                   {open === r.id ? 'Close' : 'Open'}
                   <Icon icon={ChevronRight} size={13} />
@@ -622,7 +892,7 @@ export function RequirementsScreen(handle: Handle) {
             ))}
           </ul>
         ) : null}
-        {sel ? <RequirementDetail key={sel.id} r={sel} tasks={s.project.taskList} onChanged={() => q.reload()} /> : null}
+        {sel ? <RequirementDetail key={sel.id} r={sel} tasks={s.project.taskList} focusLink={focusLink} onChanged={() => q.reload()} /> : null}
 
         <Section title="Add requirements">
           <form
@@ -631,11 +901,13 @@ export function RequirementsScreen(handle: Handle) {
               formCss,
               on('submit', (e) => {
                 e.preventDefault();
-                if (!busy && title.trim() && text.trim()) void add();
+                if (!busy && text.trim()) void add();
               }),
             ]}
           >
-            <Field label="Title">{(id) => <input id={id} value={title} mix={on('input', (e) => set(() => (title = e.currentTarget.value)))} />}</Field>
+            <Field label="Title" hint="Optional: without one, the document's first heading is its title.">
+              {(id) => <input id={id} value={title} placeholder="From the document's first heading" mix={on('input', (e) => set(() => (title = e.currentTarget.value)))} />}
+            </Field>
             <div mix={uploadCss}>
               <label mix={buttonStyle('secondary', 'sm')}>
                 <Icon icon={Upload} size={14} />
@@ -643,9 +915,12 @@ export function RequirementsScreen(handle: Handle) {
                 <input
                   type="file"
                   class="sr-only"
-                  accept=".md,.markdown,.txt,.pdf,.docx,text/plain,text/markdown"
+                  accept={ACCEPT}
                   aria-label="Upload a PDF, DOCX, text or Markdown file (its text is shown here before it is added)"
-                  mix={on('change', (e) => void onFile(e.currentTarget))}
+                  mix={on('change', (e) => {
+                    const f = e.currentTarget.files?.[0];
+                    if (f) void onFile(f);
+                  })}
                 />
               </label>
               <span class="hint">
@@ -653,13 +928,15 @@ export function RequirementsScreen(handle: Handle) {
                   ? 'Reading the file...'
                   : fileName
                     ? `Read ${fileName}. Check the text before you add it.`
-                    : 'A PDF, DOCX, text or Markdown file. Its text is shown below before it is added; a scanned PDF has none.'}
+                    : 'A PDF, DOCX, text or Markdown file, chosen, dropped on the text box or pasted into it. Its text is shown below before it is added; a scanned PDF has none.'}
               </span>
             </div>
             {fileErr ? <ErrorNote error={fileErr} /> : null}
-            <Field label="Text">{(id) => <textarea id={id} rows={8} value={text} mix={on('input', (e) => set(() => (text = e.currentTarget.value)))} />}</Field>
+            <Field label="Text">
+              {(id) => <textarea id={id} rows={8} value={text} mix={[on('input', (e) => set(() => (text = e.currentTarget.value))), ...takesFiles((f) => void onFile(f))]} />}
+            </Field>
             <div mix={formActions}>
-              <Button type="submit" variant="primary" disabled={busy || !title.trim() || !text.trim()}>
+              <Button type="submit" variant="primary" disabled={busy || !text.trim()}>
                 Add requirement
               </Button>
             </div>

@@ -199,6 +199,14 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 				if terr == nil {
 					out["test"] = rep
 				}
+				// a connection that tested well is checked against the account straight away (effort review F10): the same
+				// read-only check as "Check against your account" (P59), started by this person's own Connect, so its card says
+				// it was verified without a second click
+				if terr == nil && rep.OK {
+					if vr, verr := svc.Verify(ctx, human(), v.ID); verr == nil {
+						out["verify"] = vr
+					}
+				}
 				if nv, gerr := svc.Get(ctx, v.ID); gerr == nil {
 					out["connection"] = nv
 				}

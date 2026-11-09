@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -128,4 +129,28 @@ func (s *Service) CriterionMarks(ctx context.Context, taskID string) ([]Criterio
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+var criterionIDPrefix = regexp.MustCompile(`^\s*AC\d+\b`)
+
+// NumberCriteria gives criteria written without ids the ids a spec gives its own (AC1: ..., in order), so no review has to ask
+// the person for them. A list where some criterion already carries an id is the person's numbering and is kept as written (the
+// review still names a criterion left without one); blank lines are kept and not counted.
+func NumberCriteria(acceptance []string) []string {
+	for _, a := range acceptance {
+		if criterionIDPrefix.MatchString(a) {
+			return acceptance
+		}
+	}
+	out := make([]string, len(acceptance))
+	n := 0
+	for i, a := range acceptance {
+		if strings.TrimSpace(a) == "" {
+			out[i] = a
+			continue
+		}
+		n++
+		out[i] = fmt.Sprintf("AC%d: %s", n, strings.TrimSpace(a))
+	}
+	return out
 }

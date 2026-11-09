@@ -386,3 +386,79 @@ func TestPruneKeepsABackupThePersonTookThatDay(t *testing.T) {
 		t.Fatalf("the person's backup outlived the daily window: removed %v", removed)
 	}
 }
+
+// A backup Drydock makes keeps the check it ran (effort review F7): the list shows it verified, with its schema, until the file
+// no longer matches the hash that check was made against; pruning removes the sidecar with the backup.
+func TestABackupKeepsItsCheckInTheList(t *testing.T) {
+	ctx := context.Background()
+	db, dir := openDB(t)
+	bdir := filepath.Join(dir, "backups")
+	in, err := backup.Create(ctx, db, bdir, "scheduled", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.Verified == nil || in.Verified.SchemaVersion != storage.LatestVersion() || !in.Verified.RestorableHere {
+		t.Fatalf("Create's own answer: %+v", in.Verified)
+	}
+	list, err := backup.List(bdir)
+	if err != nil || len(list) != 1 {
+		t.Fatal(list, err)
+	}
+	v := list[0].Verified
+	if v == nil || v.SchemaVersion != storage.LatestVersion() || !v.RestorableHere || !v.At.Equal(t0) {
+		t.Fatalf("listed: %+v", v)
+	}
+	// the file cut, or replaced by one of the same size, after it was checked (its .sha256 sidecar left as it was): not verified
+	orig, err := os.ReadFile(in.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st0, err := os.Stat(in.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(in.Path, int64(len(orig)/2)); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = backup.List(bdir); list[0].Verified != nil {
+		t.Fatalf("a cut backup is shown as verified: %+v", list[0].Verified)
+	}
+	same := append([]byte(nil), orig...)
+	same[len(same)-1] ^= 0xff
+	if err := os.WriteFile(in.Path, same, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(in.Path, st0.ModTime(), st0.ModTime().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = backup.List(bdir); list[0].Verified != nil {
+		t.Fatalf("a replaced backup is shown as verified: %+v", list[0].Verified)
+	}
+	// put back as it was checked (same bytes, same time): verified again
+	if err := os.WriteFile(in.Path, orig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(in.Path, st0.ModTime(), st0.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = backup.List(bdir); list[0].Verified == nil {
+		t.Fatal("the backup as it was checked lost its check")
+	}
+	// a sidecar made against another hash (the backup was replaced) is not shown as verified
+	if err := os.WriteFile(in.Path+".verified", []byte(`{"sha256":"`+strings.Repeat("0", 64)+`","schemaVersion":5}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = backup.List(bdir); list[0].Verified != nil {
+		t.Fatalf("a check of another file is shown: %+v", list[0].Verified)
+	}
+	// pruned: the sidecar goes with the backup
+	if _, err := backup.Create(ctx, db, bdir, "scheduled", t0.Add(48*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backup.Prune(bdir, 1, 0, t0.Add(48*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(in.Path + ".verified"); !os.IsNotExist(err) {
+		t.Fatalf("the sidecar outlived its backup: %v", err)
+	}
+}

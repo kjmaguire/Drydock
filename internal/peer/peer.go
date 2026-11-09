@@ -27,6 +27,7 @@ type Row struct {
 	Local, Remote netip.AddrPort
 	PID           int
 	Inode         uint64 // Linux only: the socket's inode
+	Listen        bool   // Linux only: the socket is listening (state 0A in /proc/net/tcp)
 }
 
 // Owner returns the process id of the client end of a loopback connection: the connection whose local end is client and whose

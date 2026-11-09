@@ -26,7 +26,7 @@ test('steer, pause and resume a running task from its page', async ({ page }) =>
   await page.getByLabel('Task title').fill('Parse negative exponents');
   await page.getByLabel('Description').fill('"2e-3" should read as 0.002. drydock-e2e live run');
   await page.getByLabel('Acceptance criteria').fill('Given 2e-3 When parsed Then 0.002\nGiven 2e- When parsed Then it says what is missing');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Parse negative exponents' })).toBeVisible();
 
   // before it runs: the criteria are open, the steer box is off and says why
@@ -34,18 +34,18 @@ test('steer, pause and resume a running task from its page', async ({ page }) =>
   await expect(criteria).toHaveCount(2);
   await expect(criteria.first()).toHaveAttribute('data-state', 'open');
   // the person's word on a criterion (P125): met, a waiver with its reason, then the first reopened; the core keeps each
-  await fromMenu(page.getByRole('button', { name: 'Mark criterion 1' }), page.getByRole('menuitem', { name: 'Mark as met' }));
+  await fromMenu(page.getByRole('button', { name: 'Mark AC1' }), page.getByRole('menuitem', { name: 'Mark as met' }));
   await expect(criteria.first()).toHaveAttribute('data-state', 'met');
   await expect(criteria.first().getByTestId('criterion-why')).toHaveText(/^Confirmed by \S+\.$/);
-  await fromMenu(page.getByRole('button', { name: 'Mark criterion 2' }), page.getByRole('menuitem', { name: 'Waive...' }));
-  const waive = page.getByRole('form', { name: 'Waive criterion 2' });
+  await fromMenu(page.getByRole('button', { name: 'Mark AC2' }), page.getByRole('menuitem', { name: 'Waive...' }));
+  const waive = page.getByRole('form', { name: 'Waive AC2' });
   await waive.getByLabel('Why is it waived?').fill('the error text is covered by the parser task');
   await waive.getByRole('button', { name: 'Waive' }).click();
   await expect(criteria.nth(1)).toHaveAttribute('data-state', 'waived');
   await expect(criteria.nth(1).getByTestId('criterion-why')).toHaveText(/^Waived by \S+: the error text is covered by the parser task\.$/);
   await page.reload();
   await expect(criteria.nth(1)).toHaveAttribute('data-state', 'waived');
-  await fromMenu(page.getByRole('button', { name: 'Mark criterion 1' }), page.getByRole('menuitem', { name: 'Reopen' }));
+  await fromMenu(page.getByRole('button', { name: 'Mark AC1' }), page.getByRole('menuitem', { name: 'Reopen' }));
   await expect(criteria.first()).toHaveAttribute('data-state', 'open');
   const steer = page.getByLabel('Message the agent');
   await expect(steer).toBeDisabled();
@@ -104,5 +104,6 @@ test('steer, pause and resume a running task from its page', async ({ page }) =>
   await page.getByRole('button', { name: 'Cancel task' }).click();
   await page.getByRole('button', { name: 'Yes, cancel task' }).click();
   await expect(pill).toHaveText(/^Cancelled/, { timeout: 60_000 });
-  await expect(page.getByLabel('Message the agent')).toBeDisabled();
+  // a closed task has no steer box: there is no run to steer (critique 2026-11-08)
+  await expect(page.getByTestId('steer')).toHaveCount(0);
 });

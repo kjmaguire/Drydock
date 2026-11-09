@@ -86,10 +86,62 @@ describe('Project settings', () => {
     await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
     const attach = byText<HTMLButtonElement>(r.container, 'button', 'Attach repository');
     expect(attach.disabled).toBe(true);
-    await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+    await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
     expect(attach.disabled).toBe(false);
     await r.act(() => attach.click());
     await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app']), r);
+  });
+
+  it('ticks "Create a Git repository here" itself for a folder that does not exist yet, and offers a button for one with files (B6)', async () => {
+    const calls: string[] = [];
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const r = settings({
+      projectList: async () => [bare],
+      repoCheck: async (path) =>
+        path.endsWith('new')
+          ? { path, state: 'missing', entries: 0, canInit: true, message: 'This folder does not exist yet.' }
+          : { path, state: 'folder', entries: 2, canInit: true, message: 'This folder is not a Git repository.' },
+      repoInit: async (path) => (calls.push(`init:${path}`), { path, branch: 'main', createdFolder: true, files: 0 }),
+      projectAttachRepo: async (id, path) => (calls.push(`attach:${id}:${path}`), { ...project, hasRepo: true }),
+    });
+    await waitFor(() => byLabel(r.container, 'Repository path'), r);
+    // a folder with files: nothing is ticked; the choice is a button in the status line
+    type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
+    await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
+    expect(r.$('[data-testid="folder-init"]')).toBeNull();
+    expect(r.$('[data-testid="folder-check"] [data-testid="folder-init-button"]')).not.toBeNull();
+    // a folder that does not exist yet: the box comes ticked and Attach is ready
+    type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\new');
+    await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('missing'), r);
+    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, /^Create a Git repository here/).checked).toBe(true), r);
+    expect(r.$('[data-testid="folder-init-button"]')).toBeNull();
+    const attach = byText<HTMLButtonElement>(r.container, 'button', 'Attach repository');
+    expect(attach.disabled).toBe(false);
+    // back to the folder with files: the tick does not carry over
+    type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
+    await waitFor(() => expect(r.$('[data-testid="folder-init-button"]')).not.toBeNull(), r);
+    expect(attach.disabled).toBe(true);
+    await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
+    expect(byLabel<HTMLInputElement>(r.container, /^Create a Git repository here/).checked).toBe(true);
+    await r.act(() => attach.click());
+    await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app']), r);
+  });
+
+  it('opens the folder dialog at the folder in the field, and the hint drops the Dev Drive line on a Dev Drive (B4, B5)', async () => {
+    const asked: string[] = [];
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const r = settings({
+      projectList: async () => [bare],
+      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [{ letter: 'D:', trusted: true }] }),
+      fsPickFolder: async (_title, dir) => (asked.push(dir ?? ''), ''),
+      repoCheck: async (path) => ({ path, state: 'repository', branch: 'main', entries: 0, canInit: false, message: 'A Git repository on the branch main.' }),
+    });
+    await waitFor(() => byLabel(r.container, 'Repository path'), r);
+    await waitFor(() => expect(r.$('[data-testid="folder-hint"]')!.textContent).toContain('Projects build faster on Dev Drive D:.'), r);
+    type(byLabel(r.container, 'Repository path'), 'D:\\src\\pay');
+    await waitFor(() => expect(r.$('[data-testid="folder-hint"]')!.textContent).not.toContain('Dev Drive'), r);
+    await r.act(() => (r.$('[data-testid="folder-choose"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(asked).toEqual(['D:\\src\\pay']), r);
   });
 
   it('attaches a GitHub repository by cloning it with gh first', async () => {
@@ -140,7 +192,7 @@ describe('Project settings', () => {
       await waitFor(() => byLabel(r.container, 'Repository path'), r);
       type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
       await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
-      await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+      await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
       expect(hint(r)).toBe('Makes the Git repository, then attaches it.');
       await r.act(() => byText(r.container, 'button', 'Attach repository').click());
       await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('the core could not read the folder just now'), r);
@@ -162,13 +214,16 @@ describe('Project settings', () => {
       await waitFor(() => byLabel(r.container, 'Repository path'), r);
       type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
       await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
-      await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+      await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
       await r.act(() => byText(r.container, 'button', 'Attach repository').click());
       await waitFor(() => expect(r.$('[role="alert"]')).not.toBeNull(), r);
       expect(hint(r)).toContain('already made in D:\\Projects\\app');
       // another folder: nothing is remembered about the first one
       type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\other');
       await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.textContent).toContain('Drydock can make one here'), r);
+      // a folder with files in it asks again (B6): the earlier choice does not carry over
+      await waitFor(() => expect(r.$('[data-testid="folder-init-button"]')).not.toBeNull(), r);
+      await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
       await waitFor(() => expect(hint(r)).toBe('Makes the Git repository, then attaches it.'), r);
       await r.act(() => byText(r.container, 'button', 'Attach repository').click());
       await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app', 'init:D:\\Projects\\other', 'attach:p1:D:\\Projects\\other']), r);
@@ -284,12 +339,29 @@ describe('Check settings and development flow', () => {
     r.root.flush();
     await r.act(() => byLabel<HTMLInputElement>(r.container, /^Start ready tasks automatically/).click());
     await r.act(() => byLabel<HTMLInputElement>(r.container, /^Run e2e tests/).click());
-    type(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty/), 'npx\nplaywright\ntest');
+    type(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty detects Taskfile/), 'npx\nplaywright\ntest');
+    // the preview command's label says what an empty one does, as the e2e command's does (X310)
+    expect(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty detects a Taskfile target or package\.json script named preview\)$/)).toBeTruthy();
+    // the preview step is only in the Full Stack SaaS template, and the switch says so (X311)
+    expect(r.$('[data-testid="preview-template-note"]')!.textContent).toBe('Only the Full Stack SaaS template has a preview step: tasks of other templates go to approval without one.');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]).toMatchObject({ maxParallel: 3, autoSchedule: true, respond: true, e2e: { enabled: true, command: ['npx', 'playwright', 'test'] }, preview: { enabled: false, command: [] } });
     await waitFor(() => expect(r.container.querySelector('[role="status"]')!.textContent).toBe('Saved.'), r);
+  });
+
+  // H13: a person answered a pull request's CI question with "this repository has no CI": the page shows it without a reload
+  it('shows "no CI" declared from a CI question as soon as the core says the settings changed', async () => {
+    let cur: DevSettings = dev;
+    const svc = testServices({ projectdevGet: async () => cur });
+    const r = mount(<DevSettingsPanel projectId="prj_1" />, svc);
+    const none = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'This repository has no CI: merge after the review alone'), r);
+    expect(none.checked).toBe(false);
+    cur = { ...dev, ciMode: 'none', ciNoneBy: 'human:kyle', ciNoneAt: Date.UTC(2026, 10, 2) };
+    svc.emit({ type: 'projectdev.changed', projectId: 'prj_1' });
+    await waitFor(() => expect(r.$('[data-testid="ci-none-note"]')!.textContent).toContain('Declared by human:kyle on '), r);
+    expect(byLabel<HTMLInputElement>(r.container, 'This repository has no CI: merge after the review alone').checked).toBe(true);
   });
 
   it('the collision guard is on unless the human switches it off', async () => {
@@ -375,6 +447,27 @@ describe('Check settings and development flow', () => {
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]).toMatchObject({ leadStallMinutes: 30 });
+  });
+
+  it('the CI waits (C7): empty means 5 and 60 minutes, out of range is explained, numbers are saved', async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const grace = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Minutes to wait for CI to start'), r);
+    const running = byLabel<HTMLInputElement>(r.container, 'Minutes to wait for running checks');
+    expect([grace.value, grace.placeholder, running.value, running.placeholder]).toEqual(['', '5', '', '60']);
+    type(running, '999');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')!.textContent).toContain('360'), r);
+    type(running, '');
+    type(grace, '120');
+    // C7 review: 120 minutes to start against the 60-minute default for running checks
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-grace-note"]')!.textContent).toContain('cannot be longer'), r);
+    type(running, '90');
+    type(grace, '10');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-grace-note"]')).toBe(null), r);
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')).toBe(null), r);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ ciGraceMinutes: 10, ciMaxWaitMinutes: 90 });
   });
 
   it('the context ceiling: empty means the default, out of range is explained, a number is saved', async () => {

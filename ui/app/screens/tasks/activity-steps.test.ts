@@ -14,6 +14,7 @@ import {
   secondsText,
   stepsOf,
   stepVerb,
+  verdictOf,
   testFailures,
   thoughtText,
   toolKind,
@@ -285,5 +286,16 @@ describe('the rows of the feed', () => {
     const rows = activityRows([one, twoTurns('b')]);
     expect(rows.slice(0, 2).map((r) => r.type)).toEqual(['thread', 'step']);
     expect(rows.filter((r) => r.type === 'thread').map((r) => r.thread.threadId)).toEqual(['a', 'b']);
+  });
+});
+
+describe("a reviewer's verdict in the Activity (critique 2026-11-08)", () => {
+  it('reads a text that is only a verdict, bare or fenced, and leaves any other text alone', () => {
+    expect(verdictOf('{"verdict":"SHIP","feedback":""}')).toEqual({ verdict: 'SHIP', feedback: '' });
+    expect(verdictOf('```json\n{"verdict": "revise", "feedback": " Add a test for 0. "}\n```')).toEqual({ verdict: 'REVISE', feedback: 'Add a test for 0.' });
+    expect(verdictOf('SHIP')).toBe(undefined);
+    expect(verdictOf('I think {"verdict":"SHIP"} is right')).toBe(undefined);
+    expect(verdictOf('{"verdict":"MAYBE"}')).toBe(undefined);
+    expect(verdictOf('{not json}')).toBe(undefined);
   });
 });

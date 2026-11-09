@@ -101,7 +101,7 @@ func (p mcpSecurity) Findings(ctx context.Context, run mcp.RunInfo, q mcp.Findin
 	}
 	out := AgentFindings{Findings: []AgentFinding{}}
 	if rep == nil {
-		out.Note = "This project has not been scanned yet. Only a person starts a scan (the project's Security page)."
+		out.Note = scheduleWords(s.rule(ctx, run.ProjectID))
 		return out, nil
 	}
 	s.overlay(ctx, run.ProjectID, rep)
@@ -132,7 +132,7 @@ func (p mcpSecurity) Findings(ctx context.Context, run mcp.RunInfo, q mcp.Findin
 		}
 	}
 	out.Shown = len(out.Findings)
-	out.Note = "Findings of the project's working tree when it was scanned; a line may have moved in your worktree. A person dismisses findings and starts scans."
+	out.Note = "Findings of the project's working tree when it was scanned; a line may have moved in your worktree. A person dismisses findings and starts scans, by hand or by a rule they set."
 	if rep.Truncated {
 		out.Note += " The scan kept its first findings only."
 	}

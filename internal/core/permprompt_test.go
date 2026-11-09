@@ -68,6 +68,9 @@ func TestWorkerPermissionPromptsGoThroughTheAnalyzerAndTheHuman(t *testing.T) {
 	if pl["tool"] != "Bash" || pl["kind"] == "" || pl["reason"] == "" || pl["agentId"] != worker.ID {
 		t.Fatalf("the task page must show the tool, its input, the kind and why: %v", pl)
 	}
+	if pl["approveForTask"] != true {
+		t.Fatalf("the task page must say the call can be allowed for the rest of the task, as the Inbox does: %v", pl)
+	}
 	var needs []room.NeedsYouItem
 	a.call("needsyou.list", map[string]string{"projectId": p.ID}, &needs)
 	var listed bool
@@ -81,7 +84,10 @@ func TestWorkerPermissionPromptsGoThroughTheAnalyzerAndTheHuman(t *testing.T) {
 	}
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": id, "decision": "approved", "data": map[string]string{}}, nil)
 
-	_, id2 := permission("rm -rf build")
+	pl2, id2 := permission("rm -rf build")
+	if pl2["approveForTask"] != false || pl2["approveForTaskNote"] == "" {
+		t.Fatalf("a delete is asked every time: the task page must not offer it for the rest of the task, and say why: %v", pl2)
+	}
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": id2, "decision": "rejected", "data": map[string]string{}}, nil)
 
 	var detail core.TaskDetail

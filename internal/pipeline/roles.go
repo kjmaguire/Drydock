@@ -33,11 +33,29 @@ const (
 // text on the agent (brief section 1: PM, Architect, UX Designer, Frontend, Backend, Database, DevOps, QA, Security,
 // Reviewer, and the team lead), so matching is by normalized name, never by provider.
 var roleSynonyms = map[string][]string{
-	RolePM:        {"pm", "product manager", "product owner", "product"},
+	RolePM:        {"pm", "product manager", "product owner", "product", "planner", "planning"},
 	RoleTests:     {"qa", "tester", "test engineer", "quality", "quality assurance", "sdet", "test"},
 	RoleArchitect: {"architect", "software architect", "architecture"},
 	RoleSecurity:  {"security", "security engineer", "appsec", "secops"},
 	RoleLead:      {"lead", "team lead", "teamlead", "manager", "supervisor", "engineering manager"},
+}
+
+// PickPlanner chooses the agent that drafts a plan when the person names none: the first pm (or planner), then the first
+// architect, then the team lead, then the first agent on the crew. The planner turn is read-only (plan mode, no edits), so any
+// agent can draft a plan; fallback says the crew has no pm, planner or architect (the Plan card then says who planned).
+// It returns "" when the crew is empty.
+func PickPlanner(team []TeamMember) (id string, fallback bool) {
+	for _, want := range []string{RolePM, RoleArchitect, RoleLead} {
+		for _, m := range team {
+			if RoleMatches(m.Role, want) {
+				return m.ID, want == RoleLead
+			}
+		}
+	}
+	if len(team) > 0 {
+		return team[0].ID, true
+	}
+	return "", false
 }
 
 // IsLeadRole reports whether an agent's role text names the team lead ("lead", "team lead", "manager", "supervisor").

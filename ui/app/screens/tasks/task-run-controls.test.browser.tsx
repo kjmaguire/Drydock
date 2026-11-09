@@ -59,7 +59,7 @@ describe('steering the running agent', () => {
     expect(steerInput(r.container).value).toBe('hello');
   });
 
-  it('is off, with the reason, while no run is going', async () => {
+  it('is off, with the reason, while no run is going, and gone once the task is closed', async () => {
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail() }));
     const input = await waitFor(() => steerInput(r.container), r);
     expect(input.disabled).toBe(true);
@@ -67,7 +67,8 @@ describe('steering the running agent', () => {
     expect(r.$('[data-testid="steer"]')!.textContent).toContain('Start the task to steer its agent.');
     cleanup();
     const done = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail({ task: task({ status: 'COMPLETED' }) }) }));
-    await waitFor(() => expect(done.$('[data-testid="steer"]')!.textContent).toContain('The task is closed: there is no run to steer.'), done);
+    await waitFor(() => expect(done.$('[data-testid="task-key"]')).toBeTruthy(), done);
+    expect(done.$('[data-testid="steer"]')).toBeNull();
   });
 });
 
@@ -108,7 +109,7 @@ describe('handing the task to another agent', () => {
     const trigger = await waitFor(() => byText(r.container, 'button', 'Hand to another agent'), r);
     await r.act(() => trigger.click());
     await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'), r);
-    return Array.from(r.$$('[role="menuitem"]')) as HTMLElement[];
+    return Array.from(r.$$('[popover]:popover-open [role="menuitem"]')) as HTMLElement[];
   };
 
   it("offers the project's other agents and assigns without naming a reviewer (the core picks one)", async () => {
@@ -177,14 +178,16 @@ describe('Open the worktree (O)', () => {
     const button = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', /^Open the worktree/), r);
     expect(button.querySelector('kbd')!.textContent).toBe('O');
     expect(button.disabled).toBe(false);
+    // beside it, Explorer, an editor and Copy path (X26)
+    expect(r.$('[data-testid="worktree-open"]')!.getAttribute('aria-label')).toBe('More ways to open the worktree');
     await r.act(() => button.click());
     expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
-    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1' });
+    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1', reuse: true });
     // O on the page
     s.ui.setDock({ open: false, tab: 'logs' });
     await r.act(() => key(document.body, 'o'));
     expect(s.ui.dock.tab).toBe('terminal');
-    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1' });
+    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1', reuse: true });
     // never while typing in the steer box, nor with a modifier
     s.ui.setDock({ open: false, tab: 'logs' });
     await r.act(() => key(steerInput(r.container), 'o'));
@@ -193,12 +196,19 @@ describe('Open the worktree (O)', () => {
     expect(s.ui.takeTerminalAsk()).toBe(undefined);
   });
 
+  it('offers no way to open a worktree whose folder was removed after the merge', async () => {
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => running({ worktreeGone: true }) }));
+    await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', /^Open the worktree/), r);
+    expect(r.$('[data-testid="worktree-open"]')).toBeNull();
+  });
+
   it('is off before the task has a worktree, and O does nothing', async () => {
     const s = svc({ taskGet: async () => detail() });
     const r = mount(<TaskDetailScreen id="t1" />, s);
     const button = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', /^Open the worktree/), r);
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('title')).toBe('The task has no worktree yet: it gets one when it starts');
+    expect(r.$('[data-testid="worktree-open"]')).toBeNull();
     await r.act(() => key(document.body, 'o'));
     expect(s.ui.takeTerminalAsk()).toBe(undefined);
   });

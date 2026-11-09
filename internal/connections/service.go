@@ -30,6 +30,7 @@ type Service struct {
 	// each of its reads (decision P130)
 	lastMu sync.Mutex
 	last   map[string]Checked
+	seq    uint64 // the CheckSeq of the newest record, under lastMu
 }
 
 // Checked is a Connection as a check last computed it.
@@ -38,14 +39,18 @@ type Checked struct {
 	At time.Time `json:"at"`
 }
 
-// record keeps c as the newest check of its key.
-func (s *Service) record(c Connection) {
+// record numbers c as the newest check (CheckSeq), keeps it as the newest check of its key, and returns it numbered: a page that
+// holds an earlier answer and the kept ones (LastList) tells which is newer by the number alone, with no clock compared.
+func (s *Service) record(c Connection) Connection {
 	s.lastMu.Lock()
 	defer s.lastMu.Unlock()
 	if s.last == nil {
 		s.last = map[string]Checked{}
 	}
+	s.seq++
+	c.CheckSeq = s.seq
 	s.last[c.Key] = Checked{Connection: c, At: time.Now()}
+	return c
 }
 
 // Last returns the newest check of every Connection checked since the app started (a page that lists them, a check again, an
@@ -57,6 +62,24 @@ func (s *Service) Last() map[string]Checked {
 	for k, v := range s.last {
 		out[k] = v
 	}
+	return out
+}
+
+// LastList is Last as a list in the order DetectAll lists Connections: the Windows installs by adapter id, then the installs
+// inside WSL distros by key. Nothing here starts a CLI: the Agents page shows it at once while a fresh check runs (A2).
+func (s *Service) LastList() []Checked {
+	last := s.Last()
+	out := make([]Checked, 0, len(last))
+	for _, c := range last {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		wi, wj := out[i].RunMode == agents.RunModeWSL, out[j].RunMode == agents.RunModeWSL
+		if wi != wj {
+			return wj
+		}
+		return out[i].Key < out[j].Key
+	})
 	return out
 }
 
@@ -76,8 +99,7 @@ func NewService(cfg Config) (*Service, error) {
 		mo.WSL = cfg.Detection.WSL // one host: the adapters start in the distros detection probed
 	}
 	mo.Detect = func(ctx context.Context, m *manifests.Manifest) (agents.Detection, error) {
-		c := Check(ctx, m, s.options())
-		s.record(c)
+		c := s.record(Check(ctx, m, s.options()))
 		return c.Detection, nil
 	}
 	reg, err := manifests.NewRegistry(mo)
@@ -103,9 +125,23 @@ func (s *Service) Check(ctx context.Context, id string) (Connection, error) {
 	if !ok {
 		return Connection{}, fmt.Errorf("no manifest for adapter %q", id)
 	}
-	c := Check(ctx, m, s.options())
-	s.record(c)
-	return c, nil
+	return s.record(Check(ctx, m, s.options())), nil
+}
+
+// Gates is the acknowledgement state of an adapter's gates, read from its manifest and the acknowledgements alone: unlike
+// Check it starts no CLI, so a caller that only needs to know whether a gate is owed (chat.create, chat.update) answers at
+// once even when the CLI is missing, slow to start or hangs (P139: New chat sat on "Starting..." while the CLI was probed).
+func (s *Service) Gates(id string) ([]GateStatus, error) {
+	m, ok := s.Registry.Set.Get(id)
+	if !ok {
+		return nil, fmt.Errorf("no manifest for adapter %q", id)
+	}
+	o := s.options()
+	g := gates(m, o)
+	for i := range g {
+		g[i].Changed = !g[i].Acked && o.Reasked[g[i].ID]
+	}
+	return g, nil
 }
 
 // Detect computes the Detection for one adapter id.

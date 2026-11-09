@@ -55,6 +55,10 @@ test('economics: a budget is set and listed, the evals report renders, routing r
 
   // routing
   await workspaceNav(page, 'nav-routing');
+  // the rules, the preview and the limits are folded (effort review F8)
+  await page.getByTestId('routing-rules-fold').locator('summary').click();
+  await page.getByTestId('routing-preview-fold').locator('summary').click();
+  await page.getByTestId('routing-limits-fold').locator('summary').click();
   await expect(page.getByTestId('route-rule').first()).toBeVisible();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
@@ -87,7 +91,10 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(tel.getByTestId('telemetry-status')).toHaveAttribute('data-tone', 'ok');
   await tel.getByRole('button', { name: 'Turn telemetry off' }).click();
   await expect(tel.getByRole('button', { name: 'Turn telemetry on' })).toBeVisible();
-  // sending to a collector (decision P113): off with no endpoint; plain http to another computer is refused by the core
+  // sending to a collector (decision P113): off with no endpoint; plain http to another computer is refused by the core. It is a
+  // step further until an endpoint is set (decision P144)
+  const more = tel.getByTestId('otlp-more');
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
   const otlp = tel.getByTestId('otlp');
   await expect(otlp.getByTestId('otlp-status')).toContainText('Not sending: sending is off.');
   await expect(otlp.getByRole('button', { name: 'Send a test span' })).toBeDisabled();
@@ -131,13 +138,15 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   // expert pack from a local directory
   await projectNav(page, 'nav-packs');
   const dir = docsDir().replace(/\\/g, '/');
+  // a pasted manifest is behind "Paste a manifest..." (ready packs are installed with one click above it)
+  await page.getByTestId('pack-paste').locator('summary').click();
   await page.getByLabel('Pack manifest (YAML)').fill(`schema: 1\nid: e2edocs\ntitle: E2E docs\nkind: indexed\nvisibility: private\nsources:\n  - {type: local_dir, path: "${dir}"}\nattach: {instructions: "Go concurrency notes."}\n`);
   await page.getByRole('button', { name: 'Install pack' }).click();
   const pack = page.locator('[data-testid=pack][data-pack=e2edocs]');
   await expect(pack).toBeVisible();
   await pack.getByRole('button', { name: 'Refresh now' }).click();
   await expect(pack.getByRole('status')).toContainText('pages');
-  await pack.getByLabel('Role for e2edocs').fill('backend');
+  await choose(pack.getByLabel('Attach e2edocs for'), 'role:backend');
   await pack.getByRole('button', { name: 'Attach to this project' }).click();
   await expect(pack).toContainText(/backend/i);
   await page.getByLabel('Search packs').fill('goroutine channel');
@@ -163,13 +172,13 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await projectNav(page, 'nav-tasks');
   await page.getByRole('link', { name: 'New task' }).click();
   await page.getByLabel('Task title').fill('Build checkout');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Build checkout/ })).toBeVisible();
   await projectNav(page, 'nav-requirements');
   await page.getByTestId('requirement').filter({ hasText: 'Checkout' }).getByRole('button', { name: 'Open' }).click();
   await choose(page.getByLabel('Task to link'), { label: '#1 Build checkout' });
   await page.getByLabel(/^Criteria \(one per line/).fill('Given a paid cart, when the order is placed, then an order record exists');
-  await page.getByRole('button', { name: 'Link' }).click();
+  await page.getByRole('button', { name: 'Link 1 criterion of #1' }).click();
   await expect(page.getByTestId('req-link')).toContainText('Given a paid cart');
   await expect(page.getByTestId('trace-task')).toContainText('Build checkout');
   await expect(page.getByTestId('trace-task')).toContainText('no test evidence');
@@ -181,14 +190,15 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await page.getByRole('button', { name: 'Create milestone' }).click();
   const ms = page.locator('[data-testid=milestone][data-title=Beta]');
   await expect(ms).toBeVisible();
-  await choose(ms.getByLabel('Add a task to Beta'), { label: '#1 Build checkout' });
-  await ms.getByRole('button', { name: 'Add', exact: true }).click();
+  await ms.getByRole('button', { name: 'Add tasks…' }).click();
+  await ms.getByLabel('#1 Build checkout').check();
+  await ms.getByRole('button', { name: 'Add 1 task' }).click();
   await expect(ms).toContainText('0 of 1 completed');
 
   // skills: repository skills are offered, never applied; the human opens the skill's row and accepts in the panel that opens
   // inside it (decisions P48, P49)
   await projectNav(page, 'nav-skills');
-  await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
+  await page.getByRole('button', { name: 'Scan again' }).click();
   await expect(page.getByTestId('skill-scan')).toContainText('1 offered, 0 accepted');
   const goTile = page.locator('[data-testid=skill-tile][data-name=go-style]');
   await expect(goTile).toHaveAttribute('data-status', 'offered');
@@ -210,10 +220,10 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   const wranglerInLibrary = page.locator('[data-testid=library-skill-tile][data-name=wrangler]');
   await expect(wranglerInLibrary).toBeVisible();
   await wranglerInLibrary.locator('button.what').click();
-  // a skill is given to agents, never the whole team (P76): Add waits until the agents it is for are ticked
+  // a skill is given to agents, never the whole team (P76): Add says who before the click (the agent of the role it names,
+  // else one agent, as the core would choose)
   const add = wranglerInLibrary.getByTestId('library-skill-tile-detail').getByRole('button', { name: 'Add to gocalc-know' });
-  await expect(add).toBeDisabled();
-  await page.getByTestId('library-for-agents').getByLabel('Dana (backend)').check();
+  await expect(add).toHaveAttribute('title', 'For Dana');
   await add.click();
   await expect(page.getByTestId('skill-added')).toContainText('wrangler was added to gocalc-know and is accepted ✓');
   await expect(page.getByTestId('skill-added')).toContainText('For Dana');
@@ -224,27 +234,25 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(wranglerInLibrary).toHaveCount(0); // it left the "Add from the Library" grid
   await expect(page.locator('[data-testid=skill][data-skill=wrangler]').getByTestId('skill-status')).toHaveText('accepted ✓');
 
-  // memory: propose, accept, delete
+  // memory: the person's own entry is accepted when it is added (E10), then deleted
   await projectNav(page, 'nav-memory');
-  await expect(page.getByRole('heading', { name: 'Propose an entry' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add to memory' })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Use gofmt');
   await page.getByLabel('Body').fill('Run gofmt before every commit.');
-  await page.getByRole('button', { name: 'Propose' }).click();
+  await page.getByRole('button', { name: 'Add to memory' }).click();
   const mem = page.locator('[data-testid=memory][data-title="Use gofmt"]');
-  await expect(mem).toHaveAttribute('data-status', 'proposed');
-  await mem.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect(mem).toHaveAttribute('data-status', 'accepted');
   await mem.getByRole('button', { name: 'Delete' }).click();
   await mem.getByRole('button', { name: 'Yes, delete' }).click();
   await expect(mem).toHaveCount(0);
 
-  // a long proposal is shown whole before it can be accepted (M26): the last line is in the box, with the length beside it
+  // a long entry is shown whole (M26): the last line is in the box, with the length beside it
   const long = `${'Run gofmt before every commit.\n'.repeat(240)}LAST-LINE-MARKER`;
   await page.getByLabel('Title', { exact: true }).fill('A long rule');
   await page.getByLabel('Body').fill(long);
-  await page.getByRole('button', { name: 'Propose' }).click();
+  await page.getByRole('button', { name: 'Add to memory' }).click();
   const big = page.locator('[data-testid=memory][data-title="A long rule"]');
-  await expect(big).toHaveAttribute('data-status', 'proposed');
+  await expect(big).toHaveAttribute('data-status', 'accepted');
   await expect(big.getByTestId('memory-body')).toContainText('LAST-LINE-MARKER');
   await expect(big.getByTestId('memory-body')).toHaveAttribute('tabindex', '0');
   await expect(big.getByTestId('memory-chars')).toHaveText(`${[...long].length.toLocaleString('en-US')} characters`);
@@ -297,15 +305,16 @@ test('development flow: the Feature template stops at the spec gate; reject with
   await page.getByRole('button', { name: 'Accept spec with my edited criteria' }).click();
 
   // red then green, then the final approval
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 120_000 });
   await expect(page.locator('[data-testid=evidence][data-kind=spec]').first()).toBeVisible();
   await expect(page.locator('[data-testid=evidence][data-kind=spec_accept]').first()).toContainText('Spec accepted');
   await expect(page.locator('[data-testid=evidence][data-kind=red_test]').first()).toContainText('Test written first (red)');
   await expect(page.locator('[data-testid=evidence][data-kind=green_test]').first()).toContainText('Tests now pass (green)');
   await expect(page.locator('main')).toContainText('then the result is 0');
-  await page.getByTestId('review-panel').getByRole('button', { name: 'Approve' }).click();
+  await page.getByTestId('review-panel').getByRole('button', { name: 'Merge' }).click();
   await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
   // every agent turn has a recorded routing decision, and the explanation says it was static
+  await page.getByTestId('run-details').locator('summary').click();
   await page.getByRole('button', { name: 'Explain why this model' }).first().click();
   await expect(page.getByTestId('explain')).toContainText('static');
 });
@@ -319,14 +328,19 @@ test('PlanTeam: the planner proposes a task graph, a dependency-closed subset is
   const plan = page.getByTestId('plan');
   await expect(plan).toBeVisible({ timeout: 90_000 });
   await expect(plan.getByTestId('plan-task')).toHaveCount(2);
+  // the crew is only the pm: nobody can take the backend tasks, and the review says so before Accept
+  await expect(plan.getByTestId('plan-task-nobody')).toHaveCount(2);
   // Divide depends on Multiply: clearing Multiply clears Divide too
   await plan.getByLabel('Create Add Multiply').uncheck();
   await expect(plan.getByLabel('Create Add Divide')).not.toBeChecked();
   await plan.getByLabel('Create Add Divide').check(); // brings Multiply back
   await expect(plan.getByLabel('Create Add Multiply')).toBeChecked();
   await plan.getByLabel('Create Add Divide').uncheck();
-  await plan.getByRole('button', { name: 'Accept 1 task' }).click();
+  await plan.getByRole('button', { name: 'Accept 1 task · 1 has nobody' }).click();
   await expect(page.getByTestId('plan')).toHaveAttribute('data-status', 'ACCEPTED', { timeout: 60_000 });
+  // the accepted card starts the ready tasks: nobody is assigned, so the scheduler says why nothing started
+  await page.getByTestId('plan-after').getByRole('button', { name: /^Start now/ }).click();
+  await expect(page.getByTestId('plan-started')).toContainText('Nothing started.');
   await projectNav(page, 'nav-tasks');
   await expect(page.getByTestId('task-row').filter({ hasText: 'Add Multiply' })).toHaveCount(1);
   await expect(page.getByTestId('task-row').filter({ hasText: 'Add Divide' })).toHaveCount(0);
@@ -348,21 +362,25 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await expect(pause).toBeVisible({ timeout: 90_000 });
   await expect(pause).toContainText('Budget limit reached');
   await expect(page.getByTestId('pending-request').first()).toHaveAttribute('data-kind', 'approval');
+  const taskPage = page.url();
   await projectNav(page, 'nav-needs-you');
   const budgetItem = page.getByTestId('needs-item').filter({ hasText: 'gocalc-budget' }).filter({ hasText: 'Budget limit' });
   // a budget item of its own (P118), not a plain approval
   await expect(budgetItem).toHaveAttribute('data-kind', 'budget');
   await budgetItem.getByRole('button').click();
-  // the Inbox does not answer a budget pause: it says where, and opens the task
+  // the Inbox answers a budget pause with the task page's own panel (C3), never with a plain Approve
   const pane = page.getByRole('complementary', { name: 'Selected item' });
-  await expect(pane.getByTestId('needs-hint')).toContainText('budget stopped the next agent turn');
+  const panel = pane.getByTestId('budget-pause');
+  await expect(panel).toContainText('Budget limit reached');
   await expect(pane.getByTestId('detail-approve')).toHaveCount(0);
-  await pane.getByTestId('detail-open').click();
 
-  // raise the limit and resume: the run continues to the review panel
-  await page.getByLabel('New turn limit').fill('10');
-  await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
+  // raise the limit and resume from the Inbox: the run continues to the review panel on the task's page
+  await panel.getByLabel('New turn limit').fill('10');
+  await panel.getByRole('button', { name: 'Resume' }).click();
+  // answered: the item leaves the Inbox
+  await expect(budgetItem).toHaveCount(0, { timeout: 30_000 });
+  await page.goto(taskPage);
+  await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Merge' })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId('budget-pause')).toHaveCount(0);
   await projectNav(page, 'nav-budgets');
   await expect(page.getByTestId('budget').first()).toContainText('10 turns');
@@ -375,12 +393,13 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await openAgentPage(page, 'Rita');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const editor = page.getByTestId('agent-editor');
+  await editor.getByText('More settings').click();
   await editor.getByLabel("Let the router choose this agent's model for each turn").check();
   await choose(editor.getByLabel('Routed model 1', { exact: true }), 'haiku');
   await choose(editor.getByLabel('Tier of routed model 1', { exact: true }), 'cheap');
   await choose(editor.getByLabel('Routed model 2', { exact: true }), 'opus');
   await choose(editor.getByLabel('Tier of routed model 2', { exact: true }), 'premium');
-  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   await projectNav(page, 'nav-project');
   await page.getByLabel('Agents answer in channels and direct messages').check();
@@ -408,19 +427,20 @@ test('room modes, the scheduler and previews report what the core says', async (
   await openRoom(page, 'general');
   await page.getByTestId('room-mode').click();
   const panel = page.getByTestId('room-agents');
+  // choosing a mode applies it (X14), and the order the core uses is said in words
   await choose(panel.getByLabel('Mode', { exact: true }), 'sequential');
   await expect(panel.getByTestId('mode-text')).toContainText('one turn each per round');
-  await panel.getByRole('button', { name: 'Add Dana' }).click();
-  await panel.getByRole('button', { name: 'Save mode' }).click();
   await expect(panel).toContainText('Current mode: sequential');
+  await expect(panel.getByTestId('speaking-order')).toContainText('Order: Dana (the order they joined)');
+  await expect(page.getByTestId('room-mode')).toHaveText('Agents take turns');
   await page.reload();
   await openRoom(page, 'general');
   await page.getByTestId('room-mode').click();
   await expect(page.getByTestId('room-agents')).toContainText('Current mode: sequential');
-  // moderator mode needs a moderator: the core refuses and says so
+  // a moderator room starts with the lead, or with you when there is none: the core accepts it
   await choose(page.getByTestId('room-agents').getByLabel('Mode', { exact: true }), 'moderator');
-  await page.getByTestId('room-agents').getByRole('button', { name: 'Save mode' }).click();
-  await expect(page.getByRole('alert')).toContainText('moderator');
+  await expect(page.getByTestId('room-agents')).toContainText('Current mode: moderator');
+  await expect(page.getByTestId('room-mode')).toHaveText('You pick who answers');
 
   await projectNav(page, 'nav-tasks');
   await expect(page.getByTestId('scheduler')).toContainText('manual');

@@ -138,8 +138,11 @@ type Report struct {
 	ProjectID string `json:"projectId"`
 	Dir       string `json:"dir"`
 	Status    string `json:"status"`
-	// By is who started the scan ("human:<name>").
-	By         string         `json:"by"`
+	// By is who started the scan ("human:<name>"): the person who pressed Scan, or for a scan a rule started, the person who
+	// set the rule.
+	By string `json:"by"`
+	// Trigger names the rule that started the scan ("after-merge", "after-sync", "weekly"); empty when a person pressed Scan.
+	Trigger    string         `json:"trigger,omitempty"`
 	StartedAt  int64          `json:"startedAt"`
 	FinishedAt int64          `json:"finishedAt,omitempty"`
 	Engines    []EngineResult `json:"engines"`
@@ -163,6 +166,7 @@ type Summary struct {
 	Folder     string `json:"folder,omitempty"`
 	Status     string `json:"status"`
 	By         string `json:"by"`
+	Trigger    string `json:"trigger,omitempty"`
 	StartedAt  int64  `json:"startedAt"`
 	FinishedAt int64  `json:"finishedAt,omitempty"`
 	Counts     Counts `json:"counts"`

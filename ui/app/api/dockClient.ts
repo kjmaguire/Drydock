@@ -19,6 +19,12 @@ export interface DiffFiles {
   head?: string;
   files: DiffFile[];
   liveAvailable: boolean;
+  /** An agent works on the task now: the viewer opens on the live diff (until the run stops, unless the person chose). */
+  runActive?: boolean;
+  /** The recorded diff's evidence id: task.diff with it reads that exact patch (the viewer's Raw view, L36). */
+  diffId?: number;
+  /** The task's worktree folder while it is there (Copy path, X26). */
+  worktree?: string;
 }
 
 export interface DiffFileContent {
@@ -45,6 +51,9 @@ export interface TerminalInfo {
   startedAt: string;
   exited: boolean;
   exitCode: number;
+  /** The project, and the task for its worktree, the shell opened for (X213); absent for a Connection's sign-in. */
+  projectId?: string;
+  taskId?: string;
 }
 
 /** Output from an offset. data is the raw bytes (base64 on the wire). */
@@ -65,6 +74,8 @@ export interface LogSource {
   attempt?: number;
   created: number;
   running?: boolean;
+  /** The agent whose stream this is, when its turn recorded who ran it. */
+  agentId?: string;
 }
 
 export interface LogText {
@@ -77,7 +88,8 @@ export interface LogText {
 export interface DockClient {
   taskDiffFiles(id: string, live?: boolean): Promise<DiffFiles>;
   taskDiffFile(id: string, path: string, live?: boolean, force?: boolean): Promise<DiffFileContent>;
-  terminalOpen(where: { projectId?: string; taskId?: string }, cols: number, rows: number): Promise<TerminalInfo>;
+  /** reuse: the shell already running in that folder instead of a new one (X27). */
+  terminalOpen(where: { projectId?: string; taskId?: string; reuse?: boolean }, cols: number, rows: number): Promise<TerminalInfo>;
   terminalRead(id: string, from: number, waitMs: number): Promise<TerminalChunk>;
   terminalWrite(id: string, data: string): Promise<void>;
   terminalResize(id: string, cols: number, rows: number): Promise<void>;

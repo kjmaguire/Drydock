@@ -50,7 +50,8 @@ export function spendLine(usage: BudgetSpend | undefined, statuses: readonly Bud
   const known = usage ? usage.reportedUsd + usage.estimatedUsd : 0;
   const unknown = usage?.unknownCostRows ?? 0;
   const project = statuses.find((s) => s.budget.scope === 'project' && s.budget.enabled && s.budget.limitUsd != null);
-  const amount = known > 0 ? `$${known.toFixed(2)}` : unknown > 0 ? 'n/a' : '$0.00';
+  // a spend under a cent is not $0.00: the Usage table would show it (critique 2026-11-08)
+  const amount = known >= 0.005 ? `$${known.toFixed(2)}` : known > 0 ? 'under $0.01' : unknown > 0 ? 'n/a' : '$0.00';
   const notes: string[] = [];
   if (project) notes.push(`of $${project.budget.limitUsd} budget`);
   else notes.push('no budget set');

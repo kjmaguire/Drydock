@@ -231,6 +231,24 @@ func TestGoRowsReadTheModuleCacheAndNameWhatItCannotRead(t *testing.T) {
 	if err != nil || len(rows) != 1 || !strings.HasPrefix(rows[0].License, "Apache-2.0") {
 		t.Errorf("override: %+v %v", rows, err)
 	}
+	// a dual license the person picks from ("Unlicense OR MIT") is the override's wording, not "MIT, with code under Unlicense",
+	// and the project's one copyright line is kept
+	write(t, filepath.Join(cache, "git.sr.ht", "~jackmordaunt", "go-toast", "v2@v2.0.3", "LICENSE"),
+		"SPDX-License-Identifier: Unlicense OR MIT\n\n----\nThe MIT License (MIT)\n\n"+mitText[strings.Index(mitText, "Copyright"):]+"\n----\nThis is free and unencumbered software released into the public domain.\n")
+	src.VersionsJSON = versionsJSON(t, map[string]any{"id": "go:git.sr.ht/~jackmordaunt/go-toast/v2", "name": "git.sr.ht/~jackmordaunt/go-toast/v2", "kind": "indirect", "used": "2.0.3", "inBuild": &yes})
+	rows, err = GoRows(src)
+	if err != nil || len(rows) != 1 || rows[0].License != "Unlicense OR MIT (the author's choice; LICENSE holds both)" || rows[0].Copyright != "Copyright (c) 2023 Ayman Bagabas" {
+		t.Errorf("go-toast: %+v %v", rows, err)
+	}
+}
+
+// A module whose copyright line is kept by hand has an override too: only a module checked by hand gets one.
+func TestEveryKeptCopyrightIsAnOverriddenModule(t *testing.T) {
+	for mod := range keepCopyright {
+		if _, ok := overrides[mod]; !ok {
+			t.Errorf("%s keeps its copyright line but has no override", mod)
+		}
+	}
 }
 
 func TestNPMRowsAreTheRuntimePackagesAndNothingOnlyForDevelopment(t *testing.T) {

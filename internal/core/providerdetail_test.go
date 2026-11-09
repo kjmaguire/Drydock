@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -174,5 +175,102 @@ func TestOpenRouterProviderDetailShowsAvoidedEndpoints(t *testing.T) {
 	a.call("provider.detail", map[string]any{"id": other.ID}, &od)
 	if od.Provider.ID != other.ID || od.EndpointUptime != nil {
 		t.Fatalf("non-OpenRouter detail has an endpoint uptime section: %+v", od.EndpointUptime)
+	}
+}
+
+// A provider is read once right after it is saved (decision D4, F2): its catalog is listed and its health is known without
+// Check now.
+func TestProviderCreateReadsTheNewProviderOnce(t *testing.T) {
+	dir := t.TempDir()
+	creds := providers.NewMemoryCredentialStoreForTests()
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(dir, "d"), User: "kyle", LeaseTTL: 3 * time.Second, Credentials: creds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	a := &app{t: t, c: c}
+	// PROTOCOL FIXTURE: an OpenAI-compatible server's model listing
+	srv := llmtest.New(t, nil)
+	srv.Routes["/v1/models"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"listed-model"}]}`))
+	}
+	var p providers.Provider
+	a.call("provider.create", map[string]any{"Name": "Fixture", "Kind": "direct", "BaseURL": srv.URL + "/v1", "APIKey": "sk-fixture-key-1234567890", "DataClass": "private", "Tier": "cheap"}, &p)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		got, _ := c.Providers.Get(context.Background(), p.ID)
+		ms, _ := c.Providers.Models(context.Background(), p.ID)
+		if got.Status == string(providers.HealthUp) && len(ms) == 1 && ms[0].ID == "listed-model" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the new provider was not read after saving: status %q, models %v", got.Status, ms)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// Check now / Check again (provider.test) goes through the health loop: afterwards the router's view (Monitor.Status) and the
+// saved status the pages and the Inbox read agree, and a later failing check is saved again.
+func TestProviderTestKeepsTheHealthLoopAndTheSavedStatusTogether(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	c, err := core.Open(ctx, core.Config{DataDir: filepath.Join(dir, "d"), User: "kyle", LeaseTTL: 3 * time.Second, Credentials: providers.NewMemoryCredentialStoreForTests()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	a := &app{t: t, c: c}
+	var code atomic.Int32
+	code.Store(http.StatusInternalServerError)
+	// PROTOCOL FIXTURE: an OpenAI-compatible server's model listing that fails or answers on demand
+	srv := llmtest.New(t, nil)
+	srv.Routes["/v1/models"] = func(w http.ResponseWriter, r *http.Request) {
+		if c := int(code.Load()); c != http.StatusOK {
+			w.WriteHeader(c)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"listed-model"}]}`))
+	}
+	p, err := c.Providers.Create(ctx, providers.NewProvider{Name: "Fixture", Kind: providers.KindDirect, BaseURL: srv.URL + "/v1", APIKey: "sk-fixture-key-1234567890", DataClass: providers.DataPrivate, Tier: providers.TierCheap})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := func() (providers.Health, bool, string) {
+		t.Helper()
+		st, err := c.Health.Status(ctx, p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, _ := c.Providers.Get(ctx, p.ID)
+		return st.Health, st.Available, g.Status
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := c.Health.CheckNow(ctx, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if h, ok, saved := state(); h != providers.HealthDown || ok || saved != "down" {
+		t.Fatalf("before: monitor %s available %v saved %q", h, ok, saved)
+	}
+	code.Store(http.StatusOK)
+	var res providers.ProbeResult
+	a.call("provider.test", map[string]any{"id": p.ID}, &res)
+	if !res.OK {
+		t.Fatalf("provider.test %+v", res)
+	}
+	if h, ok, saved := state(); h != providers.HealthUp || !ok || saved != "up" {
+		t.Fatalf("after Check again: monitor %s available %v saved %q", h, ok, saved)
+	}
+	code.Store(http.StatusInternalServerError)
+	for i := 0; i < 2; i++ {
+		if _, err := c.Health.CheckNow(ctx, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if h, ok, saved := state(); h != providers.HealthDown || ok || saved != "down" {
+		t.Fatalf("after failing checks: monitor %s available %v saved %q", h, ok, saved)
 	}
 }

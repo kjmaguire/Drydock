@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,6 +34,10 @@ import (
 // refreshes it with the stored refresh token. Agents never see any of it.
 
 const oauthFlowTimeout = 10 * time.Minute
+
+// mcpOAuthExpiredKey + a server id is the setting that says when its sign-in expired or was revoked (a refresh the server
+// refused); a new sign-in or a sign-out removes it.
+const mcpOAuthExpiredKey = "mcp.oauth_expired."
 
 // OAuthStatus is the state of a server's sign-in, for the page.
 type OAuthStatus struct {
@@ -345,7 +350,10 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 	now := storage.Now()
 	scope := strings.Join(cfg.Scopes, " ")
 	if err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE mcp_library SET oauth_at=?, oauth_scope=?, updated_at=? WHERE id=?`, now, scope, now, r.ID)
+		if _, err := tx.ExecContext(ctx, `UPDATE mcp_library SET oauth_at=?, oauth_scope=?, updated_at=? WHERE id=?`, now, scope, now, r.ID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, mcpOAuthExpiredKey+r.ID)
 		return err
 	}); err != nil {
 		fail(err)
@@ -419,7 +427,10 @@ func (s *mcpServers) oauthSignOut(ctx context.Context, id string) (OAuthStatus, 
 	}
 	now := storage.Now()
 	if err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE mcp_library SET oauth_at=0, oauth_scope='', updated_at=? WHERE id=?`, now, id)
+		if _, err := tx.ExecContext(ctx, `UPDATE mcp_library SET oauth_at=0, oauth_scope='', updated_at=? WHERE id=?`, now, id); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, mcpOAuthExpiredKey+id)
 		return err
 	}); err != nil {
 		return OAuthStatus{}, err
@@ -491,7 +502,12 @@ func (s *mcpServers) oauthAccessToken(ctx context.Context, id string) (string, e
 		delete(rt.sources, id)
 		rt.mu.Unlock()
 		_ = s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-			_, e := tx.ExecContext(ctx, `UPDATE mcp_library SET oauth_at=0 WHERE id=?`, id)
+			if _, e := tx.ExecContext(ctx, `UPDATE mcp_library SET oauth_at=0 WHERE id=?`, id); e != nil {
+				return e
+			}
+			// the Inbox says so until the person signs in again or signs out (problemItems, H7)
+			_, e := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+				mcpOAuthExpiredKey+id, strconv.FormatInt(storage.Now(), 10))
 			return e
 		})
 		s.c.publish(context.Background(), "mcp.server_oauth_expired", "", map[string]any{"id": id})

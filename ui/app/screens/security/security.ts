@@ -2,7 +2,7 @@
 // words of the engine tiles, a finding's place, the masked lines of the code around it, and who a task from it goes to.
 
 import type { ScanTarget } from '../../api/securityClient.ts';
-import type { DismissReason, EngineID, EngineResult, ScanCounts, ScanFinding, ScanReport, ScanSummary, SecurityTools, Severity, ToolInfo } from '../../api/securityTypes.ts';
+import type { DismissReason, EngineID, EngineResult, ScanCounts, ScanFinding, ScanReport, ScanSchedule, ScanSummary, ScanTrigger, SecurityTools, Severity, ToolInfo } from '../../api/securityTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDate, formatDateTime } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
@@ -349,4 +349,23 @@ export function lineText(report: ScanReport | null | undefined): string {
     return n > 0 ? findingsText(n) : 'Nothing found';
   }
   return statusText(report).replace(/\.$/, '');
+}
+
+/** A rule's name in a sentence ("after a merge"), for a scan a rule started (H5); '' for a person's Scan. */
+export function triggerWords(t: ScanTrigger | string | undefined): string {
+  switch (t) {
+    case 'after-merge':
+      return 'after a merge';
+    case 'after-sync':
+      return 'after a sync';
+    case 'weekly':
+      return 'weekly';
+  }
+  return '';
+}
+
+/** The rules that are on, as a list ("after a merge and weekly"); '' when none is. */
+export function rulesWords(s: Pick<ScanSchedule, 'afterMerge' | 'afterSync' | 'weekly'>): string {
+  const on = [s.afterMerge ? 'after a merge' : '', s.afterSync ? 'after a sync with new commits' : '', s.weekly ? 'weekly' : ''].filter(Boolean);
+  return on.length <= 1 ? (on[0] ?? '') : `${on.slice(0, -1).join(', ')} and ${on[on.length - 1]}`;
 }

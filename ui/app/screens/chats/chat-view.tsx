@@ -1,17 +1,23 @@
-// The conversation of one chat (graphite, decision P97). The header bar: the title (renamed in place), the CLI as a chip with
-// a dot for its state ("Claude Code WSL"), the folder it runs in, and on the right where it runs in words ("No project · runs
-// inside the distro"), the allowed tools, Properties and Fork. Then the messages in a reading column (older pages on scroll-up,
-// the streamed answer outside the live region, a request the agent waits on as an amber card where it was made) and the
-// composer, whose row holds the model (the chat settings), the approval mode and "Move to a project".
+// The conversation of one chat (graphite P97, calm chat P139). The header bar is the title (renamed in place), the folder (or
+// the project) as a chip, one warning chip when the CLI is in a bad state, and ⋯: the CLI and its state, where the chat runs,
+// its skills and MCP servers, then Allowed tools, Properties, Fork and Move to a project. Then the messages in a reading column
+// (older pages on scroll-up, the streamed answer outside the live region, a request the agent waits on as an amber card where
+// it was made): the tool calls between two pieces of text are one quiet line, a turn's file edits one "Changed N files" card,
+// and after the final answer the replies it invites (chat-groups.ts). Ctrl+O opens every line (verbose, kept per viewer). The
+// composer's row holds the agent CLI, the model and effort (the chat settings), the approval mode, attach and send.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { ArrowDown, Bot, FolderInput, GitFork, PanelLeftOpen, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
+import { ArrowDown, ArrowLeft, Bot, ChevronDown, Ellipsis, Folder, FolderInput, GitFork, PanelLeftOpen, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
 import { isRecord } from '../../api/guards.ts';
-import type { Chat, ChatAsk } from '../../api/chatClient.ts';
+import type { Chat, ChatAsk, ChatMessage } from '../../api/chatClient.ts';
 import type { AdapterInfo, Connection } from '../../api/types.ts';
 import { needsConfirmation, skipsApprovals } from '../../lib/permission.ts';
+import { windowAttended } from '../../lib/attended.ts';
+import { forgetFromLast, tookFromLast } from './from-last.ts';
+import { useDefaultRules } from './default-rules.tsx';
+import { CliFixButton } from '../shared/cli-fix.tsx';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
@@ -25,17 +31,19 @@ import { ModelField } from '../shared/model-field.tsx';
 import { SkipApprovals } from '../shared/skip-approvals.tsx';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { AskCard, ChatAsks } from './chat-asks.tsx';
-import { ChatComposer, quietBtn, smallBtn } from './chat-composer.tsx';
+import { BurstLine, ChangesCard, ReplyChips } from './chat-burst.tsx';
+import { ChatComposer, smallBtn } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
+import { burstLine, burstState, isVerboseKey, memoGroups, readVerbose, suggestReplies, thinkingMs, writeVerbose, type FeedItem, type Reply } from './chat-groups.ts';
 import { ChatMessageRow } from './chat-message.tsx';
 import { MoveChatDialog } from './chat-move.tsx';
 import type { ComposerFile } from './chat-composer.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
-import { adapterLabel, chatCliText, chatEffort, chatModelText, chatPlaceWords, chatTitle, chatWhere, folderText, modeWords, modelName, propsChips, RETRY_TEXT, shortPath, startsGroup } from './chats.ts';
+import { adapterLabel, chatCliText, chatEffort, chatModelText, chatPlaceWords, chatTitle, chatWhere, cliWarning, CONTINUE_TEXT, folderChipText, folderText, isFolderRefusal, modeWords, modelName, propsChips, RETRY_TEXT, startsGroup, STOPPED_NOTE, turnPhaseText } from './chats.ts';
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', flex: '1', background: t.bgApp });
-const barCss = css({ flexWrap: 'nowrap', gap: '10px', padding: `${t.s2} ${t.s6}`, '& h1': { flex: '0 1 auto', maxWidth: '40%' } });
+const barCss = css({ flexWrap: 'nowrap', gap: '10px', padding: `${t.s2} ${t.s6}`, '& h1': { flex: '0 1 auto', maxWidth: '50%' } });
 const titleBtn = css({
   display: 'inline-flex',
   alignItems: 'center',
@@ -57,56 +65,98 @@ const titleBtn = css({
   '&:hover svg, &:focus-visible svg': { opacity: '1' },
 });
 const titleInput = css({ height: '28px', minWidth: '240px', fontSize: t.textMd, fontWeight: '600' });
-// the CLI chip: a dot for the chat's state (green: a session is kept, pulsing while a turn runs, red after a failed turn)
-const cliCss = css({
+// the folder (or the project) chip beside the title, and the one warning chip
+const headChip = css({
   display: 'inline-flex',
   alignItems: 'center',
-  gap: '6px',
-  height: '22px',
-  padding: '0 8px',
+  gap: '5px',
+  flex: '0 1 auto',
+  minWidth: '0',
+  height: '24px',
+  padding: '0 9px',
   border: `1px solid ${t.border}`,
-  borderRadius: '11px',
-  background: t.bgRaised,
+  borderRadius: t.rFull,
+  background: t.bgSurface,
   color: t.textMuted,
   fontSize: t.textXs,
   whiteSpace: 'nowrap',
-  flex: 'none',
-  '& .dot': { width: '6px', height: '6px', borderRadius: '50%', flex: 'none', background: t.textFaint },
-  '&[data-state="session"] .dot, &[data-state="running"] .dot': { background: t.success },
-  '&[data-state="running"] .dot': { animation: 'dd-chat-pulse 1.2s ease-in-out infinite' },
-  '&[data-state="error"] .dot': { background: t.danger },
-  '&[data-state="error"] [data-testid="chat-status"]': { color: t.danger },
-  '@keyframes dd-chat-pulse': { '50%': { opacity: '0.35' } },
+  '& svg': { flex: 'none' },
+  '& .txt': { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '@media (max-width: 719px)': { '&[data-testid="chat-folder"]': { display: 'none' } },
 });
-const folderCss = css({ flex: '0 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: t.textFaint, fontFamily: t.mono, fontSize: t.textXs, '@media (max-width: 719px)': { display: 'none' } });
-const actionsCss = css({ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', flex: '0 1 auto', minWidth: '0' });
-const placeCss = css({ minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', color: t.textFaint, fontSize: t.textXs, marginRight: t.s2, whiteSpace: 'nowrap' });
-const chipCss = css({
-  display: 'inline-flex',
-  alignItems: 'center',
-  height: '22px',
-  padding: '0 8px',
-  border: `1px solid ${t.border}`,
-  borderRadius: '11px',
+const warnChip = css({
+  minHeight: '0',
+  borderColor: `color-mix(in srgb, ${t.warning} 50%, ${t.border})`,
+  background: t.warningSoft,
+  color: t.warning,
+  fontWeight: '500',
+  '&:hover': { borderColor: t.warning },
+});
+const actionsCss = css({ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', flex: 'none' });
+const moreBtn = css({
+  display: 'inline-grid',
+  placeItems: 'center',
+  width: '30px',
+  height: '30px',
+  minHeight: '0',
+  padding: '0',
+  border: '0',
+  borderRadius: t.rMd,
+  background: 'transparent',
   color: t.textMuted,
-  fontSize: t.textXs,
-  whiteSpace: 'nowrap',
+  '&:hover, &[aria-expanded="true"]': { background: t.bgHover, color: t.text },
 });
-const chipsBtn = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', minHeight: '28px', padding: '0 2px', border: '0', borderRadius: t.rMd, background: 'transparent', '&:hover': { background: t.bgHover } });
+// the ⋯ panel: what the chat is (its CLI with its state, where it runs, its skills and servers), then what can be done with it
+const moreCss = css({
+  display: 'grid',
+  gap: '2px',
+  width: '300px',
+  maxWidth: 'calc(100vw - 32px)',
+  '& .facts': { display: 'grid', gap: '4px', padding: '2px 4px 8px', borderBottom: `1px solid ${t.border}`, marginBottom: '4px', fontSize: t.textSm, color: t.textMuted },
+  '& .cli': { display: 'flex', alignItems: 'center', gap: '6px', color: t.text, fontWeight: '500' },
+  '& .dot': { width: '7px', height: '7px', borderRadius: '50%', flex: 'none', background: t.textFaint },
+  '& .cli[data-state="session"] .dot, & .cli[data-state="running"] .dot': { background: t.success },
+  '& .cli[data-state="error"] .dot': { background: t.danger },
+  '& .state': { color: t.textMuted, fontWeight: '400' },
+  '& .path': { fontFamily: t.mono, fontSize: t.textXs, color: t.textFaint, overflowWrap: 'anywhere' },
+  '& .chips': { display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '0', border: '0', background: 'transparent', minHeight: '0', justifyContent: 'flex-start' },
+  '& .chip': { display: 'inline-flex', alignItems: 'center', height: '22px', padding: '0 8px', border: `1px solid ${t.border}`, borderRadius: '11px', color: t.textMuted, fontSize: t.textXs },
+  '& .act': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    minHeight: '30px',
+    padding: '0 8px',
+    border: '0',
+    borderRadius: t.rMd,
+    background: 'transparent',
+    color: t.text,
+    fontSize: t.textSm,
+    textAlign: 'left',
+  },
+  '& .act:hover': { background: t.bgHover },
+  '& .act:disabled': { opacity: '0.5' },
+  '& .act svg': { color: t.textMuted, flex: 'none' },
+  '& .act .n': { marginLeft: 'auto', color: t.textFaint, fontVariantNumeric: 'tabular-nums' },
+});
 
 const logWrap = css({ position: 'relative', flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' });
 const scrollCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden', outline: 'none', '&:focus-visible': { boxShadow: `inset ${t.focus}` } });
 // the conversation reads in a column of 860 px at most, in the middle of the window
 const columnCss = css({ width: '100%', maxWidth: '860px', margin: '0 auto', padding: '22px 24px', boxSizing: 'border-box' });
 const olderCss = css({ display: 'flex', justifyContent: 'center', padding: `0 0 ${t.s2}` });
-const introCss = css({ padding: `0 0 ${t.s3}`, color: t.textFaint, fontSize: t.textSm, '& strong': { color: t.textMuted, fontWeight: '500' } });
 const streamCss = css({
   padding: '5px 0',
   '& .md': { color: t.text, lineHeight: '1.65', maxWidth: '720px' },
+  '& .phase': { display: 'inline-flex', alignItems: 'center', gap: '8px', minHeight: '20px', color: t.textMuted, fontSize: t.textSm },
+  '& .phase .stop': { minHeight: '0', height: '22px', padding: '0 6px', border: '0', borderRadius: t.rSm, background: 'transparent', color: t.accent, fontSize: t.textSm, fontWeight: '500' },
+  '& .phase .stop:hover': { background: t.bgHover },
   '& .typing': { display: 'inline-flex', gap: '3px', alignItems: 'center', height: '20px' },
   '& .typing i': { width: '5px', height: '5px', borderRadius: '50%', background: t.textFaint, animation: 'dd-chat-pulse 1.2s ease-in-out infinite' },
   '& .typing i:nth-child(2)': { animationDelay: '0.2s' },
   '& .typing i:nth-child(3)': { animationDelay: '0.4s' },
+  '@keyframes dd-chat-pulse': { '50%': { opacity: '0.35' } },
 });
 const noteCss = css({ width: '100%', maxWidth: '860px', margin: '0 auto', padding: `${t.s2} ${t.s6} 0`, boxSizing: 'border-box' });
 const jumpCss = css({
@@ -140,13 +190,17 @@ const ruleList = css({
   '& li code': { flex: '1', minWidth: '0', overflowWrap: 'anywhere' },
 });
 const hintCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
+const toolsHead = css({ display: 'flex', alignItems: 'center', gap: '6px', '& h2': { margin: '0' } });
 
-/** The chat's state for the dot on its CLI chip, and the words a reader is told. */
+/** The chat's state for the dot beside its CLI, and the words a reader is told. */
 function chatState(c: Chat, running: boolean): { state: 'running' | 'error' | 'session' | 'none'; words: string } {
   if (running) return { state: 'running', words: 'Running' };
   if (c.status === 'error') return { state: 'error', words: 'Last turn failed' };
   return c.sessionId ? { state: 'session', words: 'Session kept' } : { state: 'none', words: 'No session yet' };
 }
+
+// the chip popover's line when the new chat took the setting from the person's last choice (D2), said once
+const fromLastCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
 
 /** The conversation of one chat. Keyed by chat id: a new chat is a new feed. */
 export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; onNavigate?: (href: string) => void; onShowList?: () => void }>) {
@@ -159,19 +213,59 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   let askErrFor = '';
   // the rows near the view are rendered; the list stays at the bottom while the reader is there (ui/virtual-list.tsx)
   const list = new VirtualList({ onChange: () => void handle.update(), signal: handle.signal, estimate: 40 });
+  // the rows of the conversation (bursts, changes cards), worked out again only when the feed's list is a new one (P139)
+  const groups = memoGroups();
+  // the replies offered after the final answer, worked out once per answer
+  let repliesFor = '';
+  let replies: Reply[] = [];
+  // verbose (Ctrl+O): every burst open, kept per viewer; a burst the person opened or closed keeps that until the next toggle
+  let verbose = readVerbose();
+  const opened = new Map<string, boolean>();
   /** The newest message seen while at the bottom: only messages after it are "new" (older pages above are not). */
   let seenSeq = 0;
   let editing = false;
   let draftTitle = '';
   let settingsOpen = false;
   let modeOpen = false;
-  let toolsOpen = false;
+  let moreOpen = false; // the ⋯ panel
+  let moreView: 'main' | 'tools' = 'main'; // the ⋯ panel shows its actions, or the allowed tools
   let propsOpen = false; // the properties dialog (decision P60): CLI, folder, skills, MCP servers
   let moveOpen = false;
   let newRule = '';
-  const openProps = () => ((propsOpen = true), void handle.update());
+  const closeMore = () => ((moreOpen = false), (moreView = 'main'));
+  const openProps = () => (closeMore(), (propsOpen = true), void handle.update());
 
   feed.addEventListener('change', () => void handle.update());
+  // the read cursor (D8): moved to the newest message only while the person can see it (the window visible and focused, the
+  // conversation at the bottom), as a room does; the core never moves it back
+  let marked = 0;
+  const markRead = () => {
+    const last = feed.messages.at(-1)?.seq ?? 0;
+    if (last <= marked || feed.loading || !list.stick || !windowAttended()) return;
+    marked = last;
+    try {
+      s.client.chatMarkRead(handle.props.id, last).catch(() => undefined);
+    } catch {
+      /* an older core: nothing to mark */
+    }
+  };
+  // a resend (Edit, Regenerate) deletes from its seq on and the core moves the cursor back before it; the new messages take
+  // the same seqs again, so what this view marked comes down with it, or the new answer would never be marked read
+  feed.addEventListener('rewound', (e) => (marked = Math.min(marked, e.detail - 1)), { signal: handle.signal });
+  window.addEventListener('focus', markRead, { signal: handle.signal });
+  document.addEventListener('visibilitychange', markRead, { signal: handle.signal });
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.defaultPrevented || !isVerboseKey(e)) return;
+      e.preventDefault(); // WebView2 would offer to open a file
+      verbose = !verbose;
+      writeVerbose(verbose);
+      opened.clear();
+      void handle.update();
+    },
+    { signal: handle.signal },
+  );
   // a chat in WSL names its install as the Connections page does, which needs the other installs (the distro only when the
   // CLI is in another distro too): the Connections list, read only for such a chat, and again when a sign-in or a gate changes
   // one. A core without it names the install without the distro.
@@ -239,7 +333,10 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     return true;
   };
 
+  const stop = () => void act.run('stop', () => s.client.chatStop(handle.props.id));
+
   const fork = async (uptoSeq?: number) => {
+    closeMore();
     const c = await act.run('fork', () => s.client.chatFork(handle.props.id, uptoSeq));
     if (c) await go(routes.chat.href({ id: c.id }));
   };
@@ -248,6 +345,24 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     const c = await act.run(`allow:${rule}`, () => s.client.chatAllowTool(handle.props.id, rule));
     if (c) feed.setChat(c);
     return !!c;
+  };
+
+  // D9: the rules every new chat starts with, and the person's click that allows a rule here and in every new chat
+  const defaults = useDefaultRules(handle);
+  const allowEverywhere = async (rule: string): Promise<boolean> => {
+    const ok = await act.run(`allow:${rule}`, async () => {
+      if (!feed.chat?.allowedTools.includes(rule)) {
+        const c = await s.client.chatAllowTool(handle.props.id, rule);
+        feed.setChat(c);
+      }
+      return s.client.chatSetDefaultRule(rule, true);
+    });
+    if (ok) defaults.set(ok);
+    return !!ok;
+  };
+  const setDefault = async (rule: string, on_: boolean) => {
+    const ok = await act.run(`default:${rule}`, () => s.client.chatSetDefaultRule(rule, on_));
+    if (ok) defaults.set(ok);
   };
 
   const disallow = async (rule: string) => {
@@ -274,19 +389,21 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           ) : (
             <Empty title="Chat not found" icon={Bot}>
               <p>{feed.deleted ? 'This chat was deleted.' : 'It may have been deleted.'}</p>
-              <ErrorNote error={feed.error} />
+              <ErrorNote error={feed.error} retry={retryFor(feed)} />
             </Empty>
           )}
         </section>
       );
     }
     const msgs = feed.messages;
+    const items = groups(msgs);
     const running = feed.running;
     const adapter = adapters.find((a) => a.id === chat.adapter);
     const readOnly = s.workspace.license.readOnly;
     const cli = chatCliText(chat, installs.data ?? []);
     const projectName = s.workspace.projectList.find((p) => p.id === chat.projectId)?.name;
     const state = chatState(chat, running);
+    const warning = cliWarning(chat, adapter);
     const waiting = (asks.data ?? []).filter((a) => !answered.has(a.id));
     const askOf = new Map(waiting.map((a) => [a.messageId, a] as const));
     const askCard = (a: ChatAsk) => (
@@ -309,53 +426,110 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     }
     const stick = list.stick;
     if (stick) seenSeq = msgs.at(-1)?.seq ?? 0;
+    if (stick) handle.queueTask(markRead);
     // the messages are in seq order: count back from the newest (nothing is unseen while stuck to the bottom)
     let unseen = 0;
     if (!stick) for (let i = msgs.length - 1; i >= 0 && msgs[i]!.seq > seenSeq; i--) unseen++;
+    const locked = chat.archived || readOnly;
+    // the next step of a turn that failed or was stopped (D4), offered on its last row while nothing runs: Try again sends the
+    // person's message again (chat.resend, one new turn), Continue asks the agent to go on after a stop
+    const lastRow = msgs.at(-1);
+    const canRetry = !locked && !running && lastUserSeq > 0;
+    const tryAgain = canRetry && chat.status === 'error' ? () => void resend(lastUserSeq) : undefined;
+    // the header's "Last turn failed" chip is Try again; a CLI that is missing or signed out opens its fix in place (A9)
+    const chipRetry = warning === 'Last turn failed' ? tryAgain : undefined;
+    const goOn = canRetry && lastRow?.role === 'system' && lastRow.body === STOPPED_NOTE ? () => void send(CONTINUE_TEXT) : undefined;
+    const row = (m: ChatMessage, i: number, extra: { toolOpen?: boolean } = {}) => {
+      const a = askOf.get(m.id);
+      return (
+        <ChatMessageRow
+          key={m.id}
+          m={m}
+          head={startsGroup(msgs[i - 1], m)}
+          adapter={chat.adapter}
+          allowedTools={chat.allowedTools}
+          latest={m.seq > lastUserSeq}
+          running={running}
+          busy={act.busy}
+          ask={a ? askCard(a) : undefined}
+          thoughtMs={m.thinking ? thinkingMs(msgs[i - 1], m) : 0}
+          toolOpen={extra.toolOpen}
+          onAllow={chat.adapter === 'claude' && !readOnly ? (r) => void allow(r) : undefined}
+          onRetry={locked ? undefined : () => void send(RETRY_TEXT)}
+          onAllowAndRetry={chat.adapter === 'claude' && !locked ? (r) => void allow(r).then((ok) => (ok ? send(RETRY_TEXT) : false)) : undefined}
+          defaultRules={defaults.data ?? []}
+          onAllowEverywhere={chat.adapter === 'claude' && !readOnly ? (r) => void allowEverywhere(r) : undefined}
+          onFork={(seq) => void fork(seq)}
+          onEdit={locked ? undefined : (seq, text) => resend(seq, text)}
+          onRegenerate={locked || i !== msgs.length - 1 || !lastUserSeq ? undefined : () => void resend(lastUserSeq)}
+          onTryAgain={i === msgs.length - 1 && m.role === 'error' ? tryAgain : undefined}
+          onContinue={i === msgs.length - 1 ? goOn : undefined}
+        />
+      );
+    };
+    const draw = (it: FeedItem) => {
+      if (it.kind === 'msg') return row(it.m, it.index);
+      if (it.kind === 'changes') return <ChangesCard changes={it.changes} />;
+      const first = it.tools[0]!;
+      const st = burstState(it.tools, running && first.seq > lastUserSeq);
+      const expanded = opened.get(it.key) ?? (verbose || st === 'failed');
+      const line = burstLine(it.tools, { any: it.tools.some((m) => !!m.thinking), ms: first.thinking ? thinkingMs(msgs[it.index - 1], first) : 0 });
+      return (
+        <BurstLine
+          tools={it.tools}
+          line={line}
+          state={st}
+          expanded={expanded}
+          onToggle={() => {
+            opened.set(it.key, !expanded);
+            void handle.update();
+          }}
+        >
+          {expanded ? it.tools.map((m, j) => row(m, it.index + j, { toolOpen: m.toolStatus === 'failed' })) : null}
+        </BurstLine>
+      );
+    };
     // before reading list.quiet: rows revealed by this render (not new ones) keep the live region silent
-    const shown = list.rows(
-      msgs,
-      (m) => m.id,
-      (m, i) => {
-        const a = askOf.get(m.id);
-        return (
-          <ChatMessageRow
-            m={m}
-            head={startsGroup(msgs[i - 1], m)}
-            adapter={chat.adapter}
-            allowedTools={chat.allowedTools}
-            latest={m.seq > lastUserSeq}
-            running={running}
-            busy={act.busy}
-            ask={a ? askCard(a) : undefined}
-            onAllow={chat.adapter === 'claude' && !readOnly ? (r) => void allow(r) : undefined}
-            onRetry={chat.archived || readOnly ? undefined : () => void send(RETRY_TEXT)}
-            onAllowAndRetry={chat.adapter === 'claude' && !chat.archived && !readOnly ? (r) => void allow(r).then((ok) => (ok ? send(RETRY_TEXT) : false)) : undefined}
-            onFork={(seq) => void fork(seq)}
-            onEdit={chat.archived || readOnly ? undefined : (seq, text) => resend(seq, text)}
-            onRegenerate={chat.archived || readOnly || i !== msgs.length - 1 || !lastUserSeq ? undefined : () => void resend(lastUserSeq)}
-          />
-        );
-      },
-    );
+    const shown = list.rows(items, (it) => it.key, draw);
     handle.queueTask(() => list.settle());
     const streaming = feed.streaming;
     const turnNote = feed.lastTurn && feed.lastTurn.fallback ? 'This turn started a new session with the earlier conversation quoted, because the previous session could not be continued.' : '';
     // a request whose note is not among the messages loaded (an older page) waits above the composer
     const loose = waiting.filter((a) => !msgs.some((m) => m.id === a.messageId));
-    const locked = chat.archived || readOnly;
     const n = chat.allowedTools.length;
+    const hasBursts = items.some((it) => it.kind === 'burst');
+    // the replies the final answer invites (P139): only after the answer to the person's latest message, while nothing runs
+    const last = msgs.at(-1);
+    const answer_ = last && last.role === 'assistant' && last.seq > lastUserSeq && lastUserSeq > 0 ? last : undefined;
+    if ((answer_?.id ?? '') !== repliesFor) {
+      repliesFor = answer_?.id ?? '';
+      replies = answer_ ? suggestReplies(answer_.body) : [];
+    }
+    const showReplies = !!answer_ && !running && !streaming && !locked && replies.length > 0;
 
-    // the composer's row: the model and effort by name (the chat settings), the approval mode, Move to a project. A chat that
-    // chose none shows what its CLI reported, and the effort Claude Code uses for that model (decision P107)
+    // the composer's row: the agent CLI (its Properties), the model and effort by name (the chat settings) and the approval
+    // mode. A chat that chose none shows what its CLI reported, and the effort Claude Code uses for that model (decision P107)
     const modelText = chatModelText(chat);
     const effort = chatEffort(chat);
     const controls = (
       <>
+        <button
+          type="button"
+          mix={[smallBtn, on('click', openProps)]}
+          disabled={locked}
+          aria-label={`Agent CLI: ${cli}`}
+          title={chatWhere(chat) || 'The agent CLI: change it in Properties'}
+          data-testid="chat-cli-chip"
+        >
+          <span data-testid="chip-adapter" title={chatWhere(chat) || undefined}>
+            {cli}
+          </span>
+          <Icon icon={ChevronDown} size={12} />
+        </button>
         <Popover
           open={settingsOpen}
           onOpen={() => ((settingsOpen = true), (modeOpen = false), void handle.update())}
-          onClose={() => ((settingsOpen = false), void handle.update())}
+          onClose={() => ((settingsOpen = false), forgetFromLast(chat.id, ['model', 'effort']), void handle.update())}
           label="Chat settings"
           placement="top-start"
           testId="chat-settings"
@@ -373,19 +547,26 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                 {modelText}
               </span>
               {effort.text ? (
+                // 8 px from the model with the chip's gap (the density budget)
                 <span data-testid="chip-effort" data-default={effort.chosen ? undefined : 'true'} style={{ color: 'var(--text-faint)', marginLeft: '3px' }}>
-                  {effort.text} effort
+                  · {effort.text}
                 </span>
               ) : null}
+              <Icon icon={ChevronDown} size={12} />
             </button>
           )}
         >
-          <ChatSettings chat={chat} adapter={adapter} busy={act.busy} error={act.error} onSave={async (u) => (await update(u, 'settings')) && ((settingsOpen = false), void handle.update())} onCancel={() => ((settingsOpen = false), void handle.update())} />
+          {tookFromLast(chat.id, ['model', 'effort']) ? (
+            <p mix={fromLastCss} data-testid="chat-from-last">
+              From your last chat
+            </p>
+          ) : null}
+          <ChatSettings chat={chat} adapter={adapter} busy={act.busy} error={act.error} onSave={async (u) => !!(await update(u, 'settings'))} onClose={() => ((settingsOpen = false), forgetFromLast(chat.id, ['model', 'effort']), void handle.update())} />
         </Popover>
         <Popover
           open={modeOpen}
           onOpen={() => ((modeOpen = true), (settingsOpen = false), void handle.update())}
-          onClose={() => ((modeOpen = false), void handle.update())}
+          onClose={() => ((modeOpen = false), forgetFromLast(chat.id, ['permissionMode']), void handle.update())}
           label="Approval mode"
           placement="top-start"
           testId="chat-mode-settings"
@@ -401,28 +582,153 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             >
               {chat.skipsApprovals ? <Icon icon={TriangleAlert} size={12} /> : null}
               <span>{modeWords(chat.permissionMode)}</span>
+              <Icon icon={ChevronDown} size={12} />
             </button>
           )}
         >
-          <ModeSettings chat={chat} adapter={adapter} busy={act.busy} error={act.error} onSave={async (mode) => (await update({ permissionMode: mode }, 'mode')) && ((modeOpen = false), void handle.update())} onCancel={() => ((modeOpen = false), void handle.update())} />
+          {tookFromLast(chat.id, ['permissionMode']) ? (
+            <p mix={fromLastCss} data-testid="chat-from-last">
+              From your last chat
+            </p>
+          ) : null}
+          <ModeSettings
+            chat={chat}
+            adapter={adapter}
+            busy={act.busy}
+            error={act.error}
+            onSave={async (mode) => {
+              // one click applies the mode and closes the list; the chip says the new mode
+              const ok = !!(await update({ permissionMode: mode }, 'mode'));
+              if (ok) ((modeOpen = false), void handle.update());
+              return ok;
+            }}
+          />
         </Popover>
-        {!locked ? (
-          <button
-            type="button"
-            mix={[smallBtn, quietBtn, on('click', () => ((moveOpen = true), void handle.update()))]}
-            disabled={running}
-            title={running ? 'A chat moves between turns: wait for the answer, or stop it' : 'Run this chat in a project'}
-            data-testid="chat-move"
-          >
-            <Icon icon={FolderInput} size={14} />
-            <span>{chat.projectId ? 'Move to another project' : 'Move to a project'}</span>
-          </button>
-        ) : null}
       </>
     );
 
+    // the ⋯ panel's two views: what the chat is and what can be done with it, or its allowed tools
+    const moreMain = (
+      <div mix={moreCss}>
+        <div class="facts">
+          <div class="cli" data-state={state.state} title={state.state === 'error' ? chat.lastError || undefined : chat.sessionId ? `Session ${chat.sessionId}` : undefined}>
+            <span class="dot" aria-hidden="true" />
+            <span data-testid="chat-cli">{cli}</span>
+            <span class="state">· {state.words}</span>
+          </div>
+          <div data-testid="chat-place">{chatPlaceWords(chat, projectName)}</div>
+          <div class="path" title={chat.cwd}>
+            {folderText(chat, 80)}
+          </div>
+          {propsChips(chat).length ? (
+            <button type="button" class="chips" mix={on('click', openProps)} aria-label={`Skills and MCP servers: ${propsChips(chat).join(', ')}`} title="Change the skills and MCP servers" data-testid="chat-props-chips">
+              {(chat.skills?.length ?? 0) > 0 ? (
+                <span class="chip" data-testid="chip-skills" title={chat.skills!.map((k) => k.name).join(', ')}>
+                  {propsChips({ skills: chat.skills })[0]}
+                </span>
+              ) : null}
+              {(chat.mcpServers?.length ?? 0) > 0 ? (
+                <span class="chip" data-testid="chip-mcp" title={chat.mcpServers!.map((g) => g.serverId).join(', ')}>
+                  {propsChips({ mcpServers: chat.mcpServers })[0]}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
+          {chat.forkedFrom ? (
+            <a href={routes.chat.href({ id: chat.forkedFrom })} style={{ fontSize: 'var(--text-xs)' }}>
+              Forked from an earlier chat
+            </a>
+          ) : null}
+        </div>
+        <button type="button" class="act" aria-label={`Allowed tools${n ? ` (${n})` : ''}`} title="The tools this chat may use without asking" mix={on('click', () => ((moreView = 'tools'), void handle.update()))}>
+          <Icon icon={ShieldCheck} size={15} />
+          <span>Allowed tools</span>
+          {n ? (
+            <span class="n" aria-hidden="true">
+              {n}
+            </span>
+          ) : null}
+        </button>
+        <button type="button" class="act" title="Agent CLI, folder, skills, MCP servers and usage" data-testid="chat-properties-open" mix={on('click', openProps)}>
+          <Icon icon={SlidersHorizontal} size={15} />
+          <span>Properties</span>
+        </button>
+        <button type="button" class="act" title="Fork: a new chat with this chat's messages, its own session" disabled={!!act.busy} mix={on('click', () => void fork())}>
+          <Icon icon={GitFork} size={15} />
+          <span>{act.busy === 'fork' ? 'Forking...' : 'Fork'}</span>
+        </button>
+        {!locked ? (
+          <button
+            type="button"
+            class="act"
+            disabled={running}
+            title={running ? 'A chat moves between turns: wait for the answer, or stop it' : 'Run this chat in a project'}
+            data-testid="chat-move"
+            mix={on('click', () => (closeMore(), (moveOpen = true), void handle.update()))}
+          >
+            <Icon icon={FolderInput} size={15} />
+            <span>{chat.projectId ? 'Move to another project' : 'Move to a project'}</span>
+          </button>
+        ) : null}
+      </div>
+    );
+    const moreTools = (
+      <div mix={moreCss} data-testid="chat-allowed-tools">
+        <div mix={toolsHead}>
+          <IconButton icon={ArrowLeft} size={14} label="Back" mix={on('click', () => ((moreView = 'main'), void handle.update()))} />
+          <h2>Allowed tools</h2>
+        </div>
+        <p mix={hintCss}>{chat.adapter === 'claude' ? 'Rules this chat passes to Claude Code as --allowedTools, from the next message.' : 'Allow rules work only in Claude Code chats.'}</p>
+        {chat.allowedTools.length ? (
+          <ul mix={ruleList} aria-label="Allowed tool rules">
+            {chat.allowedTools.map((r) => (
+              <li key={r}>
+                <code>{r}</code>
+                {chat.adapter === 'claude' ? (
+                  (defaults.data ?? []).includes(r) ? (
+                    <Button size="sm" variant="ghost" disabled={!!act.busy || readOnly} aria-label={`Stop allowing ${r} in every new chat`} title="New chats will no longer start with this rule" data-testid="rule-everywhere" data-on="true" mix={[on('click', () => void setDefault(r, false))]}>
+                      In every new chat
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" disabled={!!act.busy || readOnly} aria-label={`Allow ${r} in every new chat too`} data-testid="rule-everywhere" mix={[on('click', () => void setDefault(r, true))]}>
+                      …and in every new chat
+                    </Button>
+                  )
+                ) : null}
+                <Button size="sm" variant="ghost" disabled={!!act.busy} aria-label={`Remove ${r}`} mix={[on('click', () => void disallow(r))]}>
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p mix={hintCss}>None yet.</p>
+        )}
+        {chat.adapter === 'claude' ? (
+          <form
+            style={{ display: 'flex', gap: '6px' }}
+            mix={on('submit', (e) => {
+              e.preventDefault();
+              const r = newRule.trim();
+              if (!r) return;
+              void allow(r).then(() => {
+                if (!act.error) newRule = '';
+                void handle.update();
+              });
+            })}
+          >
+            <input aria-label="Rule to allow" placeholder="Bash(npm test)" value={newRule} spellcheck={false} style={{ flex: '1', fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => ((newRule = e.currentTarget.value), void handle.update()))} />
+            <Button type="submit" size="sm" disabled={!!act.busy}>
+              Allow
+            </Button>
+          </form>
+        ) : null}
+        <ErrorNote error={act.error} />
+      </div>
+    );
+
     return (
-      <section mix={screenCss} aria-label={`Chat ${chatTitle(chat)}`} data-testid="chat-view" data-status={chat.status}>
+      <section mix={screenCss} aria-label={`Chat ${chatTitle(chat)}`} data-testid="chat-view" data-status={chat.status} data-verbose={verbose ? 'true' : undefined}>
         <header mix={[headerCss, barCss]}>
           {handle.props.onShowList ? <IconButton icon={PanelLeftOpen} label="Show the chat list" mix={on('click', () => handle.props.onShowList!())} /> : null}
           <h1 style={{ minWidth: '0', marginLeft: '-6px' }}>
@@ -468,102 +774,61 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               </button>
             )}
           </h1>
-          <span mix={cliCss} data-state={state.state} title={state.state === 'error' ? chat.lastError || undefined : chat.sessionId ? `Session ${chat.sessionId}` : undefined}>
-            <span class="dot" aria-hidden="true" />
-            <span data-testid="chip-adapter" title={chatWhere(chat) || undefined}>
-              {cli}
-            </span>
-            <span data-testid="chat-status" class={state.state === 'running' || state.state === 'error' ? undefined : 'sr-only'}>
-              {state.words}
-            </span>
+          <span mix={headChip} data-testid="chat-folder" title={chat.cwd} data-project={projectName ? 'true' : undefined}>
+            <Icon icon={Folder} size={12} />
+            <span class="txt">{folderChipText(chat, projectName)}</span>
           </span>
-          <span mix={folderCss} data-testid="chat-folder" title={chat.cwd}>
-            {folderText(chat)}
-          </span>
-          {propsChips(chat).length ? (
-            <button type="button" mix={[chipsBtn, on('click', openProps)]} aria-label={`Skills and MCP servers: ${propsChips(chat).join(', ')}`} title="Change the skills and MCP servers" data-testid="chat-props-chips">
-              {(chat.skills?.length ?? 0) > 0 ? (
-                <span mix={chipCss} data-testid="chip-skills" title={chat.skills!.map((k) => k.name).join(', ')}>
-                  {propsChips({ skills: chat.skills })[0]}
-                </span>
-              ) : null}
-              {(chat.mcpServers?.length ?? 0) > 0 ? (
-                <span mix={chipCss} data-testid="chip-mcp" title={chat.mcpServers!.map((g) => g.serverId).join(', ')}>
-                  {propsChips({ mcpServers: chat.mcpServers })[0]}
-                </span>
-              ) : null}
+          {warning && !chipRetry && warning !== 'Last turn failed' ? (
+            // the CLI is missing, not signed in or has a notice to accept (A9): the chip opens the fix in place, Sign in first;
+            // "Use another CLI" (Properties) comes last
+            <CliFixButton
+              adapter={chat.adapter}
+              onOther={openProps}
+              trigger={(mix, open) => (
+                <button type="button" mix={[headChip, warnChip, mix]} aria-expanded={open ? 'true' : 'false'} title="Fix it here, or pick another agent CLI" data-testid="chat-cli-warning" data-action="fix">
+                  <Icon icon={TriangleAlert} size={12} />
+                  <span class="txt">{warning}</span>
+                </button>
+              )}
+            />
+          ) : warning ? (
+            <button
+              type="button"
+              mix={[headChip, warnChip, on('click', chipRetry ? chipRetry : openProps)]}
+              // as the row's Try again: one resend at a time (a second, refused while the first turn runs, would show an error)
+              disabled={!!chipRetry && !!act.busy}
+              title={chipRetry ? `Try again${chat.lastError ? `: ${chat.lastError}` : ''}` : chat.status === 'error' && chat.lastError ? chat.lastError : 'Open Properties to pick another agent CLI'}
+              data-testid="chat-cli-warning"
+              data-action={chipRetry ? 'retry' : 'properties'}
+            >
+              <Icon icon={TriangleAlert} size={12} />
+              <span class="txt">{warning}</span>
             </button>
           ) : null}
-          {chat.forkedFrom ? (
-            <a href={routes.chat.href({ id: chat.forkedFrom })} style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-              forked from an earlier chat
-            </a>
-          ) : null}
+          <span class="sr-only" data-testid="chat-status">
+            {state.words}
+          </span>
           <div mix={actionsCss}>
-            <span mix={placeCss} data-testid="chat-place">
-              {chatPlaceWords(chat, projectName)}
-            </span>
             <Popover
-              open={toolsOpen}
-              onOpen={() => ((toolsOpen = true), void handle.update())}
-              onClose={() => ((toolsOpen = false), void handle.update())}
-              label="Allowed tools"
+              open={moreOpen}
+              onOpen={() => ((moreOpen = true), (moreView = 'main'), void handle.update())}
+              onClose={() => (closeMore(), void handle.update())}
+              label="Chat options"
               placement="bottom-end"
-              testId="chat-allowed-tools"
+              testId="chat-more-panel"
               trigger={(mix) => (
-                <Button size="sm" variant="ghost" icon={ShieldCheck} aria-label={`Allowed tools${n ? ` (${n})` : ''}`} title="The tools this chat may use without asking" aria-expanded={toolsOpen ? 'true' : 'false'} mix={[mix]}>
-                  {n ? <span aria-hidden="true">{n}</span> : null}
-                </Button>
+                <button type="button" mix={[moreBtn, mix]} aria-label="Chat options" title="The CLI, where the chat runs, allowed tools, properties, fork, move" aria-expanded={moreOpen ? 'true' : 'false'} data-testid="chat-more">
+                  <Icon icon={Ellipsis} size={16} />
+                </button>
               )}
             >
-              <h2>Allowed tools</h2>
-              <p mix={hintCss}>
-                {chat.adapter === 'claude'
-                  ? 'Rules this chat passes to Claude Code as --allowedTools. They apply from the next message.'
-                  : 'Allow rules work only in Claude Code chats.'}
-              </p>
-              {chat.allowedTools.length ? (
-                <ul mix={ruleList} aria-label="Allowed tool rules">
-                  {chat.allowedTools.map((r) => (
-                    <li key={r}>
-                      <code>{r}</code>
-                      <Button size="sm" variant="ghost" disabled={!!act.busy} aria-label={`Remove ${r}`} mix={[on('click', () => void disallow(r))]}>
-                        Remove
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p mix={hintCss}>None yet. A refused tool offers its rule here with "Allow for this chat".</p>
-              )}
-              {chat.adapter === 'claude' ? (
-                <form
-                  style={{ display: 'flex', gap: '6px' }}
-                  mix={on('submit', (e) => {
-                    e.preventDefault();
-                    const r = newRule.trim();
-                    if (!r) return;
-                    void allow(r).then(() => {
-                      if (!act.error) newRule = '';
-                      void handle.update();
-                    });
-                  })}
-                >
-                  <input aria-label="Rule to allow" placeholder="Bash(npm test)" value={newRule} spellcheck={false} style={{ flex: '1', fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => ((newRule = e.currentTarget.value), void handle.update()))} />
-                  <Button type="submit" size="sm" disabled={!!act.busy}>
-                    Allow
-                  </Button>
-                </form>
-              ) : null}
-              {toolsOpen ? <ErrorNote error={act.error} /> : null}
+              {moreView === 'tools' ? moreTools : moreMain}
             </Popover>
-            <IconButton icon={SlidersHorizontal} label="Properties" title="Agent CLI, folder, skills, MCP servers and usage" data-testid="chat-properties-open" mix={[on('click', openProps)]} />
-            <IconButton icon={GitFork} label={act.busy === 'fork' ? 'Forking...' : 'Fork'} title="Fork: a new chat with this chat's messages, its own session" disabled={!!act.busy} mix={[on('click', () => void fork())]} />
           </div>
         </header>
         {feed.error ? (
           <div mix={noteCss}>
-            <ErrorNote error={feed.error} what="Could not load the chat" />
+            <ErrorNote error={feed.error} retry={retryFor(feed)} what="Could not load the chat" />
           </div>
         ) : null}
         <div mix={logWrap}>
@@ -577,6 +842,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               on('scroll', (e) => {
                 const el = e.currentTarget as HTMLDivElement;
                 list.onScroll();
+                markRead();
                 if (el.scrollTop < 80 && feed.hasMore && !feed.loadingOlder) void loadOlder();
               }),
             ]}
@@ -588,23 +854,12 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                     {feed.loadingOlder ? 'Loading older messages...' : 'Load older messages'}
                   </Button>
                 </div>
-              ) : msgs.length ? (
-                <div mix={introCss}>
-                  This is the start of <strong>{chatTitle(chat)}</strong>, a chat with {adapterLabel(chat.adapter)}
-                  {chat.readHistory ? ' that can read your other chats' : ''}.
-                </div>
               ) : null}
               <div role="log" aria-live={list.quiet ? 'off' : 'polite'} aria-relevant="additions" aria-label={`Messages in ${chatTitle(chat)}`} aria-busy={feed.loadingOlder ? 'true' : undefined} data-testid="chat-log">
                 {shown}
               </div>
-              {!feed.loading && msgs.length === 0 && !streaming ? (
-                <Empty title="Start the conversation" icon={Bot}>
-                  <p>
-                    Ask {adapterLabel(chat.adapter)} anything about <code>{shortPath(chat.cwd, 60)}</code>. Every message is kept, and the next one continues the same session.
-                  </p>
-                </Empty>
-              ) : null}
-              {streaming ? <ChatStream feed={feed} who={adapterLabel(chat.adapter)} onGrow={() => list.follow()} /> : null}
+              {streaming ? <ChatStream feed={feed} who={adapterLabel(chat.adapter)} onGrow={() => list.follow()} onStop={stop} /> : null}
+              {showReplies ? <ReplyChips replies={replies} disabled={!!act.busy} onReply={(text) => void send(text)} /> : null}
               {turnNote ? <Notice tone="info">{turnNote}</Notice> : null}
             </div>
           </div>
@@ -622,7 +877,6 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
         {chat.archived ? (
           <div mix={noteCss}>
             <Notice tone="muted" title="This chat is archived.">
-              It can be read, searched and attached, not continued.{' '}
               <Button size="sm" variant="link" mix={[on('click', () => void update({ archived: false }, 'unarchive'))]}>
                 Unarchive
               </Button>
@@ -645,9 +899,22 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           </div>
         ) : null}
         <ChatApprovals chat={chat} />
-        {!settingsOpen && !modeOpen && !toolsOpen && !moveOpen && act.error ? (
+        {!settingsOpen && !modeOpen && !moreOpen && !moveOpen && act.error ? (
           <div mix={noteCss}>
             <ErrorNote error={act.error} />
+            {isFolderRefusal(act.error) && !locked ? (
+              // the folder is gone (D4): pick another one, or let the chat use its own; the message waits in the box
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }} data-testid="chat-folder-fix">
+                <Button size="sm" variant="secondary" icon={Folder} mix={on('click', openProps)}>
+                  Choose folder…
+                </Button>
+                {!chat.projectId ? (
+                  <Button size="sm" variant="ghost" disabled={!!act.busy} mix={on('click', () => void update({ cwd: '' }, 'folder'))}>
+                    {act.busy === 'folder' ? 'Moving…' : 'Use its own folder'}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
         <ChatComposer
@@ -658,8 +925,9 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           sending={act.busy === 'send'}
           empty={msgs.length === 0}
           controls={controls}
+          hint={hasBursts ? (verbose ? 'Ctrl O hides the tool calls' : 'Ctrl O shows every tool call') : ''}
           onSend={send}
-          onStop={() => void act.run('stop', () => s.client.chatStop(handle.props.id))}
+          onStop={stop}
           stopping={act.busy === 'stop'}
         />
         <MoveChatDialog
@@ -695,7 +963,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
  * answer's render and nothing else: the conversation above it, the header and the composer are not drawn again (the review of
  * 2026-10-27: with a long history open, every delta redrew and measured every row in the window).
  */
-function ChatStream(handle: Handle<{ feed: ChatFeed; who: string; onGrow: () => void }>) {
+function ChatStream(handle: Handle<{ feed: ChatFeed; who: string; onGrow: () => void; onStop: () => void }>) {
   let frame = 0;
   const redraw = () => {
     if (frame) return;
@@ -706,9 +974,15 @@ function ChatStream(handle: Handle<{ feed: ChatFeed; who: string; onGrow: () => 
   };
   const feed = handle.props.feed;
   feed.addEventListener('stream', redraw);
+  // while the CLI is still starting, the line counts the seconds (D12)
+  const tick = setInterval(() => {
+    const p = handle.props.feed.phase;
+    if (p && !p.cli && !handle.props.feed.streaming?.text) void handle.update();
+  }, 1000);
   handle.signal.addEventListener('abort', () => {
     feed.removeEventListener('stream', redraw);
     if (frame) cancelAnimationFrame(frame);
+    clearInterval(tick);
   });
   return () => {
     const streaming = handle.props.feed.streaming;
@@ -721,40 +995,97 @@ function ChatStream(handle: Handle<{ feed: ChatFeed; who: string; onGrow: () => 
         {streaming.text ? (
           <Markdown source={streaming.text} />
         ) : (
-          <span class="typing" role="status" aria-label="Working">
-            <i />
-            <i />
-            <i />
-          </span>
+          <PhaseLine who={handle.props.who} feed={handle.props.feed} onStop={handle.props.onStop} />
         )}
       </div>
     );
   };
 }
 
-/** The permission modes the chat's adapter takes (its own first), as select options. */
-const modeOptions = (adapter: AdapterInfo | undefined, mode: string) => {
+/** Before any text: what the turn is doing (D12), the dots beside it; a CLI slow to start offers Stop. */
+function PhaseLine(handle: Handle<{ who: string; feed: ChatFeed; onStop: () => void }>) {
+  return () => {
+    const { who, feed, onStop } = handle.props;
+    const p = turnPhaseText(who, feed.phase, Date.now());
+    return (
+      <span class="phase" data-testid="chat-phase" data-slow={p.slow ? 'true' : undefined}>
+        <span class="typing" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+        {/* the live region holds the steady words; the seconds of a slow start tick outside it, so a screen reader is not
+            told every second */}
+        <span role="status">{p.text}</span>
+        {p.seconds ? <span aria-hidden="true"> ({p.seconds} s)</span> : null}
+        {p.slow ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <button type="button" class="stop" data-testid="chat-phase-stop" mix={on('click', () => onStop())}>
+              Stop
+            </button>
+          </>
+        ) : null}
+      </span>
+    );
+  };
+}
+
+/** The permission modes the chat's adapter takes (its own first). */
+const modeList = (adapter: AdapterInfo | undefined, mode: string): string[] => {
   const modes = adapter?.capabilities?.permissionModes?.length ? adapter.capabilities.permissionModes : [mode || 'default'];
-  return selectValues([...new Set([...modes, ...(mode ? [mode] : [])])]);
+  return [...new Set([...modes, ...(mode ? [mode] : [])])];
 };
 
-/** The settings popover: model, effort, permission mode (with the skip-approvals confirmation) and history access. */
-function ChatSettings(
-  handle: Handle<{ chat: Chat; adapter: AdapterInfo | undefined; busy: string; error: Error | undefined; onSave: (u: { model: string; effort: string; permissionMode: string; readHistory: boolean }) => void; onCancel: () => void }>,
-) {
-  const c = handle.props.chat;
-  let model = c.model;
-  let effort = c.effort;
-  let mode = c.permissionMode;
-  // a mode the chat already has was confirmed when it was chosen; another one that skips approvals asks again
-  let confirmed = skipsApprovals(c.permissionMode) ? c.permissionMode : '';
-  let readHistory = c.readHistory;
-  const set = (fn: () => void) => {
-    fn();
+/** The permission modes as select options. */
+const modeOptions = (adapter: AdapterInfo | undefined, mode: string) => selectValues(modeList(adapter, mode));
+
+/** Partial chat settings, each saved on its own (D3). */
+type SettingsUpdate = { model?: string; effort?: string; permissionMode?: string; readHistory?: boolean };
+
+const savedCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm, '&[data-saved="true"]': { color: t.success } });
+const modeListCss = css({
+  display: 'grid',
+  gap: '2px',
+  '& button': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    minHeight: '30px',
+    padding: '0 8px',
+    border: '0',
+    borderRadius: t.rMd,
+    background: 'transparent',
+    color: t.text,
+    fontSize: t.textSm,
+    textAlign: 'left',
+  },
+  '& button:hover': { background: t.bgHover },
+  '& button[aria-pressed="true"]': { background: t.accentSoft, fontWeight: '500' },
+  '& button[data-warn="true"]': { color: t.danger },
+  '& button .tick': { marginLeft: 'auto', color: t.accent },
+});
+
+/**
+ * The settings popover: model, effort, permission mode and history access, each saved as it is chosen (D3). A model typed by
+ * its full name is saved with "Use this model"; a mode that skips approvals only once its confirmation is ticked.
+ */
+function ChatSettings(handle: Handle<{ chat: Chat; adapter: AdapterInfo | undefined; busy: string; error: Error | undefined; onSave: (u: SettingsUpdate) => Promise<boolean>; onClose: () => void }>) {
+  let model = handle.props.chat.model;
+  let modelTyped = false; // the model field holds a name typed (or cleared) and not yet saved with "Use this model"
+  let pendingMode = ''; // a mode that skips approvals, chosen and waiting for its confirmation
+  let confirmed = '';
+  let saved = false;
+  const save = async (u: SettingsUpdate) => {
+    saved = false;
     void handle.update();
+    saved = await handle.props.onSave(u);
+    void handle.update();
+    return saved;
   };
   return () => {
-    const { adapter, busy, error, onSave, onCancel } = handle.props;
+    const { chat: c, adapter, busy, error, onClose } = handle.props;
     const caps = adapter?.capabilities;
     const models = caps?.models ?? [];
     const efforts = caps?.efforts ?? [];
@@ -765,40 +1096,90 @@ function ChatSettings(
       const e = chatEffort({ adapter: c.adapter, model: m, effort: '', cliModel: c.model ? '' : reported }).text;
       return e ? `default (${e})` : 'CLI default';
     };
+    const typed = model !== '' && !models.includes(model);
     return (
-      <form
-        style={{ display: 'grid', gap: '12px' }}
-        mix={on('submit', (e) => {
-          e.preventDefault();
-          if (needsConfirmation(mode, confirmed)) return;
-          onSave({ model: model.trim(), effort, permissionMode: mode, readHistory });
-        })}
-      >
+      <form style={{ display: 'grid', gap: '12px' }} mix={on('submit', (e) => e.preventDefault())}>
         <h2>Chat settings</h2>
-        <Field label="Model" hint="Applies from the next message.">
-          {(id) => <ModelField id={id} value={model} models={models} emptyLabel={defaultModelLabel} placeholder={defaultModelLabel} onChange={(v) => set(() => (model = v))} />}
+        <Field label="Model">
+          {(id) => (
+            <ModelField
+              id={id}
+              value={model}
+              models={models}
+              emptyLabel={defaultModelLabel}
+              placeholder={defaultModelLabel}
+              disabled={!!busy}
+              onChange={(v, picked) => {
+                model = v;
+                modelTyped = !picked;
+                // a pick from the list (an alias or the default) is saved at once; a name typed, or the field cleared, waits
+                // for "Use this model", however it reads on the way
+                if (picked && v !== c.model) void save({ model: v });
+                else void handle.update();
+              }}
+            />
+          )}
         </Field>
+        {(typed || models.length === 0 || modelTyped) && model.trim() !== c.model ? (
+          <Button size="sm" variant="secondary" disabled={!!busy} mix={on('click', () => void save({ model: model.trim() }))}>
+            Use this model
+          </Button>
+        ) : null}
         <Field label="Effort">
           {(id) => (
             <Select
               id={id}
-              value={effort}
-              disabled={efforts.length === 0 && !effort}
-              options={[{ value: '', label: defaultEffortLabel(model) }, ...selectValues([...new Set([...efforts, ...(effort ? [effort] : [])])])]}
-              onChange={(v) => set(() => (effort = v))}
+              value={c.effort}
+              disabled={(efforts.length === 0 && !c.effort) || !!busy}
+              options={[{ value: '', label: defaultEffortLabel(c.model) }, ...selectValues([...new Set([...efforts, ...(c.effort ? [c.effort] : [])])])]}
+              onChange={(v) => void (v !== c.effort && save({ effort: v }))}
             />
           )}
         </Field>
-        <Field label="Permission mode">{(id) => <Select id={id} value={mode} options={modeOptions(adapter, mode)} onChange={(v) => set(() => (mode = v))} />}</Field>
-        <SkipApprovals mode={mode} confirmed={confirmed} who="this chat's agent" onConfirm={(m) => set(() => (confirmed = m))} />
-        <Checkbox label="Let this chat read my other chats" description="A read-only tool to list, search and read your earlier chats." checked={readHistory} onChange={(v) => set(() => (readHistory = v))} />
+        <Field label="Permission mode">
+          {(id) => (
+            <Select
+              id={id}
+              value={pendingMode || c.permissionMode}
+              disabled={!!busy}
+              options={modeOptions(adapter, c.permissionMode)}
+              onChange={(v) => {
+                pendingMode = '';
+                if (v === c.permissionMode) return void handle.update();
+                if (skipsApprovals(v)) {
+                  pendingMode = v;
+                  confirmed = '';
+                  return void handle.update();
+                }
+                void save({ permissionMode: v });
+              }}
+            />
+          )}
+        </Field>
+        {pendingMode ? (
+          <>
+            <SkipApprovals mode={pendingMode} confirmed={confirmed} who="this chat's agent" onConfirm={(m) => ((confirmed = m), void handle.update())} />
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!!busy || needsConfirmation(pendingMode, confirmed)}
+              mix={on('click', async () => {
+                if (await save({ permissionMode: pendingMode })) pendingMode = '';
+                void handle.update();
+              })}
+            >
+              Use this mode
+            </Button>
+          </>
+        ) : null}
+        <Checkbox label="Let this chat read my other chats" description="A read-only tool to list, search and read your earlier chats." checked={c.readHistory} disabled={!!busy} onChange={(v) => void save({ readHistory: v })} />
         <ErrorNote error={error} />
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          <Button size="sm" variant="ghost" mix={[on('click', () => onCancel())]}>
-            Cancel
-          </Button>
-          <Button size="sm" variant="primary" type="submit" disabled={!!busy || needsConfirmation(mode, confirmed)}>
-            {busy === 'settings' ? 'Saving...' : 'Save'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <p mix={savedCss} role="status" data-testid="chat-settings-saved" data-saved={saved ? 'true' : undefined}>
+            {busy === 'settings' ? 'Saving…' : saved ? 'Saved · applies from the next message' : 'Each choice is saved at once and applies from the next message.'}
+          </p>
+          <Button size="sm" variant="ghost" style={{ marginLeft: 'auto' }} mix={[on('click', () => onClose())]}>
+            Done
           </Button>
         </div>
       </form>
@@ -806,41 +1187,82 @@ function ChatSettings(
   };
 }
 
-/** The approval mode popover: the permission mode alone, in words, with the skip-approvals confirmation. */
-function ModeSettings(handle: Handle<{ chat: Chat; adapter: AdapterInfo | undefined; busy: string; error: Error | undefined; onSave: (mode: string) => void; onCancel: () => void }>) {
-  const c = handle.props.chat;
-  let mode = c.permissionMode;
-  let confirmed = skipsApprovals(c.permissionMode) ? c.permissionMode : '';
-  const set = (fn: () => void) => {
-    fn();
+/**
+ * The approval mode popover (D3): the modes as a list, one click each. The modes that skip approvals wait behind "Other…" and
+ * apply only once their confirmation is ticked and "Use this mode" is pressed.
+ */
+function ModeSettings(handle: Handle<{ chat: Chat; adapter: AdapterInfo | undefined; busy: string; error: Error | undefined; onSave: (mode: string) => Promise<boolean> }>) {
+  let other = false;
+  let pending = '';
+  let confirmed = '';
+  const pick = async (mode: string) => {
+    if (await handle.props.onSave(mode)) pending = '';
     void handle.update();
   };
   return () => {
-    const { adapter, busy, error, onSave, onCancel } = handle.props;
-    return (
-      <form
-        style={{ display: 'grid', gap: '12px' }}
-        mix={on('submit', (e) => {
-          e.preventDefault();
-          if (needsConfirmation(mode, confirmed)) return;
-          onSave(mode);
+    const { chat: c, adapter, busy, error } = handle.props;
+    const current = c.permissionMode || 'default';
+    const modes = modeList(adapter, c.permissionMode);
+    const plain = modes.filter((m) => !skipsApprovals(m));
+    const skips = modes.filter((m) => skipsApprovals(m));
+    const showSkips = other || skipsApprovals(c.permissionMode) || !!pending;
+    const item = (m: string) => (
+      <button
+        type="button"
+        key={m}
+        aria-pressed={(pending || current) === m ? 'true' : 'false'}
+        data-mode={m}
+        data-warn={skipsApprovals(m) ? 'true' : undefined}
+        disabled={!!busy}
+        title={m}
+        mix={on('click', () => {
+          if (m === current) {
+            pending = '';
+            return void handle.update();
+          }
+          if (skipsApprovals(m)) {
+            pending = m;
+            confirmed = '';
+            return void handle.update();
+          }
+          pending = '';
+          void pick(m);
         })}
       >
+        <span>{modeWords(m)}</span>
+        {m === current ? (
+          <span class="tick" aria-hidden="true">
+            ✓
+          </span>
+        ) : null}
+      </button>
+    );
+    return (
+      <div style={{ display: 'grid', gap: '10px', width: '280px', maxWidth: 'calc(100vw - 32px)' }} data-testid="chat-mode-list">
         <h2>Approval mode</h2>
-        <Field label="Permission mode" hint={`${modeWords(mode)}. Applies from the next message.`}>
-          {(id) => <Select id={id} value={mode} options={modeOptions(adapter, mode)} onChange={(v) => set(() => (mode = v))} />}
-        </Field>
-        <SkipApprovals mode={mode} confirmed={confirmed} who="this chat's agent" onConfirm={(m) => set(() => (confirmed = m))} />
-        <ErrorNote error={error} />
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          <Button size="sm" variant="ghost" mix={[on('click', () => onCancel())]}>
-            Cancel
-          </Button>
-          <Button size="sm" variant="primary" type="submit" disabled={!!busy || needsConfirmation(mode, confirmed)}>
-            {busy === 'mode' ? 'Saving...' : 'Save'}
-          </Button>
+        <div mix={modeListCss} role="group" aria-label="Permission mode">
+          {plain.map(item)}
+          {skips.length ? (
+            showSkips ? (
+              skips.map(item)
+            ) : (
+              <button type="button" data-testid="chat-mode-other" mix={on('click', () => ((other = true), void handle.update()))}>
+                Other…
+              </button>
+            )
+          ) : null}
         </div>
-      </form>
+        {pending ? (
+          <>
+            <SkipApprovals mode={pending} confirmed={confirmed} who="this chat's agent" onConfirm={(m) => ((confirmed = m), void handle.update())} />
+            <Button size="sm" variant="primary" disabled={!!busy || needsConfirmation(pending, confirmed)} mix={on('click', () => void pick(pending))}>
+              {busy === 'mode' ? 'Saving…' : 'Use this mode'}
+            </Button>
+          </>
+        ) : null}
+        <ErrorNote error={error} />
+        <p mix={hintCss}>Applies from the next message.</p>
+      </div>
     );
   };
 }

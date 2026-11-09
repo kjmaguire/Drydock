@@ -1,6 +1,6 @@
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
-import type { NeedsYouItem, TaskSummary } from '../../api/types.ts';
+import type { NeedsYouItem, PendingRequest, TaskSummary } from '../../api/types.ts';
 import { agoWords, plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 
@@ -14,10 +14,23 @@ export const KIND_LABEL: Record<string, string> = {
   budget: 'Budget',
   task_waiting: 'Task waiting',
   mention: 'Mention',
+  reply: 'Answer',
   join_request: 'Request to join',
   agent: 'Agent',
   connection: 'Agent CLI',
+  integration: 'Connected service',
+  provider: 'Model provider',
+  mcp_sign_in: 'MCP sign-in',
+  adapter_drift: 'Agent CLI output',
+  tool_install: 'Tool install',
+  crash: 'Crash',
+  security_findings: 'Security scan',
+  // a collaborator's change request on GitHub while the review and merge waits (H12)
+  pr_review: 'Changes asked on GitHub',
 };
+
+/** The kinds of what went wrong in the background (lane B batch B6, F14 and H7): each item carries its fix in the Inbox. */
+export const PROBLEM_KINDS = ['integration', 'provider', 'mcp_sign_in', 'adapter_drift', 'tool_install', 'crash', 'security_findings'] as const;
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */
 export function needsTarget(it: NeedsYouItem): string {
@@ -28,9 +41,18 @@ export function needsTarget(it: NeedsYouItem): string {
   // a tool call an agent wants to make: its exact arguments and the Approve button are on the project's Integrations page
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return routes.projectIntegrations.href();
   // decision P130: a mention is read in its room (a task room too), an agent's state on its page, a CLI on the Agents page
-  if (it.kind === 'mention' && it.roomId) return routes.room.href({ id: it.roomId });
+  if ((it.kind === 'mention' || it.kind === 'reply') && it.roomId) return routes.room.href({ id: it.roomId });
   if (it.kind === 'agent' && it.agentId) return routes.agent.href({ id: it.agentId });
   if (it.kind === 'connection') return routes.agents.href({ key: it.connectionKey || it.adapter || undefined });
+  // background problems (B6): a service opens with Reconnect open, a provider on its page in Models, the rest where they are fixed
+  if (it.kind === 'integration') return `${routes.integrations.href({ key: it.subject || undefined })}?reconnect=1`;
+  if (it.kind === 'provider') return routes.models.href({ key: it.subject || undefined });
+  if (it.kind === 'mcp_sign_in') return routes.integrations.href({ key: it.subject ? `server-${it.subject}` : undefined /* serverKey in integrations.ts */ });
+  if (it.kind === 'adapter_drift') return routes.agents.href({ key: it.adapter || it.subject || undefined });
+  if (it.kind === 'tool_install') return routes.security.href();
+  if (it.kind === 'crash') return routes.support.href();
+  // new high findings of a scan a person's rule started (B7, H5): the project's Security page (the Inbox selects the project)
+  if (it.kind === 'security_findings') return routes.security.href();
   if (it.taskId) return routes.task.href({ id: it.taskId });
   if (it.roomId) return routes.room.href({ id: it.roomId });
   // an approval with no task is an outbound write to an integration: its exact text is on the project's Integrations page
@@ -53,6 +75,9 @@ export function needsHint(it: NeedsYouItem): string {
   // the question a blocking gate asks when none of its checks could judge (pipeline.noVerdict, gate "verdict")
   if (it.kind === 'question' && /^No check gave a result for /i.test(it.title))
     return 'No check could judge this work, so nothing says it is fine. Open the task to check again, go on without a result this time, or stop.';
+  // the question a task asks when its sandbox could not start (pipeline.sandboxTrouble, gate "sandbox"; X38)
+  if (it.kind === 'question' && /^The task's sandbox could not start/i.test(it.title))
+    return "The task's sandbox could not start. Try again once it is fixed, confirm a changed sandbox definition, or open the sandbox settings.";
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return "An agent wants to call a tool that is not marked read-only. Open the project's Integrations page to see the exact call and approve or reject it.";
   if (it.kind === 'approval' && /^Permission request: /.test(it.title))
     return "A worker asks to use a tool its rules do not allow, and its turn waits. Open the task to see the exact tool and input; allow it once or refuse.";
@@ -106,9 +131,12 @@ export type NeedsLook =
   | 'budget'
   | 'task'
   | 'mention'
+  | 'reply'
   | 'join'
   | 'agent'
-  | 'connection';
+  | 'connection'
+  | 'problem'
+  | 'changes';
 
 export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
   switch (it.kind) {
@@ -128,12 +156,24 @@ export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
       return 'task';
     case 'mention':
       return 'mention';
+    case 'reply':
+      return 'reply';
     case 'join_request':
       return 'join';
     case 'agent':
       return 'agent';
     case 'connection':
       return 'connection';
+    case 'integration':
+    case 'provider':
+    case 'mcp_sign_in':
+    case 'adapter_drift':
+    case 'tool_install':
+    case 'crash':
+    case 'security_findings':
+      return 'problem';
+    case 'pr_review':
+      return 'changes';
     default:
       return 'approval';
   }
@@ -153,9 +193,12 @@ export const LOOK_WORDS: Record<NeedsLook, string> = {
   budget: 'budget',
   task: 'task waiting',
   mention: 'mention',
+  reply: 'answer to you',
   join: 'request to join',
   agent: 'agent',
   connection: 'agent CLI',
+  problem: 'needs a fix',
+  changes: 'changes asked on GitHub',
 };
 
 /** A task's key, "GOC-41": the project's key and the task's number; empty when either is unknown. */
@@ -211,6 +254,7 @@ export function needsRowTitle(it: NeedsYouItem, summary?: Pick<TaskSummary, 'tit
     const c = it.context;
     return c && c.checksTotal > 0 ? `${task}: ${c.checksPassed} of ${c.checksTotal} checks passed` : `${task}: ready to merge`;
   }
+  if (look === 'changes' && task) return `${task}: changes asked on GitHub`;
   if (look === 'approval' && it.title.startsWith(PERMISSION_PREFIX)) return `${it.agentName || 'An agent'} asks to use ${it.title.slice(PERMISSION_PREFIX.length)}`;
   return it.title;
 }
@@ -231,11 +275,23 @@ export function needsSubtitle(it: NeedsYouItem, projectName: string | undefined,
 
 /**
  * Whether an item can be marked done (needsyou.ack): a failed check, a watchdog pause, a question in a room, a budget's warning or
- * limit (it comes back if the budget fires again after a change), a mention, an agent that failed or needs attention (P130). A
+ * limit (it comes back if the budget fires again after a change), a mention, an agent that failed or needs attention (P130), a
+ * background problem (B6: a service's or a provider's comes back the next day while it lasts). A
  * request (a budget pause, a request to join among them) is answered instead; a task waiting or a CLI not ready goes when it
  * changes.
  */
-export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean => /^(question|check|watchdog|budget|mention|agent):/.test(it.key);
+export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean =>
+  /^(question|check|watchdog|budget|mention|reply|agent|integration|provider|mcp-sign-in|adapter-drift|tool-install|crash|security-findings):/.test(it.key);
+
+/**
+ * The running tasks the Needs you tab lists under its items (decision P144): those without an item of their own there. A task
+ * waiting for the person's approval is still "running" for the core, so it was listed twice on one page. The Running tab and
+ * its count keep every running task.
+ */
+export function runningBesideNeeds<T extends Pick<TaskSummary, 'taskId'>>(running: readonly T[], needs: readonly Pick<NeedsYouItem, 'taskId'>[]): T[] {
+  const named = new Set(needs.map((n) => n.taskId).filter((id): id is string => !!id));
+  return running.filter((r) => !named.has(r.taskId));
+}
 
 /** The agent's latest step as a row says it after the title: "editing limiter.go". */
 export const doingWords = (doing: string | undefined): string => (doing ? doing.charAt(0).toLowerCase() + doing.slice(1) : '');
@@ -264,8 +320,25 @@ export type Answer =
   | { kind: 'spec'; runId: string }
   /** A review and merge: Merge (asking for changes, with the feedback, is on the task's page). */
   | { kind: 'merge'; runId: string }
-  /** Decided on its page (a budget pause, a CI gate, a question to answer, an outbound write...), or decided already. */
+  /** A review and merge a collaborator asked changes on, on GitHub, while it waited (H12): send it back with their words. */
+  | { kind: 'changes'; runId: string; feedback: string }
+  /** A gate the task page answers with a panel of its own (CI, merge, verdict, limit, watchdog, budget, repository configuration): the same panel here (C3). */
+  | { kind: 'gate'; runId: string }
+  /** A chat's CLI waiting to be allowed a tool call: Allow once, Allow in this chat, Deny (C3). */
+  | { kind: 'chat'; chatId: string; askId: string }
+  /** Decided on its page (a question to answer, an outbound write...), or decided already. */
   | { kind: 'open' };
+
+/** A workflow request as approval.get describes it, in the shape the task page's panels read (its id, kind, title, phase and payload). */
+export function pendingOf(d: Pick<ApprovalDetail, 'id' | 'kind' | 'title' | 'phase' | 'payload'>): PendingRequest {
+  return { id: d.id, nodeId: '', step: 0, spec: { kind: d.kind, title: d.title, payload: d.payload, phase: d.phase } as PendingRequest['spec'] };
+}
+
+/** The waiting chat request an inbox item is ("chat-ask:<id>" in a chat), or undefined. */
+export function chatAskOf(it: Pick<NeedsYouItem, 'key' | 'chatId'>): { chatId: string; askId: string } | undefined {
+  const askId = it.key.startsWith('chat-ask:') ? it.key.slice('chat-ask:'.length) : '';
+  return askId && it.chatId ? { chatId: it.chatId, askId } : undefined;
+}
 
 /** Whether a request's payload is one a special panel of the task's page answers (a budget pause, a gate, a limit, a watchdog pause). */
 function special(payload: unknown): boolean {
@@ -274,12 +347,58 @@ function special(payload: unknown): boolean {
   return (typeof v.gate === 'string' && v.gate !== '') || v.phase === 'limit' || (typeof v.signal === 'string' && v.signal !== '' && typeof v.stage === 'number');
 }
 
-export function answerOf(d: ApprovalDetail): Answer {
+/**
+ * How the pane answers the request. `panel` says whether the task page has a panel for a special request (review-panel.tsx
+ * hasGatePanel); a special request without one is decided on its page.
+ */
+export function answerOf(d: ApprovalDetail, panel: (p: PendingRequest) => boolean = () => false): Answer {
   if (d.status !== 'REQUESTED' || !d.runId) return { kind: 'open' };
   if (d.gate === 'permission_prompt') return { kind: 'permission', runId: d.runId, forTask: d.approveForTask, note: d.approveForTask ? undefined : d.approveForTaskNote };
-  if (special(d.payload)) return { kind: 'open' };
+  if (special(d.payload)) return panel(pendingOf(d)) ? { kind: 'gate', runId: d.runId } : { kind: 'open' };
   if (d.kind === 'review' && d.phase === 'spec') return { kind: 'spec', runId: d.runId };
+  if (d.kind === 'review' && d.phase === 'merge' && d.prReview?.feedback) return { kind: 'changes', runId: d.runId, feedback: d.prReview.feedback };
   if (d.kind === 'review' && d.phase === 'merge') return { kind: 'merge', runId: d.runId };
   if (d.kind === 'approval') return { kind: 'approval', runId: d.runId };
   return { kind: 'open' };
+}
+
+/**
+ * The Inbox's address with the selected row in it (?item=<row key>), so Reload and Back come back to it. The tab is not in it:
+ * the tab is remembered (drydock.inbox), and a ?tab= left from a link would bring back the tab the person left.
+ */
+export function inboxAddress(path: string, search: string, item: string | undefined): string {
+  const q = new URLSearchParams(search);
+  q.delete('tab');
+  if (item) q.set('item', item);
+  else q.delete('item');
+  const s = q.toString();
+  return s ? `${path}?${s}` : path;
+}
+
+/** The tab an ?item= row key is on when the address names no tab: undefined when the tab the person left can show it. */
+export function tabOfItem(item: string | undefined, current: 'needs' | 'running' | 'done' | 'mine'): 'needs' | 'running' | 'done' | undefined {
+  if (!item) return undefined;
+  if (item.startsWith('needs:')) return 'needs';
+  if (item.startsWith('done:')) return 'done';
+  if (item.startsWith('task:') || item.startsWith('scan:')) return current === 'needs' || current === 'running' ? undefined : 'running';
+  return undefined;
+}
+
+/**
+ * What the A and D keys do on the selected item, in the words of its buttons (critique 2026-11-08: the footer said "A approve,
+ * D deny" on a merge, whose button says Merge and which D does not answer). A key that does nothing there is left out.
+ */
+export function answerKeys(look: NeedsLook | undefined): { a?: string; d?: string } {
+  switch (look) {
+    case 'merge':
+      return { a: 'merge' };
+    case 'spec':
+      return { a: 'accept spec' };
+    case 'approval':
+      return { a: 'approve', d: 'deny' };
+    case 'chat':
+      return { a: 'allow', d: 'deny' };
+    default:
+      return {};
+  }
 }

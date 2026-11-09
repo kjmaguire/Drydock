@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/license"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -115,6 +116,22 @@ func (c *Core) TestSandboxDefinition(ctx context.Context, projectID string) (san
 	return cfg, err
 }
 
+// TestStartTaskSandbox starts a task's sandbox in worktree, as a worker turn does (the pipeline's Prepare).
+func (c *Core) TestStartTaskSandbox(ctx context.Context, taskID, worktree string) error {
+	t, err := c.Tasks.Get(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	t.Worktree = worktree
+	_, err = sandboxHook{c}.Prepare(ctx, t)
+	return err
+}
+
+// TestRemoveTaskSandbox removes a task's sandbox, as the end of the task does.
+func (c *Core) TestRemoveTaskSandbox(ctx context.Context, taskID string) error {
+	return c.sandboxes().Remove(ctx, taskID)
+}
+
 // TestMCPApprove asks the MCP servers' approval service about a call, as the gateway does.
 func (c *Core) TestMCPApprove(ctx context.Context, req mcp.ApprovalRequest) (bool, error) {
 	return c.mcpServerSvc().Approve(ctx, req)
@@ -144,3 +161,43 @@ func SetLocalServeProbedForTests(f func()) func() {
 	localServeProbed.Store(&f)
 	return func() { localServeProbed.Store(nil) }
 }
+
+// TestRoomTurnRunning stores (or removes) a running room turn of the project, as an agent answering in its channel leaves.
+func (c *Core) TestRoomTurnRunning(projectID string, running bool) error {
+	if !running {
+		_, err := c.DB.Writer().Exec(`DELETE FROM room_turns WHERE id='rturn_test'`)
+		return err
+	}
+	_, err := c.DB.Writer().Exec(`INSERT INTO room_turns(id,room_id,project_id,trigger_id,agent_id,status,started_at) VALUES('rturn_test','room_test',?,'msg_test','agent_test','running',1)`, projectID)
+	return err
+}
+
+// TestRunScheduledStandups runs the stand-up schedule's check at now; run nil starts the real team lead's scheduled stand-up.
+func (c *Core) TestRunScheduledStandups(ctx context.Context, now time.Time, run func(ctx context.Context, projectID string) error) {
+	if run == nil {
+		run = func(ctx context.Context, projectID string) error {
+			_, err := c.lead.Load().ScheduledStandup(ctx, projectID)
+			return err
+		}
+	}
+	c.runScheduledStandups(ctx, now, run)
+}
+
+// The background check of the agent CLIs (ext_clicheck.go) waits an hour after start in this test binary, so it never runs in
+// the middle of another test; TestDrydockChecksTheCLIsItself sets it short with SetCLICheckFirst before opening its core.
+func init() { cliCheckFirst = time.Hour }
+
+// SetCLICheckFirst sets how long the CLI check waits after start for the cores opened next; the returned func restores it.
+func SetCLICheckFirst(d time.Duration) func() {
+	old := cliCheckFirst
+	cliCheckFirst = d
+	return func() { cliCheckFirst = old }
+}
+
+// TestPublish publishes an event as the core does (a test standing in for what a sign-in or the runtime would publish).
+func (c *Core) TestPublish(typ string, data []byte) {
+	_, _ = c.Bus.Publish(context.Background(), events.Event{Type: typ, Data: data})
+}
+
+// ConnectionsInUse is the Connection keys CheckCLIs checks once agents or chats exist (connectionsInUse).
+func ConnectionsInUse(c *Core, ctx context.Context) []string { return c.connectionsInUse(ctx) }

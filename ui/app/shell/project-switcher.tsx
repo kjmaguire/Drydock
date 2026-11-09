@@ -6,11 +6,13 @@
 import { css, navigate, type Handle } from 'remix/component';
 import { ChevronsUpDown, FolderClosed, House, Plus, Settings } from 'lucide';
 import { routes } from '../routes.ts';
+import { newProjectHref } from './new.ts';
 import { services, watch } from '../state/services.tsx';
 import { initials } from '../ui/data.tsx';
 import { Icon } from '../ui/icon.tsx';
 import { Menu, type MenuItem } from '../ui/menu.tsx';
 import { t } from '../ui/tokens.ts';
+import { projectLabels } from '../lib/project-label.ts';
 
 const triggerCss = css({
   display: 'flex',
@@ -90,19 +92,20 @@ export function ProjectSwitcher(handle: Handle<{ workspace?: boolean; onNavigate
       s.workspace.selectProject(id);
       go(routes.home.href());
     } else if (name === 'home') go(routes.workspace.href());
-    else if (name === 'new') go(routes.projectNew.href());
+    else if (name === 'new') go(newProjectHref());
     else if (name === 'settings') go(routes.settings.href());
   };
 
   return () => {
     const { workspace } = handle.props;
     const current = s.workspace.project;
+    const names = projectLabels(s.workspace.projectList);
     const items: MenuItem[] = [
       { name: 'home', label: 'Home', type: 'radio', checked: !!workspace, value: 'home', lead: <HomeMark size={18} /> },
       ...s.workspace.projectList.map(
         (p): MenuItem => ({
           name: `project:${p.id}`,
-          label: p.name,
+          label: names.get(p.id)?.label ?? p.name,
           type: 'radio',
           checked: !workspace && p.id === current?.id,
           value: p.id,

@@ -38,11 +38,14 @@ type Filter struct {
 	RunID     string
 	TaskID    string
 	AgentID   string
+	// WithWorkspace makes ProjectID also match the events that belong to no project (the workspace's own), as the Activity page's
+	// "This project only" shows them (X53).
+	WithWorkspace bool
 }
 
 // Match reports whether e passes the filter.
 func (f Filter) Match(e Event) bool {
-	if f.ProjectID != "" && e.ProjectID != f.ProjectID {
+	if f.ProjectID != "" && e.ProjectID != f.ProjectID && (!f.WithWorkspace || e.ProjectID != "") {
 		return false
 	}
 	if f.RunID != "" && e.RunID != f.RunID {
@@ -359,6 +362,20 @@ func (b *SQLBus) Subscribe(f Filter) (<-chan Event, func()) {
 
 func (b *SQLBus) Replay(ctx context.Context, after uint64, f Filter, limit int) ([]Event, error) {
 	q, args := replayQuery(after, f, limit)
+	return b.replay(ctx, q, args, false)
+}
+
+// ReplayBefore returns the newest persisted events with seq < before matching f, at most limit (0 = 1000), oldest first: the page
+// of history just older than what a reader holds, so a log can be read backwards past what the stream started with (X53).
+func (b *SQLBus) ReplayBefore(ctx context.Context, before uint64, f Filter, limit int) ([]Event, error) {
+	if before == 0 {
+		return nil, nil
+	}
+	q, args := replayRange(0, before, f, limit)
+	return b.replay(ctx, q, args, true)
+}
+
+func (b *SQLBus) replay(ctx context.Context, q string, args []any, descending bool) ([]Event, error) {
 	rows, err := b.db.Reader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -376,17 +393,38 @@ func (b *SQLBus) Replay(ctx context.Context, after uint64, f Filter, limit int) 
 		e.Data = json.RawMessage(data)
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if descending {
+		for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+			out[i], out[j] = out[j], out[i]
+		}
+	}
+	return out, nil
 }
 
 // replayQuery is the statement Replay runs and its arguments.
 func replayQuery(after uint64, f Filter, limit int) (string, []any) {
+	return replayRange(after, 0, f, limit)
+}
+
+// replayRange is the statement for the events after `after`, oldest first, or, when before is set, the newest ones before it
+// (newest first: ReplayBefore turns them round).
+func replayRange(after, before uint64, f Filter, limit int) (string, []any) {
 	if limit <= 0 {
 		limit = 1000
 	}
 	q := `SELECT seq,ts,type,project_id,run_id,task_id,agent_id,data FROM events WHERE seq > ?`
 	args := []any{after}
-	if f.ProjectID != "" {
+	if before > 0 {
+		q += ` AND seq < ?`
+		args = append(args, before)
+	}
+	if f.ProjectID != "" && f.WithWorkspace {
+		q += ` AND project_id IN (?, '')`
+		args = append(args, f.ProjectID)
+	} else if f.ProjectID != "" {
 		q += ` AND project_id = ?`
 		args = append(args, f.ProjectID)
 	}
@@ -418,7 +456,11 @@ func replayQuery(after uint64, f Filter, limit int) (string, []any) {
 		}
 		q += `)`
 	}
-	q += ` ORDER BY seq LIMIT ?`
+	if before > 0 {
+		q += ` ORDER BY seq DESC LIMIT ?`
+	} else {
+		q += ` ORDER BY seq LIMIT ?`
+	}
 	args = append(args, limit)
 	return q, args
 }

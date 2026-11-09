@@ -4,13 +4,15 @@
 
 import { css, on, ref, type Handle } from 'remix/component';
 import { BookOpen, Download, ExternalLink, FilePlus, Library, MessageSquareText, RefreshCw, Search, ShieldAlert, Trash2, Upload } from 'lucide';
-import type { Pack, PackAttachment, PackCitation, PackConsult, PackFile, PackSearchResult, PackUpload, QuarantinedChunk } from '../../api/extTypes.ts';
+import type { Pack, PackAttachment, PackCitation, PackConsult, PackFile, PackSearchResult, PackTemplate, PackUpload, QuarantinedChunk } from '../../api/extTypes.ts';
 import { formatCost, formatDateTime, plural } from '../../lib/format.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Checkbox, Field, errorAttrs, formActions } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer, stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
@@ -18,6 +20,8 @@ import { t } from '../../ui/tokens.ts';
 import { visible } from '../../lib/visible.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import {
+  attachChoices,
+  attachTarget,
   attachedText,
   checkPackFiles,
   fileSize,
@@ -26,8 +30,10 @@ import {
   PACK_FILE_ACCEPT,
   packIdFromTitle,
   packIds,
+  refreshLine,
   refreshText,
   searchHeadline,
+  templatesToInstall,
   validPackId,
   zeroTime,
 } from './packs.ts';
@@ -274,7 +280,7 @@ function QuarantineList(handle: Handle<{ packId: string; onChanged: () => void }
     return (
       <div mix={quarCss} data-testid="quarantine">
         <p mix={faint}>These passages looked like instructions to an agent and were kept out of search. Only you can release one.</p>
-        <ErrorNote error={q.error ?? act.error} />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} />
         {q.data && rows.length === 0 ? <p mix={faint}>Nothing is quarantined.</p> : null}
         {rows.map((c) => (
           <div key={c.chunkId} mix={chunkCss} data-testid="quarantined-chunk">
@@ -376,12 +382,14 @@ function PackCard(
     p: Pack;
     projectId: string;
     attached: PackAttachment[];
+    /** The project's crew: the Attach choice lists its roles and agents. */
+    crew: readonly { id: string; name: string; role: string }[];
     onChanged: () => void;
   }>,
 ) {
   const s = services(handle);
   const act = action(handle);
-  let role = '';
+  let target = '';
   let showQ = false;
   let confirm = false;
   let refreshed: string | undefined;
@@ -390,7 +398,7 @@ function PackCard(
     void handle.update();
   };
   return () => {
-    const { p, projectId, attached, onChanged } = handle.props;
+    const { p, projectId, attached, crew, onChanged } = handle.props;
     const mine = attached.filter((a) => a.packId === p.id);
     const busy = act.busy !== '';
     return (
@@ -405,18 +413,20 @@ function PackCard(
           <Badge tone={p.visibility === 'private' ? 'ok' : 'warn'}>{p.visibility}</Badge>
           <Badge tone={p.status === 'ready' ? 'ok' : 'muted'}>{p.status}</Badge>
           <span mix={spacer} />
-          <Button
-            size="sm"
-            icon={RefreshCw}
-            disabled={busy}
-            mix={on('click', async () => {
-              const r = await act.run('refresh', () => s.client.packRefresh(p.id, true));
-              if (r) set(() => (refreshed = refreshText(r)));
-              onChanged();
-            })}
-          >
-            {act.busy === 'refresh' ? 'Refreshing...' : 'Refresh now'}
-          </Button>
+          {p.kind === 'live' ? null : (
+            <Button
+              size="sm"
+              icon={RefreshCw}
+              disabled={busy}
+              mix={on('click', async () => {
+                const r = await act.run('refresh', () => s.client.packRefresh(p.id, true));
+                if (r) set(() => (refreshed = refreshText(r)));
+                onChanged();
+              })}
+            >
+              {act.busy === 'refresh' ? 'Refreshing...' : 'Refresh now'}
+            </Button>
+          )}
         </header>
         <dl mix={statsCss}>
           <div>
@@ -434,8 +444,8 @@ function PackCard(
             <dd>{freshnessText(p)}</dd>
           </div>
           <div>
-            <dt>Last refresh</dt>
-            <dd>{zeroTime(p.lastSuccessAt) ? 'never' : formatDateTime(p.lastSuccessAt)}</dd>
+            <dt>Refresh</dt>
+            <dd data-testid="pack-refresh-line">{refreshLine(p, formatDateTime)}</dd>
           </div>
           {p.manifest?.license?.content ? (
             <div>
@@ -456,12 +466,13 @@ function PackCard(
           <span mix={muted}>Attached to this project:</span> {attachedText(mine)}
         </p>
         <div mix={actionsCss}>
-          <input aria-label={`Role for ${p.id}`} value={role} placeholder="all roles" mix={on('input', (e) => set(() => (role = e.currentTarget.value)))} />
+          <Select label={`Attach ${p.id} for`} size="sm" value={target} options={attachChoices(crew)} onChange={(v) => set(() => (target = v))} />
           <Button
             size="sm"
             disabled={busy}
             mix={on('click', async () => {
-              await act.run('attach', () => s.client.packAttach(projectId, p.id, '', role.trim()));
+              const to = attachTarget(target);
+              await act.run('attach', () => s.client.packAttach(projectId, p.id, to.agentId, to.role));
               onChanged();
             })}
           >
@@ -566,7 +577,7 @@ function PackFiles(handle: Handle<{ packId: string; onChanged: () => void }>) {
     const busy = act.busy !== '';
     return (
       <div mix={filesCss} data-testid="pack-files">
-        <ErrorNote error={q.error ?? act.error} />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} />
         {q.data && files.length === 0 ? <p mix={faint}>This pack has no files.</p> : null}
         <ul>
           {files.map((f) => (
@@ -752,12 +763,38 @@ const choiceCss = css({
   '& label': { margin: '0' },
 });
 const yamlCss = css({ fontFamily: t.mono, fontSize: t.textSm });
+const tplListCss = css({
+  display: 'grid',
+  gap: t.s2,
+  margin: `0 0 ${t.s3}`,
+  padding: '0',
+  listStyle: 'none',
+  '& li': { display: 'flex', alignItems: 'center', gap: t.s3, padding: '10px 14px', border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface },
+  '& .what': { flex: '1', minWidth: '0', display: 'grid' },
+  '& small': { color: t.textMuted, fontSize: t.textSm },
+});
 
 export function PacksScreen(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
+  watch(handle, s.project);
   const pid = () => s.workspace.projectId;
+  // the ready manifests the core ships; a read that fails (an older core) leaves only the pasted manifest
+  const templates = query(handle, { load: () => s.client.packTemplates().catch(() => [] as PackTemplate[]) });
+  // Install: the person's one click installs the ready manifest, fetches its text (Refresh now) and attaches it to this project
+  // for the roles it names, which they can change on its card
+  const installTemplate = async (tpl: PackTemplate) => {
+    const projectId = pid();
+    await act.run(`tpl-${tpl.id}`, async () => {
+      await s.client.packInstall(tpl.yaml);
+      if (projectId) await s.client.packAttachDefaults(projectId, tpl.id);
+      // a live pack is asked live and stores nothing: the core refuses to refresh it (packs.ErrNotIndexed), so it is not fetched
+      if (tpl.manifest?.kind !== 'live') await s.client.packRefresh(tpl.id, true);
+      return true;
+    });
+    reload();
+  };
   const packs = query(handle, {
     load: () => s.client.packList(),
     when: (e) => e.type.startsWith('pack.'),
@@ -790,19 +827,19 @@ export function PacksScreen(handle: Handle) {
     const projectId = pid() ?? '';
     return (
       <Page title="Expert packs" icon={BookOpen} subtitle={packs.data ? `${list.length} installed` : undefined} guide="skills">
-        <ErrorNote error={packs.error ?? act.error} what="Packs" />
+        <ErrorNote error={packs.error ?? act.error} retry={retryFor(packs, act)} what="Packs" />
         {packs.loading && !packs.data ? <Loading /> : null}
         {packs.data && list.length === 0 ? (
           <div mix={card}>
             <Empty title="No packs installed." icon={BookOpen}>
-              <p>Install a pack from its manifest below, then refresh it to fetch the text.</p>
+              <p>Install a ready pack below, or make one from your files.</p>
             </Empty>
           </div>
         ) : null}
         {list.length > 0 ? (
           <div mix={stack}>
             {list.map((p) => (
-              <PackCard key={p.id} p={p} projectId={projectId} attached={attachments.data ?? []} onChanged={reload} />
+              <PackCard key={p.id} p={p} projectId={projectId} attached={attachments.data ?? []} crew={s.project.agentList} onChanged={reload} />
             ))}
           </div>
         ) : null}
@@ -877,10 +914,27 @@ export function PacksScreen(handle: Handle) {
           <FilesPackForm onMade={reload} />
         </Section>
 
-        <Section
-          title="Install a pack"
-          description="Paste a pack manifest (YAML). A source is a folder, web pages, an llms.txt or sitemap, or a repository's docs (type git_docs: url, ref, path). Refresh fetches it."
-        >
+        <Section title="Install a pack" description="A ready pack is installed, fetched (unless it is asked live) and attached to the roles it is for in this project. Change who gets it on its card.">
+          {templatesToInstall(templates.data ?? [], list).length > 0 ? (
+            <ul mix={tplListCss} aria-label="Ready packs" data-testid="pack-templates">
+              {templatesToInstall(templates.data ?? [], list).map((tpl) => (
+                <li key={tpl.id} data-testid="pack-template" data-pack={tpl.id}>
+                  <Icon icon={Library} size={15} />
+                  <span class="what">
+                    <b>{tpl.manifest?.title || tpl.id}</b>
+                    <small>
+                      {tpl.manifest?.kind ?? ''}
+                      {tpl.manifest?.attach?.roles?.length ? ` · for ${tpl.manifest.attach.roles.join(', ')}` : ' · for every role'}
+                    </small>
+                  </span>
+                  <Button size="sm" variant="primary" icon={Download} disabled={busy} data-testid="pack-template-install" mix={on('click', () => void installTemplate(tpl))}>
+                    {act.busy === `tpl-${tpl.id}` ? 'Installing...' : 'Install'}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <Disclosure summary="Paste a manifest..." testId="pack-paste">
           <form
             mix={[
               card,
@@ -914,6 +968,7 @@ export function PacksScreen(handle: Handle) {
               </Button>
             </div>
           </form>
+          </Disclosure>
         </Section>
       </Page>
     );

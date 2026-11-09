@@ -6,7 +6,7 @@
 import { css, on, ref, type Handle } from 'remix/component';
 import { Variable } from 'lucide';
 import type { AgentEnv } from '../../api/libraryClient.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -69,7 +69,9 @@ export function AgentEnvSection(handle: Handle) {
           </>
         }
       >
-        <ErrorNote error={q.error ?? act.error} what="Environment" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Environment" />
+        {/* the box is a step further (decision P144): closed while no extra variable is passed, open once one is */}
+        <Disclosure summary="Pass more variables to agents" open={(q.data?.pass.length ?? 0) > 0} testId="agent-env-more">
         <div mix={panelPad}>
           <form mix={[formCss, ref((n: Element) => (form = n instanceof HTMLElement ? n : undefined)), on('submit', (e) => (e.preventDefault(), void save()))]}>
             <Field label="Also pass these variables to agents (names only, one per line; a value is refused)" error={error}>
@@ -97,6 +99,7 @@ export function AgentEnvSection(handle: Handle) {
             </div>
           </form>
         </div>
+        </Disclosure>
         <Disclosure summary="What every agent keeps">
           <p mix={faint}>
             {(q.data?.kept ?? []).join(', ')}; and every variable starting with {(q.data?.prefixes ?? []).join(' or ')} for Claude Code.

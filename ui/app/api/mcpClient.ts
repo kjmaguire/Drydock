@@ -145,6 +145,8 @@ export interface McpServerInput {
   oauth?: boolean;
   guard?: boolean;
   readOnlyTools?: string[];
+  /** List the tools right after saving: honoured for a web server at an https address without OAuth (F12). */
+  discover?: boolean;
 }
 
 export interface McpApproval {

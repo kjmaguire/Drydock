@@ -3,9 +3,10 @@
 // and never turns into an action. The only actions are buttons the human presses.
 
 import { css, on, type Handle } from 'remix/component';
-import { CircleCheck, CircleDashed, CircleX, ExternalLink, FileCode, GitBranch, MessageSquare } from 'lucide';
+import { CircleCheck, CircleDashed, CircleX, ExternalLink, FileCode, GitBranch, MessageSquare, Play } from 'lucide';
 import type { GitHubCIState, GitHubIssue, GitHubReview, PRState } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { routes } from '../../routes.ts';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, muted } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -196,14 +197,18 @@ const issueCss = css({
   '& header': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2 },
   '& header strong': { overflowWrap: 'anywhere' },
   '& header .num': { color: t.textFaint, fontWeight: '500' },
-  '& header button': { marginLeft: 'auto' },
+  '& header .actions, & header .imported': { marginLeft: 'auto', display: 'inline-flex', gap: t.s2, fontSize: t.textSm },
   '& summary': { cursor: 'pointer', color: t.textMuted, fontSize: t.textSm },
   '& details .md': { marginTop: t.s2, padding: `${t.s2} ${t.s3}`, borderRadius: t.rMd, background: t.bgApp, border: `1px dashed ${t.border}` },
 });
 
-export function IssueItem(handle: Handle<{ issue: GitHubIssue; onImport: () => void; busy: boolean }>) {
+/**
+ * One open issue: its text as inert data, and Import and start (with the crew's pair, when there is one: `onImportStart`) or
+ * Import as task (a backlog task). An issue already imported links its task instead (`imported`).
+ */
+export function IssueItem(handle: Handle<{ issue: GitHubIssue; onImport: () => void; onImportStart?: () => void; imported?: { id: string; seq: number }; busy: boolean }>) {
   return () => {
-    const { issue, onImport, busy } = handle.props;
+    const { issue, onImport, onImportStart, imported, busy } = handle.props;
     const href = safeHref(issue.html_url);
     return (
       <li mix={issueCss} data-testid="gh-issue" data-number={String(issue.number)}>
@@ -219,9 +224,22 @@ export function IssueItem(handle: Handle<{ issue: GitHubIssue; onImport: () => v
             untrusted
           </Badge>
           {href ? <External href={href}>GitHub</External> : null}
-          <Button size="sm" icon={FileCode} disabled={busy} aria-label={`Import issue #${issue.number} as a task`} mix={on('click', () => onImport())}>
-            Import as task
-          </Button>
+          {imported ? (
+            <a class="imported" href={routes.task.href({ id: imported.id })} data-testid="gh-issue-task">
+              Imported as task #{imported.seq}
+            </a>
+          ) : (
+            <span class="actions">
+              {onImportStart ? (
+                <Button size="sm" variant="primary" icon={Play} disabled={busy} aria-label={`Import issue #${issue.number} and start it`} mix={on('click', () => onImportStart())}>
+                  Import and start
+                </Button>
+              ) : null}
+              <Button size="sm" icon={FileCode} disabled={busy} aria-label={`Import issue #${issue.number} as a task`} mix={on('click', () => onImport())}>
+                Import as task
+              </Button>
+            </span>
+          )}
         </header>
         <details>
           <summary>Issue text</summary>

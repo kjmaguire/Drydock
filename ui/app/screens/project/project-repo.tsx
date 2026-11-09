@@ -12,6 +12,7 @@ import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
 import { FolderField } from './folder-field.tsx';
+import { CloneProgress } from './clone-progress.tsx';
 import { RepoPicker } from './repo-picker.tsx';
 import { SettingsGroup } from './settings-kit.tsx';
 import { cloneTarget, currentCheck, folderProblem } from './wizard.ts';
@@ -122,11 +123,12 @@ export function AttachRepository(handle: Handle<{ project: Project }>) {
               onSelect={(r) => ((repo = r), void handle.update())}
               onCloneDir={(d) => ((cloneDir = d), void handle.update())}
               unavailableHint="Attach a local folder instead."
+              onUseFolder={(p) => ((kind = 'local'), (path = p), (check = undefined), (initRepo = false), void handle.update())}
             />
           )}
           <div mix={endCss}>
             <span class="hint" data-testid="attach-hint">
-              {done?.made === 'clone'
+              {act.busy && cloning && repo ? <CloneProgress repo={repo.fullName} /> : done?.made === 'clone'
                 ? `The repository was already cloned to ${done.path}; attaching it again.`
                 : done?.made === 'init'
                   ? `The Git repository was already made in ${done.path}; attaching it again.`

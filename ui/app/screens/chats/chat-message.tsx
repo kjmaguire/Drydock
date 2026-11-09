@@ -40,6 +40,7 @@ const bodyCss = css({
 const quietCss = css({ display: 'grid', gridTemplateColumns: '20px minmax(0, 1fr)', alignItems: 'start', gap: '6px' });
 const quietIcon = css({ display: 'grid', placeItems: 'center', height: '20px', color: t.textFaint });
 const quietBody = css({ color: t.textMuted, fontSize: t.textSm, lineHeight: '20px', overflowWrap: 'anywhere' });
+const nextCss = css({ gridColumn: '2', marginTop: '4px' });
 const errorBody = css({ color: t.danger, fontSize: t.textSm, lineHeight: '20px', overflowWrap: 'anywhere' });
 // the person's own message: a bubble on the right (the accent's soft tint over the surface), corner cut where it points
 const mineContent = css({ justifyItems: 'end' });
@@ -120,11 +121,23 @@ export interface ChatMessageProps {
   onRetry?: () => void;
   /** Allow the rule for the chat, then run the turn again (UI review P1-3): one step instead of two. */
   onAllowAndRetry?: (rule: string) => void;
+  /** The rules every new chat starts with (D9): a refusal whose rule is in here says so. */
+  defaultRules?: readonly string[];
+  /** Allow the rule for this chat and add it to every new chat's (D9), the person's own click. */
+  onAllowEverywhere?: (rule: string) => void;
   onFork?: (seq: number) => void;
   /** The person's own message can be changed and sent again: it and everything after it are replaced (P89). */
   onEdit?: (seq: number, text: string) => Promise<boolean>;
   /** The newest answer can be asked for again (its question sent again unchanged). */
   onRegenerate?: () => void;
+  /** The error a failed turn ended with offers Try again: the person's message sent again (D4). */
+  onTryAgain?: () => void;
+  /** The note of a turn the person stopped offers Continue (D4). */
+  onContinue?: () => void;
+  /** How long the agent thought before this row (0: not known), for its reasoning's line "Thought for 6 s" (P139). */
+  thoughtMs?: number;
+  /** A tool call's card is drawn open (a failed call in a burst, P139). */
+  toolOpen?: boolean;
 }
 
 const editCss = css({
@@ -169,11 +182,12 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
     void handle.update();
   };
   return () => {
-    const { m, head, adapter, allowedTools, latest, running, busy, ask, onAllow, onRetry, onAllowAndRetry, onFork, onEdit, onRegenerate } = handle.props;
+    const { m, head, adapter, allowedTools, latest, running, busy, ask, onAllow, onRetry, onAllowAndRetry, onFork, onEdit, onRegenerate, onTryAgain, onContinue, thoughtMs, toolOpen } = handle.props;
     // the canned "continue" Drydock sends after an allow is a note of what happened, not words the person typed (P1-2)
     const retry = isRetryMessage(m);
     const role = retry ? 'system' : m.role;
     const quiet = role === 'system' || role === 'error';
+    const next = quietNext(role, onTryAgain, onContinue);
     const who = role === 'user' ? 'You' : adapterLabel(adapter);
     const forkable = !!onFork && (role === 'user' || role === 'assistant') && !retry;
     const mine = role === 'user';
@@ -198,14 +212,33 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
             <div mix={role === 'error' ? errorBody : quietBody} data-retry={retry ? 'true' : undefined}>
               {retry ? 'You allowed the tool and asked to continue.' : m.body}
             </div>
+            {next ? (
+              <div mix={nextCss}>
+                <Button size="sm" variant="secondary" icon={next.label === 'Try again' ? RotateCcw : undefined} disabled={running || !!busy} data-testid="chat-next-step" mix={on('click', () => next.run())}>
+                  {next.label}
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div mix={[contentCss, mine ? mineContent : undefined]}>
-            {m.thinking && (role === 'tool' || role === 'assistant') ? <ThinkingFold text={m.thinking} /> : null}
+            {m.thinking && (role === 'tool' || role === 'assistant') ? <ThinkingFold text={m.thinking} ms={thoughtMs} /> : null}
             {role === 'tool' ? (
-              <ToolCard m={m} summary={summaryOf(m)} running={running && latest} />
+              <ToolCard m={m} summary={summaryOf(m)} running={running && latest} open={toolOpen} />
             ) : role === 'denied' ? (
-              <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} onAllowAndRetry={onAllowAndRetry} />
+              <DeniedCallout
+                m={m}
+                adapter={adapter}
+                allowedTools={allowedTools}
+                latest={latest}
+                running={running}
+                busy={busy}
+                onAllow={onAllow}
+                onRetry={onRetry}
+                onAllowAndRetry={onAllowAndRetry}
+                defaultRules={handle.props.defaultRules}
+                onAllowEverywhere={handle.props.onAllowEverywhere}
+              />
             ) : mine && editing ? (
               <div mix={editCss} data-testid="chat-edit">
                 <textarea
@@ -278,6 +311,13 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
   };
 }
 
+/** The one next step a quiet row offers: Try again on a failed turn's error, Continue on a stop's note. */
+function quietNext(role: string, onTryAgain?: () => void, onContinue?: () => void): { label: string; run: () => void } | undefined {
+  if (role === 'error' && onTryAgain) return { label: 'Try again', run: onTryAgain };
+  if (role === 'system' && onContinue) return { label: 'Continue', run: onContinue };
+  return undefined;
+}
+
 /** "Bash: npm test" -> "npm test" (the name is shown already). */
 function summaryOf(m: ChatMessage): string {
   const name = m.toolName ?? '';
@@ -295,12 +335,15 @@ function DeniedCallout(
     onAllow?: (rule: string) => void;
     onRetry?: () => void;
     onAllowAndRetry?: (rule: string) => void;
+    defaultRules?: readonly string[];
+    onAllowEverywhere?: (rule: string) => void;
   }>,
 ) {
   return () => {
-    const { m, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onAllowAndRetry } = handle.props;
+    const { m, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onAllowAndRetry, onAllowEverywhere } = handle.props;
     const rule = m.suggestedRule ?? '';
     const allowed = !!rule && allowedTools.includes(rule);
+    const everywhere = !!rule && (handle.props.defaultRules ?? []).includes(rule);
     const tool = m.toolName || 'a tool';
     const claude = adapter === 'claude';
     return (
@@ -339,6 +382,17 @@ function DeniedCallout(
                 </Button>
               </>
             )}
+            {/* D9: the same rule for every new chat, set once by the person and listed in Settings > Agent CLIs */}
+            {everywhere ? (
+              <span class="ok" data-testid="chat-denied-everywhere">
+                <Icon icon={Check} size={14} />
+                In every new chat
+              </span>
+            ) : onAllowEverywhere ? (
+              <Button size="sm" variant="ghost" data-testid="chat-allow-everywhere" disabled={!!busy} mix={[on('click', () => onAllowEverywhere(rule))]}>
+                {allowed ? 'Also in every new chat' : '…and in every new chat'}
+              </Button>
+            ) : null}
             {allowed && latest ? (
               <Button size="sm" variant="primary" disabled={!onRetry || running || !!busy} mix={[on('click', () => onRetry?.())]}>
                 Retry
