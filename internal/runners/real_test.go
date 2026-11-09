@@ -44,7 +44,7 @@ func TestRealRunnerRelease(t *testing.T) {
 
 	if runtime.GOOS == "windows" {
 		h := &HostLauncher{Root: t.TempDir(), Cache: cache, HTTP: client}
-		if err := h.Prepare(ctx, rel); err != nil {
+		if err := Retrying(ctx, RetryWaits, func(err error, w time.Duration) { t.Logf("%v; trying again in %s", err, w) }, func() error { return h.Prepare(ctx, rel) }); err != nil {
 			t.Fatal(err)
 		}
 		dist := filepath.Join(cache, "dist", rel.Version+"-"+string(h.platform()))
@@ -66,7 +66,8 @@ func TestRealRunnerRelease(t *testing.T) {
 		t.Skipf("no container engine: %v", err)
 	}
 	c := &ContainerLauncher{Engine: eng, Cache: cache, HTTP: client}
-	if err := c.Prepare(ctx, rel); err != nil {
+	// GitHub's release host answered 504 on CI (2026-11-09): such a passing failure is tried again, as the bundle tool does
+	if err := Retrying(ctx, RetryWaits, func(err error, w time.Duration) { t.Logf("%v; trying again in %s", err, w) }, func() error { return c.Prepare(ctx, rel) }); err != nil {
 		t.Fatal(err)
 	}
 	tag := ImageTag(rel.Version)
