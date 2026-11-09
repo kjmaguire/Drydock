@@ -75,9 +75,16 @@ func TestCloseWaitsForTheTaskRoomArchive(t *testing.T) {
 			t.Errorf("written after Close returned: %s", path)
 		}
 	}
+	for path := range before {
+		if _, ok := after[path]; !ok {
+			t.Errorf("removed after Close returned: %s", path)
+		}
+	}
 }
 
-// snapshotDir is every file and folder under dir with its modification time.
+// snapshotDir is every file and folder under dir: a file with its modification time, a folder with the zero time. A folder's own
+// time is left out: on Windows the walk reads it from the parent's index, which NTFS brings up to date lazily, so it can move with
+// nothing written (CI, 2026-11-09); a folder that appears or goes is still seen.
 func snapshotDir(t *testing.T, dir string) map[string]time.Time {
 	t.Helper()
 	out := map[string]time.Time{}
@@ -89,7 +96,11 @@ func snapshotDir(t *testing.T, dir string) map[string]time.Time {
 		if err != nil {
 			return err
 		}
-		out[path] = info.ModTime()
+		if d.IsDir() {
+			out[path] = time.Time{}
+		} else {
+			out[path] = info.ModTime()
+		}
 		return nil
 	})
 	if err != nil {
