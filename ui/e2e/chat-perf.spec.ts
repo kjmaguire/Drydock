@@ -94,7 +94,6 @@ test('chat performance: a long answer streams over a long history without blocki
   await workspaceNav(page, 'nav-chats');
   await page.getByTestId('chat-new').click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
-  const chatId = /\/chats\/(chat_[^/?]+)/.exec(page.url())![1]!;
   const message = page.getByLabel('Message', { exact: true });
   const status = page.getByTestId('chat-status');
 
@@ -105,6 +104,9 @@ test('chat performance: a long answer streams over a long history without blocki
     await expect(message).toHaveValue('');
     await expect(status).toHaveText('Session kept', { timeout: 120_000 });
   }
+  // the chat the history went to is the one on screen now: read before, the address could still be the chat Chats reopened (an
+  // earlier spec's) while New chat was being made (CI 2026-11-09 counted that chat's 5 messages)
+  const chatId = /\/chats\/(chat_[^/?]+)/.exec(page.url())![1]!;
   const all = await rpc<{ messages: unknown[]; hasMore: boolean }>(page, 'chat.messages', { id: chatId, limit: 500 });
   expect(all.messages.length).toBeGreaterThan(300);
 
