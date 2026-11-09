@@ -4,7 +4,9 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { ChevronDown, ChevronUp, FileDiff, ScrollText, SquareTerminal, BarChart3 } from 'lucide';
+import type { Task } from '../api/types.ts';
 import { comboFor } from '../lib/keys.ts';
+import { isRunningStatus } from '../screens/work/work.ts';
 import { services, watch } from '../state/services.tsx';
 import type { DockTab } from '../state/ui.ts';
 import { ActivityPanel } from '../screens/dock/activity-panel.tsx';
@@ -12,6 +14,8 @@ import { DiffViewer } from '../screens/dock/diff-viewer.tsx';
 import { LogsPanel } from '../screens/dock/logs-panel.tsx';
 import { TerminalPanel } from '../screens/dock/terminal-panel.tsx';
 import { IconButton } from '../ui/button.tsx';
+import { Select } from '../ui/select.tsx';
+import { taskKey } from './palette-items.ts';
 import { Icon, type IconNode } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
 
@@ -61,10 +65,67 @@ const tabCss = css({
 const panelCss = css({ flex: '1', minHeight: '0', overflow: 'auto', borderTop: `1px solid ${t.border}`, background: t.bgApp });
 const hintCss = css({ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: t.s2, color: t.textFaint, fontSize: t.textXs, '& > span': { whiteSpace: 'nowrap' }, '@media (max-width: 719px)': { '& > span': { display: 'none' } } });
 const needCss = css({ padding: t.s4, color: t.textMuted });
+const pickedCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0' });
+const pickLineCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  flex: 'none',
+  minHeight: '32px',
+  padding: `2px ${t.s3}`,
+  borderBottom: `1px solid ${t.border}`,
+  color: t.textFaint,
+  fontSize: t.textSm,
+  '& .key': { fontFamily: t.mono, fontSize: t.textXs },
+  '& > [role="combobox"]': { width: 'auto', minWidth: '240px', maxWidth: '480px' },
+});
+const pickBodyCss = css({ flex: '1', minHeight: '0' });
 
 export function Dock(handle: Handle<{ projectId: string | undefined; taskId: string | undefined }>) {
   const s = services(handle);
   watch(handle, s.ui);
+  watch(handle, s.project);
+  /** The running task the person picked for Diff and Logs when no task is in context (X29). */
+  let picked: string | undefined;
+
+  /**
+   * Diff or Logs without a task in context (the board, Pull requests, Rooms, Crew, Settings): the project's one running task is
+   * shown at once under a faint line naming it, several are offered in a one-line pick, none leaves the old note (X29).
+   */
+  const forTask = (what: 'diff' | 'logs', projectId: string | undefined, taskId: string | undefined) => {
+    const view = (id: string) => (what === 'diff' ? <DiffViewer key={id} taskId={id} /> : <LogsPanel key={id} taskId={id} />);
+    if (taskId) return view(taskId);
+    const running = s.project.taskList.filter((x) => isRunningStatus(x.status));
+    if (!running.length) return <p mix={needCss}>Open a task (or its channel) to see its {what}.</p>;
+    const chosen: Task | undefined = running.length === 1 ? running[0] : running.find((x) => x.id === picked);
+    const key = (x: Task) => taskKey(x.seq, s.workspace.projectKey(projectId) || undefined);
+    return (
+      <div mix={pickedCss}>
+        {running.length === 1 ? (
+          <p mix={pickLineCss} data-testid="dock-task-line">
+            The one running task: <span class="key">{key(chosen!)}</span> {chosen!.title}
+          </p>
+        ) : (
+          <div mix={pickLineCss}>
+            <span>{running.length} tasks are running:</span>
+            <Select
+              size="sm"
+              label="Running task"
+              testId="dock-task-pick"
+              placeholder={`Pick one to see its ${what}`}
+              value={chosen?.id ?? ''}
+              options={running.map((x) => ({ value: x.id, label: `${key(x)} ${x.title}` }))}
+              onChange={(v) => {
+                picked = v;
+                void handle.update();
+              }}
+            />
+          </div>
+        )}
+        {chosen ? <div mix={pickBodyCss}>{view(chosen.id)}</div> : null}
+      </div>
+    );
+  };
   let drag: { y: number; h: number } | undefined;
   const MIN_H = 120;
   const maxH = () => Math.max(MIN_H, Math.round(window.innerHeight * 0.8));
@@ -116,7 +177,14 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
                 id={`dock-tab-${tb.id}`}
                 aria-selected={d.open && d.tab === tb.id}
                 aria-controls={d.open ? 'dock-panel' : undefined}
-                mix={[tabCss, on('click', () => s.ui.setDock({ open: !(d.open && d.tab === tb.id), tab: tb.id }))]}
+                mix={[
+                  tabCss,
+                  on('click', () => {
+                    // the person asking for the Terminal tab gets a terminal (G6): showTerminal opens one when none runs
+                    if (tb.id === 'terminal' && !(d.open && d.tab === 'terminal')) s.ui.showTerminal();
+                    else s.ui.setDock({ open: !(d.open && d.tab === tb.id), tab: tb.id });
+                  }),
+                ]}
               >
                 <Icon icon={tb.icon} size={14} />
                 {tb.label}
@@ -135,8 +203,8 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
         {d.open ? (
           <div mix={panelCss} id="dock-panel" role="tabpanel" aria-labelledby={`dock-tab-${d.tab}`}>
             {d.tab === 'terminal' ? <TerminalPanel projectId={projectId} taskId={taskId} /> : null}
-            {d.tab === 'diff' ? taskId ? <DiffViewer key={taskId} taskId={taskId} /> : <p mix={needCss}>Open a task (or its channel) to see its diff.</p> : null}
-            {d.tab === 'logs' ? taskId ? <LogsPanel key={taskId} taskId={taskId} /> : <p mix={needCss}>Open a task (or its channel) to see its logs.</p> : null}
+            {d.tab === 'diff' ? forTask('diff', projectId, taskId) : null}
+            {d.tab === 'logs' ? forTask('logs', projectId, taskId) : null}
             {d.tab === 'activity' ? <ActivityPanel taskId={taskId} /> : null}
           </div>
         ) : null}

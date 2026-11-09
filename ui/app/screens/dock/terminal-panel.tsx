@@ -7,6 +7,7 @@ import { FolderGit2, GitBranch, SquareTerminal, X } from 'lucide';
 import type { TerminalInfo } from '../../api/dockClient.ts';
 import { projectHasRepo } from '../../api/types.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
+import type { TerminalAsk } from '../../state/ui.ts';
 import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -42,6 +43,20 @@ const tabCss = css({
   '& > button.close:hover': { background: t.bgActive, color: t.text },
 });
 const exitedCss = css({ color: t.textFaint, fontWeight: '400' });
+const othersCss = css({
+  flex: 'none',
+  height: '24px',
+  minHeight: '24px',
+  padding: `0 ${t.s2}`,
+  border: '0',
+  borderRadius: t.rMd,
+  background: 'transparent',
+  color: t.textFaint,
+  fontSize: t.textSm,
+  whiteSpace: 'nowrap',
+  '&:hover': { background: t.bgHover, color: t.text },
+});
+const openingCss = css({ margin: '0', padding: t.s3, color: t.textMuted, fontSize: t.textMd });
 const actionsCss = css({ marginLeft: 'auto', display: 'flex', gap: '4px', flex: 'none' });
 const hostCss = css({ position: 'relative', flex: '1', minHeight: '0', padding: `${t.s1} ${t.s2}`, background: t.bgApp, display: 'flex' });
 const xtermHost = css({ flex: '1', minWidth: '0', minHeight: '0', '& .xterm': { height: '100%' } });
@@ -54,9 +69,15 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
   const act = action(handle);
   let active: string | undefined;
   const exited: Record<string, number> = {};
+  /** The person asked for the tab (G6): once the list is read, a terminal opens when none of the project's runs. */
+  let ensure = false;
+  /** Other projects' terminals (and sign-ins) are folded under one button until the person opens it (X213). */
+  let othersOpen = false;
 
-  const open = async (where: { projectId?: string; taskId?: string }) => {
-    const term = await act.run('open', () => s.client.terminalOpen(where, 100, 24));
+  const open = async (where: TerminalAsk) => {
+    const { projectId, taskId, reuse } = where;
+    const to = { ...(projectId ? { projectId } : {}), ...(taskId ? { taskId } : {}), ...(reuse ? { reuse } : {}) };
+    const term = await act.run('open', () => s.client.terminalOpen(to, 100, 24));
     if (term) {
       active = term.id;
       list.reload();
@@ -66,11 +87,13 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
     await act.run('close', () => s.client.terminalClose(id));
     list.reload();
   };
-  // a terminal another page asked for (the task page's "Open the worktree"): opened here, as the New terminal button does
+  // a terminal another page asked for (the task page's "Open the worktree"), or the tab the person asked for: opened here, as the
+  // New terminal button does
   watch(handle, s.ui);
   const takeAsk = () => {
     const where = s.ui.takeTerminalAsk();
-    if (where) handle.queueTask(() => void open(where));
+    if (where?.ensure) ensure = true;
+    else if (where) handle.queueTask(() => void open(where));
   };
   const onExit = (id: string, code: number) => {
     exited[id] = code;
@@ -83,38 +106,65 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
     const p = s.workspace.projectList.find((x) => x.id === projectId);
     const noRepo = !!p && !projectHasRepo(p);
     const terms = list.data ?? [];
-    const current = terms.find((x) => x.id === active) ?? terms[terms.length - 1];
+    const running = (x: TerminalInfo) => !x.exited && exited[x.id] === undefined;
+    // this project's terminals; the others' fold away (without a project, every terminal is shown)
+    const mine = projectId ? terms.filter((x) => x.projectId === projectId) : terms;
+    const others = projectId ? terms.filter((x) => x.projectId !== projectId) : [];
+    if (ensure && list.data && !act.busy) {
+      // asked once: a failed open shows its error and is not tried again until the person asks again
+      ensure = false;
+      const where = taskId ? { taskId } : projectId && !noRepo ? { projectId } : undefined;
+      if (where && !mine.some(running)) handle.queueTask(() => void open({ ...where, reuse: true }));
+    }
+    const shown = othersOpen ? [...mine, ...others] : mine;
+    const current = shown.find((x) => x.id === active) ?? mine[mine.length - 1];
     const err = act.error ?? list.error;
+    const tab = (x: TerminalInfo, i: number) => {
+      const title = x.title || `Terminal ${i + 1}`;
+      const done = exited[x.id] !== undefined || x.exited;
+      return (
+        <span key={x.id} mix={tabCss} data-active={x === current ? 'true' : undefined}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={x === current}
+            title={x.cwd}
+            mix={on('click', () => {
+              active = x.id;
+              void handle.update();
+            })}
+          >
+            <Icon icon={SquareTerminal} size={13} />
+            {title}
+            {done ? <span mix={exitedCss}> (exited)</span> : null}
+          </button>
+          <button type="button" class="close" aria-label={`Close ${x.title || `terminal ${i + 1}`}`} title="Close: stops the shell and everything it started" mix={on('click', () => void close(x.id))}>
+            <Icon icon={X} size={12} />
+          </button>
+        </span>
+      );
+    };
+    const allProjects = others.every((x) => !!x.projectId);
     return (
       <div mix={panel} data-testid="terminal-panel">
         <div role="toolbar" aria-label="Terminals" mix={toolbar}>
           <div role="tablist" aria-label="Open terminals" mix={tabsCss}>
-            {terms.map((x, i) => {
-              const title = x.title || `Terminal ${i + 1}`;
-              const done = exited[x.id] !== undefined || x.exited;
-              return (
-                <span key={x.id} mix={tabCss} data-active={x === current ? 'true' : undefined}>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={x === current}
-                    title={x.cwd}
-                    mix={on('click', () => {
-                      active = x.id;
-                      void handle.update();
-                    })}
-                  >
-                    <Icon icon={SquareTerminal} size={13} />
-                    {title}
-                    {done ? <span mix={exitedCss}> (exited)</span> : null}
-                  </button>
-                  <button type="button" class="close" aria-label={`Close ${x.title || `terminal ${i + 1}`}`} title="Close: stops the shell and everything it started" mix={on('click', () => void close(x.id))}>
-                    <Icon icon={X} size={12} />
-                  </button>
-                </span>
-              );
-            })}
+            {mine.map((x) => tab(x, terms.indexOf(x)))}
+            {othersOpen ? others.map((x) => tab(x, terms.indexOf(x))) : null}
           </div>
+          {others.length ? (
+            <button
+              type="button"
+              mix={[othersCss, on('click', () => {
+                othersOpen = !othersOpen;
+                void handle.update();
+              })]}
+              aria-expanded={othersOpen ? 'true' : 'false'}
+              title={othersOpen ? 'Hide the terminals of other projects' : 'Show the terminals of other projects'}
+            >
+              {allProjects ? 'Other projects' : 'Other terminals'} ({others.length})
+            </button>
+          ) : null}
           <div mix={actionsCss}>
             {taskId ? (
               <Button size="sm" variant="ghost" icon={GitBranch} disabled={!!act.busy} mix={on('click', () => void open({ taskId }))}>
@@ -139,6 +189,8 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
         ) : null}
         {current ? (
           <TerminalHost key={current.id} id={current.id} onExit={(code) => onExit(current.id, code)} />
+        ) : act.busy === 'open' ? (
+          <p mix={openingCss}>Opening a terminal...</p>
         ) : (
           <Empty title="No open terminals" icon={SquareTerminal}>
             <p>No terminal is open. A terminal runs your shell in the task's worktree or the project's repository; closing it stops everything it started.</p>

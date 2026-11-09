@@ -249,14 +249,17 @@ describe('typed client', () => {
       json({ result: url.endsWith('list') ? { running: true, forwards: null, canView: true, max: 5 } : url.endsWith('open') ? { taskId: 't', port: 3000, hostPort: 49153, address: '127.0.0.1:49153' } : {} }),
     );
     const c = createClient(transport(f as unknown as typeof fetch));
-    expect(await c.sandboxForwards('t')).toEqual({ running: true, forwards: [], canView: true, max: 5 });
+    // an older core sends no listening ports (X31): an empty list
+    expect(await c.sandboxForwards('t')).toEqual({ running: true, forwards: [], canView: true, max: 5, viewing: [], listening: [] });
     expect(await c.sandboxForwardOpen('t', 3000)).toMatchObject({ port: 3000, hostPort: 49153 });
     await c.sandboxForwardView('t', 3000);
+    await c.sandboxForwardShow('t', 3000);
     await c.sandboxForwardClose('t', 3000);
     expect(sent(f)).toEqual([
       ['/rpc/sandbox.forward.list', { taskId: 't' }],
       ['/rpc/sandbox.forward.open', { taskId: 't', port: 3000 }],
       ['/rpc/sandbox.forward.view', { taskId: 't', port: 3000 }],
+      ['/rpc/sandbox.forward.show', { taskId: 't', port: 3000 }],
       ['/rpc/sandbox.forward.close', { taskId: 't', port: 3000 }],
     ]);
   });
@@ -474,7 +477,7 @@ describe('project setup client methods', () => {
     });
     const c = createClient(transport(f as unknown as typeof fetch));
     const req = { name: 'x', brief: '', repo: { kind: 'none' as const }, mode: 'local_merge' as const, libraryServers: [], catalogServers: ['cf'], agents: [{ prebuilt: 'team-lead' }], installSkills: true };
-    expect(await c.projectSetup(req)).toEqual({ project: { id: 'p1' } as never, agents: [], warnings: [] });
+    expect(await c.projectSetup(req)).toEqual({ project: { id: 'p1' } as never, agents: [], warnings: [], problems: [] });
     expect(await c.githubOwners()).toEqual([]);
     expect(await c.githubRepos()).toEqual([]);
     expect(await c.githubCloneDir()).toBe('');
@@ -488,6 +491,8 @@ describe('project setup client methods', () => {
     await c.projectCreate('later');
     await c.projectAttachRepo('p1', '/r');
     await c.projectSetBrief('p1', 'b');
+    // the core answers null when no clone is landing (B12)
+    expect(await c.projectCloneState('p1')).toBe(null);
     await c.githubRepos('acme', 'pay');
     await c.githubClone('acme/pay', '/src');
     await c.mcpAddFromCatalog('cf');
@@ -497,6 +502,7 @@ describe('project setup client methods', () => {
     expect(all('project.create')).toEqual([{ name: 'later', repoPath: '' }]);
     expect(all('project.attachRepo')).toEqual([{ id: 'p1', repoPath: '/r' }]);
     expect(all('project.setBrief')).toEqual([{ id: 'p1', brief: 'b' }]);
+    expect(all('project.cloneState')).toEqual([{ id: 'p1' }]);
     expect(all('github.repos')).toEqual([{ owner: '', query: '' }, { owner: 'acme', query: 'pay' }]);
     expect(all('github.clone')).toEqual([{ repo: 'acme/pay', dir: '/src' }]);
     expect(all('agentcatalog.list')).toEqual([{ projectId: 'p1' }]);

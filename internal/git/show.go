@@ -77,3 +77,23 @@ func (r *Repo) MergeBaseOf(ctx context.Context, a, b string) (string, error) {
 	out, err := r.git(ctx, r.Root, nil, "merge-base", a, b)
 	return strings.TrimSpace(out), err
 }
+
+// ExistingPaths returns which of paths are in commit rev (files, or folders named as such), with one git call (git ls-tree): a caller about to read a few
+// files that may not be there asks once instead of four calls per missing file (each git start is slow on Windows).
+func (r *Repo) ExistingPaths(ctx context.Context, rev string, paths ...string) (map[string]bool, error) {
+	have := map[string]bool{}
+	if len(paths) == 0 {
+		return have, nil
+	}
+	args := append([]string{"ls-tree", "-z", "--full-tree", "--name-only", rev, "--"}, paths...)
+	out, err := r.git(ctx, r.Root, nil, args...)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			have[p] = true
+		}
+	}
+	return have, nil
+}

@@ -50,7 +50,7 @@ export function TaskTools(handle: Handle<{ taskId: string }>) {
     if (!v) {
       return (
         <div mix={bodyCss}>
-          <ErrorNote error={q.error} what="Could not read the task's tools" />
+          <ErrorNote error={q.error} retry={q.reload} what="Could not read the task's tools" />
           {q.error ? null : <Loading />}
         </div>
       );

@@ -15,7 +15,7 @@ const ROUTES = [
   '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/crew', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
   '/milestones', '/memory', '/skills', '/packs', '/integrations', '/integrations/linear', '/integrations/mslearn', '/integrations/openrouter', '/integrations/background', '/budgets', '/evals', '/security', '/repo-map', '/knowledge', '/home', '/chats',
   '/library', '/library/skills', '/connections', '/agents', '/agents/claude', '/github', '/security-scan', '/models', '/models/new', '/routing', '/backups', '/data', '/support', '/license',
-  '/settings', '/guide', '/guide/scan',
+  '/settings', '/settings/shortcuts', '/settings/about', '/library/starters', '/my-tasks', '/guide', '/guide/scan',
 ];
 
 /** What a page may break, and why. A text is matched by its start. */
@@ -61,7 +61,8 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
       if (![12, 12.5, 13, 15, 18, 22].includes(size) || !['400', '500', '600', '700'].includes(weight)) out.sizes.push(`${label(el)} ${size}px/${weight} "${o.slice(0, 40)}"`);
       if (o.length > 200 && !inGuide && /^(p|div|span|li|small|label)$/i.test(el.tagName)) out.long.push(`${o.length}: ${o.slice(0, 90)}`);
       const norm = o.replace(/\s+/g, ' ').toLowerCase();
-      if (norm.length >= 12 && !el.closest('table, ul, ol, dl, [role=list], [role=table], nav, h1, h2, h3, h4, a, button, label, summary, [role=tab]')) texts.set(norm, (texts.get(norm) ?? 0) + 1);
+      // a chat's messages (role=log) are what people and agents wrote, not the page's own words: Chats reopens the last chat (D7)
+      if (norm.length >= 12 && !el.closest('table, ul, ol, dl, [role=list], [role=table], [role=log], nav, h1, h2, h3, h4, a, button, label, summary, [role=tab]')) texts.set(norm, (texts.get(norm) ?? 0) + 1);
     }
     for (const [k, n] of texts) if (n > 2) out.repeats.push(`${n}x ${k.slice(0, 80)}`);
     // the subtitle under a page's title
@@ -149,7 +150,17 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
     // no two controls overlap (a dropdown grew over the field beside it in the provider form), and a button in a row with a
     // dropdown or a text box is centred on it, not on the label above it (the owner's report of 2026-10-20)
     const CONTROL = 'button, [role=combobox], input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea';
-    const controls = Array.from(main.querySelectorAll(CONTROL)).filter((el) => !el.closest(SKIP) && visible(el) && !hidden(el));
+    // a control scrolled out of a scrolling box (a chat's feed under its header) is not on the page: it overlaps nothing
+    const clipped = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (!/(auto|scroll|hidden)/.test(getComputedStyle(p).overflowY)) continue;
+        const c = p.getBoundingClientRect();
+        if (r.top < c.top - 1 || r.bottom > c.bottom + 1) return true;
+      }
+      return false;
+    };
+    const controls = Array.from(main.querySelectorAll(CONTROL)).filter((el) => !el.closest(SKIP) && visible(el) && !hidden(el) && !clipped(el));
     const overlap: string[] = [];
     const name = (el: Element) => `${label(el)} "${((el as HTMLElement).innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 30)}"`;
     for (let i = 0; i < controls.length; i++) {
@@ -220,7 +231,7 @@ test('every page keeps to the density budget: short text, the type scale, room b
   await page.getByLabel('Task title').fill('Fix Subtract');
   await page.getByLabel('Description').fill('Subtract returns 0; make it return a - b.');
   await page.getByLabel('Acceptance criteria').fill('Given 5 and 3 When Subtract is called Then 2');
-  await page.getByRole('button', { name: 'Create task' }).click();
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Fix Subtract/ })).toBeVisible();
   const taskUrl = new URL(page.url());
   await choose(page.getByLabel('Worker', { exact: true }), { label: 'Worker One (backend)' });

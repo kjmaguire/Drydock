@@ -145,3 +145,14 @@ export class Model extends TypedEventTarget<{ change: Event }> {
     this.dispatchEvent(new Event('change'));
   }
 }
+
+/**
+ * Retry for an ErrorNote that shows the first error of several (decision G5): the reload of the read whose error is the one shown,
+ * nothing when that is an action's error (an action is not done again from a note: its button is there to press).
+ */
+export function retryFor(...sources: ReadonlyArray<object | undefined>): (() => Promise<void>) | undefined {
+  const shown = sources.find((x) => x && (x as { error?: unknown }).error) as { reload?: unknown } | undefined;
+  if (!shown || typeof shown.reload !== 'function') return undefined;
+  const reload = shown.reload as (this: unknown) => Promise<void>;
+  return () => reload.call(shown);
+}

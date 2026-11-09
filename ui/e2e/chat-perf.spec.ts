@@ -94,17 +94,36 @@ test('chat performance: a long answer streams over a long history without blocki
   await workspaceNav(page, 'nav-chats');
   await page.getByTestId('chat-new').click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
-  const chatId = /\/chats\/(chat_[^/?]+)/.exec(page.url())![1]!;
   const message = page.getByLabel('Message', { exact: true });
   const status = page.getByTestId('chat-status');
 
   // a long history: three turns of 300 tool calls and an answer with code (about 900 rows)
+  // each turn waits for the core to say the chat is idle with that turn's answer: the status line still read "Session kept" from
+  // the turn before, so the next message was typed while the last one was answered and refused (and on CI the turns overlapped
+  // with the measured one)
+  const historyChat = () => /\/chats\/(chat_[^/?]+)/.exec(page.url())![1]!;
   for (let i = 1; i <= 3; i++) {
     await message.fill(`drydock-e2e perf history ${i}`);
     await message.press('Control+Enter');
     await expect(message).toHaveValue('');
-    await expect(status).toHaveText('Session kept', { timeout: 120_000 });
+    await expect
+      .poll(
+        async () => {
+          const id = historyChat();
+          const d = await rpc<{ chat: { status: string } }>(page, 'chat.get', { id });
+          // the newest page holds this turn whole (about 300 rows): its question, then an answer after it
+          const p = await rpc<{ messages: { role: string; body: string }[] }>(page, 'chat.messages', { id, limit: 500 });
+          const asked = p.messages.map((m) => m.role === 'user' && m.body.includes(`perf history ${i}`)).lastIndexOf(true);
+          return d.chat.status !== 'running' && asked >= 0 && p.messages.slice(asked + 1).some((m) => m.role === 'assistant');
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    await expect(status).toHaveText('Session kept', { timeout: 30_000 });
   }
+  // the chat the history went to is the one on screen now: read before, the address could still be the chat Chats reopened (an
+  // earlier spec's) while New chat was being made (CI 2026-11-09 counted that chat's 5 messages)
+  const chatId = historyChat();
   const all = await rpc<{ messages: unknown[]; hasMore: boolean }>(page, 'chat.messages', { id: chatId, limit: 500 });
   expect(all.messages.length).toBeGreaterThan(300);
 

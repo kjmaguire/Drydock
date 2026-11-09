@@ -2,7 +2,7 @@
 // "Paused by kyle"), a criterion's state and its own status with what showed it (P125), the check kinds of the Checks grid,
 // "This run"'s time and test runs, and the labels a person types. Pure: no DOM and no client.
 
-import type { CriterionState, CriterionStatus, Evidence, SummaryCheck, Task, TaskPause } from '../../api/types.ts';
+import type { CriterionState, CriterionStatus, Evidence, ReviewRecord, SandboxStart, SummaryCheck, Task, TaskMerged, TaskPause } from '../../api/types.ts';
 import { TASK_LABEL_LEN, TASK_LABELS_MAX } from '../../api/types.ts';
 import { statusLabel } from '../../lib/format.ts';
 import { toMs } from './tasks.ts';
@@ -31,6 +31,13 @@ export function statusPill(task: Pick<Task, 'status' | 'iteration' | 'started'>,
   const words = statusWords(task, paused, checks);
   const n = runNumber(task);
   return n ? `${words} · run ${n}` : words;
+}
+
+/** The step the task's sandbox is at while it is being created (X39), for the pill: "Starting the sandbox: pulling node:24". */
+export function sandboxStartWords(start?: SandboxStart): string | undefined {
+  if (!start || start.ready || start.failed) return undefined;
+  const last = start.steps[start.steps.length - 1];
+  return last ? `Starting the sandbox: ${last}` : 'Starting the sandbox';
 }
 
 /** The tone of the status dot: accent while it works, warning while it waits on you or is paused, success done, danger failed. */
@@ -140,6 +147,19 @@ export function criteriaRows(
   });
 }
 
+/** A criterion still to meet as a line of "Request changes" feedback; '' for one that is met or waived. */
+export function changeLine(row: Pick<CriterionRow, 'text' | 'status'>): string {
+  const text = row.text.trim();
+  if (!text) return '';
+  return row.status === 'not_met' ? `- Not met: ${text}` : row.status === 'open' ? `- Not confirmed yet: ${text}` : '';
+}
+
+/** What "Request changes" starts from: a line per criterion not met (first), then per one still open. */
+export function changesDraft(rows: readonly Pick<CriterionRow, 'text' | 'status'>[]): string {
+  const order = [...rows].filter((r) => r.status === 'not_met').concat(rows.filter((r) => r.status === 'open'));
+  return order.map(changeLine).filter(Boolean).join('\n');
+}
+
 const sentence = (s: string | undefined): string => {
   const v = (s ?? '').trim();
   return !v ? '' : /[.!?]$/.test(v) ? v : `${v}.`;
@@ -207,4 +227,47 @@ export function addLabel(labels: readonly string[], typed: string): { labels: st
   if (labels.includes(l)) return { error: `The task already has the label ${l}.` };
   if (labels.length >= TASK_LABELS_MAX) return { error: `A task has at most ${TASK_LABELS_MAX} labels.` };
   return { labels: [...labels, l] };
+}
+
+// --- the merge moment (critique 2026-11-08): what the decision is made on, and how the task closed ---
+
+export type FactTone = 'ok' | 'err' | 'muted';
+export interface Fact {
+  text: string;
+  tone: FactTone;
+  /** What the fact is about, for its icon. */
+  kind: 'checks' | 'reviewer' | 'change';
+}
+
+/**
+ * How the newest pass of checks went, in the Inbox's words: "4 of 4 checks passed", "3 of 4 checks passed · lint failed",
+ * "No checks ran". A check not in the newest pass (not_run) is not counted.
+ */
+export function checksFact(checks: readonly Pick<SummaryCheck, 'kind' | 'status'>[]): Fact {
+  const ran = checks.filter((c) => c.status !== 'not_run');
+  if (!ran.length) return { text: 'No checks ran', tone: 'muted', kind: 'checks' };
+  const passed = ran.filter((c) => c.status === 'passed').length;
+  const failed = ran.filter((c) => c.status === 'failed').map((c) => c.kind);
+  const text = `${passed} of ${ran.length} ${ran.length === 1 ? 'check' : 'checks'} passed`;
+  if (failed.length) return { text: `${text} · ${failed.join(', ')} failed`, tone: 'err', kind: 'checks' };
+  return { text, tone: passed === ran.length ? 'ok' : 'muted', kind: 'checks' };
+}
+
+/** The newest reviewer verdict in words ("Code Reviewer approved", "Rex asked for changes"); undefined before any review. */
+export function reviewerFact(reviews: readonly Pick<ReviewRecord, 'reviewer' | 'verdict' | 'attempt' | 'created'>[], name: (id: string) => string): Fact | undefined {
+  const last = reviews.reduce<(typeof reviews)[number] | undefined>((m, r) => (!m || r.attempt > m.attempt || (r.attempt === m.attempt && r.created >= m.created) ? r : m), undefined);
+  if (!last) return undefined;
+  const who = name(last.reviewer) || 'The reviewer';
+  if (last.verdict === 'SHIP') return { text: `${who} approved`, tone: 'ok', kind: 'reviewer' };
+  if (last.verdict === 'REVISE') return { text: `${who} asked for changes`, tone: 'err', kind: 'reviewer' };
+  return { text: `${who}: ${last.verdict.toLowerCase().replaceAll('_', ' ')}`, tone: 'muted', kind: 'reviewer' };
+}
+
+/** The first 7 characters of a commit: what git shows. */
+export const shortSha = (sha: string | undefined): string => (sha ?? '').slice(0, 7);
+
+/** The closing line of a merged task: "Merged into main", "Merged through pull request #12". */
+export function mergedTitle(m: Pick<TaskMerged, 'into' | 'pr'>): string {
+  if (m.pr) return `Merged through pull request #${m.pr}`;
+  return m.into ? `Merged into ${m.into}` : 'Merged';
 }

@@ -2,6 +2,7 @@ package room
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -388,5 +389,67 @@ func TestAnApprovalItemCarriesItsPhaseTaskNumberAgentAndExpiry(t *testing.T) {
 	}
 	if o, ok := got["approval:apr_odd"]; !ok || o.AgentID != "" || o.TaskSeq != 0 {
 		t.Fatalf("odd %+v", o)
+	}
+}
+
+// X111: a SYSTEM line is not conversation, so it does not make a room unread; in #alerts, where a notice may be the only
+// signal, it still counts.
+func TestSystemLinesCountAsUnreadOnlyInAlerts(t *testing.T) {
+	e := newEnv(t)
+	dev := e.channel("dev")
+	alerts := e.channel("alerts")
+	sam := Human("sam")
+	e.join(dev, sam, "")
+	e.join(alerts, sam, "")
+	for _, r := range []Room{dev, alerts} {
+		e.post(PostParams{RoomID: r.ID, Type: TypeSystem, Author: System, Body: "a notice"})
+	}
+	us, err := e.svc.UnreadCounts(e.ctx, sam, e.project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, u := range us {
+		got[u.RoomName] = u.Unread
+	}
+	if got["dev"] != 0 || got["alerts"] != 1 {
+		t.Fatalf("unread %v: want dev 0 (system line) and alerts 1", got)
+	}
+	e.say(dev, kyle, "hello")
+	us, _ = e.svc.UnreadCounts(e.ctx, sam, e.project)
+	for _, u := range us {
+		if u.RoomName == "dev" && u.Unread != 1 {
+			t.Fatalf("a person's message still counts: %+v", u)
+		}
+	}
+}
+
+// H12: a collaborator's change request recorded after a pull request's review and merge was asked for turns that item into a
+// change-request item, said once and above the other reviews; one recorded before the request (an earlier round) does not.
+func TestAChangeRequestWhileWaitingMakesTheReviewAChangeRequestItem(t *testing.T) {
+	e := newEnv(t)
+	e.exec(`INSERT INTO tasks(id,project_id,seq,title,status,created_at,updated_at) VALUES('task_7','proj_1',7,'Add Multiply','VERIFICATION',1,1)`)
+	e.exec(`INSERT INTO tasks(id,project_id,seq,title,status,created_at,updated_at) VALUES('task_8','proj_1',8,'Add Divide','VERIFICATION',1,1)`)
+	e.exec(`INSERT INTO approvals(id,run_id,task_id,project_id,kind,title,phase,status,created_at) VALUES('apr_7','run_7','task_7','proj_1','review','Review and merge: Add Multiply','merge','REQUESTED',100)`)
+	e.exec(`INSERT INTO approvals(id,run_id,task_id,project_id,kind,title,phase,status,created_at) VALUES('apr_8','run_8','task_8','proj_1','review','Review and merge: Add Divide','merge','REQUESTED',100)`)
+	e.exec(`INSERT INTO task_evidence(task_id,kind,passed,summary,created_at) VALUES('task_7','pr_review_waiting',0,'1 change request(s) from kyle on GitHub while the pull request waits for your approval',200)`)
+	e.exec(`INSERT INTO task_evidence(task_id,kind,passed,summary,created_at) VALUES('task_8','pr_review_waiting',0,'from an earlier round',50)`)
+	items, err := e.svc.NeedsYou(e.ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]NeedsYouItem{}
+	n := 0
+	for _, it := range items {
+		got[it.Key] = it
+		if it.TaskID == "task_7" {
+			n++
+		}
+	}
+	if c := got["approval:apr_7"]; c.Kind != NeedsPRReview || c.Severity != 1 || !strings.Contains(c.Detail, "change request(s) from kyle") || n != 1 {
+		t.Fatalf("change request item %+v (%d items of the task)", c, n)
+	}
+	if r := got["approval:apr_8"]; r.Kind != NeedsReview || r.Detail != "" {
+		t.Fatalf("a request from before the review was asked for changed the item: %+v", r)
 	}
 }

@@ -404,11 +404,22 @@ func (s *Service) CreateTaskChannel(ctx context.Context, sp TaskChannelSpec) (Ro
 	return r, nil
 }
 
-// ArchiveTaskChannel archives a task's room on completion, cancellation or failure; messages are kept.
+// TaskArchiveScope is the export scope of the minutes made by rule when a task's room closes (X19); the receipt is the task id,
+// so a task's room gets one such snapshot however many times it is archived.
+const TaskArchiveScope = "system:task-archive"
+
+// ArchiveTaskChannel archives a task's room on completion, cancellation or failure; messages are kept. First, by rule, it
+// keeps the room's minutes as an export (X19: the Markdown minutes of room-protocol s8, local, immutable, secret-scanned, made
+// without a model), so a person finds what was said and decided without exporting it by hand. A failure to make them is
+// reported and never stops the archive.
 func (s *Service) ArchiveTaskChannel(ctx context.Context, taskID, outcome string) error {
 	r, err := s.RoomByTask(ctx, taskID)
 	if err != nil {
 		return err
+	}
+	if _, _, err := s.ExportMinutes(ctx, r.ID, ExportRequest{Scope: TaskArchiveScope, ReceiptID: taskID, By: System,
+		Title: "Minutes of " + r.Name + " (task " + outcome + ")"}); err != nil {
+		s.report(fmt.Errorf("task %s minutes: %w", taskID, err))
 	}
 	return s.ArchiveRoom(ctx, r.ID, System, "task "+outcome)
 }

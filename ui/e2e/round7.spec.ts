@@ -10,6 +10,8 @@ test('Settings: extra environment variables are named, never valued; the Inspect
   await workspaceNav(page, 'nav-settings');
   const env = page.getByTestId('agent-env');
   await expect(env).toContainText('Agent programs start with a trimmed environment');
+  // the box is a step further while no extra variable is passed (decision P144); once one is, it opens by itself
+  await env.getByText('Pass more variables to agents').click();
   const box = env.getByLabel(/Also pass these variables/);
   // a pasted NAME=value is refused on the page (L38): the core is never asked, and no message repeats the line
   const sent: string[] = [];

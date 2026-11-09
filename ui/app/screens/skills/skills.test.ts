@@ -32,6 +32,9 @@ import {
   skillTone,
   sortUsage,
   syncChanges,
+  suggestedAgents,
+  addTargets,
+  addedForText,
   toggleSkill,
   usageTokens,
 } from './skills.ts';
@@ -89,6 +92,49 @@ const usage = (over: Partial<SkillUsage>): SkillUsage => ({
 });
 
 describe('Skills helpers', () => {
+  it('ticks the agents whose role a skill names, else one agent that is not the lead, never everyone', () => {
+    const team = [
+      { id: 'lead', role: 'team lead' },
+      { id: 'be', role: 'backend' },
+      { id: 'fe', role: 'Frontend' },
+      { id: 'qa', role: 'tester' },
+    ];
+    expect(suggestedAgents([{ roles: ['frontend'] }, { roles: ['tester'] }], team)).toEqual(['fe', 'qa']);
+    expect(suggestedAgents([{ roles: null }], team)).toEqual(['be']);
+    expect(suggestedAgents([{ roles: ['docs'] }], [{ id: 'lead', role: 'lead' }])).toEqual(['lead']);
+    expect(suggestedAgents([], team)).toEqual([]);
+    expect(suggestedAgents([{ roles: [] }], [])).toEqual([]);
+  });
+
+  it('suggests for each skill on its own: a skill naming no role adds one agent beside the ones another skill names', () => {
+    const team = [
+      { id: 'lead', role: 'lead' },
+      { id: 'be', role: 'backend' },
+      { id: 'qa', role: 'qa' },
+    ];
+    expect(suggestedAgents([{ roles: [] }, { roles: ['qa'] }], team)).toEqual(['be', 'qa']);
+  });
+
+  it('adds each skill for its own suggestion until the person ticks, then every skill for the ticked agents', () => {
+    const team = [
+      { id: 'be', role: 'backend' },
+      { id: 'qa', role: 'qa' },
+    ];
+    const skills = [{ name: 'api', roles: ['backend'] }, { name: 'e2e', roles: ['qa'] }];
+    expect(addTargets(skills, undefined, team).map((p) => [p.skill.name, p.to])).toEqual([
+      ['api', ['be']],
+      ['e2e', ['qa']],
+    ]);
+    expect(addTargets(skills, ['qa'], team).map((p) => [p.skill.name, p.to])).toEqual([
+      ['api', ['qa']],
+      ['e2e', ['qa']],
+    ]);
+    const nameOf = (id: string) => ({ be: 'Ada', qa: 'Quinn' })[id] ?? id;
+    expect(addedForText([{ name: 'api', to: ['be'] }, { name: 'e2e', to: ['qa'] }], nameOf)).toBe('api for Ada; e2e for Quinn.');
+    expect(addedForText([{ name: 'api', to: ['be', 'qa'] }, { name: 'e2e', to: ['be', 'qa'] }], nameOf)).toBe('For Ada and Quinn.');
+    expect(addedForText([], nameOf)).toBe('');
+  });
+
   it('reports a scan with counts and the problems verbatim', () => {
     expect(
       scanText({

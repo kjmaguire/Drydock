@@ -115,8 +115,10 @@ export interface ScanReport {
   projectId: string;
   dir: string;
   status: 'running' | 'done' | 'cancelled' | string;
-  /** Who started it ("human:<name>"). */
+  /** Who started it ("human:<name>"): for a rule's scan, the person who set the rule. */
   by: string;
+  /** The rule that started it (H5); absent when a person pressed Scan. */
+  trigger?: ScanTrigger;
   startedAt: number;
   finishedAt?: number;
   engines: EngineResult[];
@@ -141,6 +143,7 @@ export interface RunningScan {
   /** What it reads as a person names it: the project's name, or the folder's last element. */
   name: string;
   by: string;
+  trigger?: ScanTrigger;
   startedAt: number;
   engines: EngineResult[];
   counts: ScanCounts;
@@ -153,10 +156,30 @@ export interface ScanSummary {
   folder?: string;
   status: string;
   by: string;
+  trigger?: ScanTrigger;
   startedAt: number;
   finishedAt?: number;
   counts: ScanCounts;
   summary?: string;
+}
+
+/** The rules by which a project's scan starts without the Scan button (lane B batch B7, H5). */
+export type ScanTrigger = 'after-merge' | 'after-sync' | 'weekly';
+
+/** security.schedule.get: a project's rule, all off by default, kept with the person who set it. */
+export interface ScanSchedule {
+  projectId: string;
+  afterMerge: boolean;
+  afterSync: boolean;
+  weekly: boolean;
+  setBy?: string;
+  setAt?: number;
+  /** The rule whose scan waits for an agent working in the folder or a running scan to end. */
+  waiting?: ScanTrigger;
+  waitingWhy?: string;
+  /** The newest scan a rule started. */
+  last?: ScanSummary;
+  nextWeeklyAt?: number;
 }
 
 /** scan.ToolInfo: whether a tool is on this computer, and how to install it when it is not. */

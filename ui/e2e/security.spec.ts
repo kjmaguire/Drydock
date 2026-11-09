@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appUrl, createAgent, createProject, freshRepo, projectNav } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, projectNav, workspaceNav } from './helpers';
 
 const PLANTED = 'AKIA2W7X3KQ5ZV4YBN6T';
 
@@ -113,7 +113,7 @@ test("one button scans the working tree with three engines; a finding's pane sho
 
 // Decision P61: from Home, the workspace's Security scan reads a folder that is not a project (a repository just downloaded):
 // the same three engines, the finding named without the key's value, and the scan kept in the recent scans.
-test('Home opens the Security scan, which scans a folder that is not a project and keeps it in the recent scans', async ({ page }) => {
+test('Settings opens the Security scan, which scans a folder that is not a project and keeps it in the recent scans', async ({ page }) => {
   // the folder's full path: Windows' temp folder can be a short 8.3 path, and Drydock names the folder it resolves to
   const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'drydock-e2e-download-')));
   try {
@@ -121,7 +121,7 @@ test('Home opens the Security scan, which scans a folder that is not a project a
     const home = new URL(appUrl());
     home.pathname = '/home';
     await page.goto(home.toString());
-    await page.getByTestId('home-security-scan').click();
+    await workspaceNav(page, 'nav-security-scan');
     await expect(page).toHaveURL(/\/security-scan$/);
     await expect(page.getByTestId('workspace-security')).toBeVisible();
     await expect(page.getByTestId('scan-reads-only')).toHaveText('Only files are read. Nothing in the folder runs.');
@@ -151,7 +151,7 @@ test('Home opens the Security scan, which scans a folder that is not a project a
 
     // opened again later, the folder scan is in the recent scans and its report reopens, still without the value
     await page.goto(home.toString());
-    await page.getByTestId('home-security-scan').click();
+    await workspaceNav(page, 'nav-security-scan');
     await expect(item).toHaveCount(1);
     await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'idle');
     await item.click();
@@ -161,7 +161,7 @@ test('Home opens the Security scan, which scans a folder that is not a project a
     // nothing became a project
     await page.goto(home.toString());
     await expect(page.getByTestId('workspace-home')).toBeVisible();
-    await expect(page.getByTestId('home-project').filter({ hasText: 'drydock-e2e-download' })).toHaveCount(0);
+    await expect(page.getByTestId('nav-project-item').filter({ hasText: 'drydock-e2e-download' })).toHaveCount(0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

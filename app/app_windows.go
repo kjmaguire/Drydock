@@ -99,6 +99,8 @@ func Run(assets fs.FS) error {
 	var wa *application.App
 	var window *application.WebviewWindow
 	bridge := &Bridge{}
+	// Windows notifications (G1, notify_windows.go); a click opens the item in the window
+	toast := newToasts()
 	// The application object comes before the core: its single-instance check hands a second launch over to the first and exits
 	// the process inside application.New, so a second launch never opens a core on the first one's data (audit 2026-10-16, H10).
 	var browserArgs []string
@@ -108,16 +110,15 @@ func Run(assets fs.FS) error {
 	}
 	wa = application.New(application.Options{
 		Windows:     application.WindowsOptions{AdditionalBrowserArgs: browserArgs},
-		Name:        "Drydock",
+		Name:        AppName,
 		Description: "A team of AI coding agents you can watch and approve.",
-		Services:    []application.Service{application.NewService(bridge)},
+		Services:    []application.Service{application.NewService(bridge), application.NewService(toast)},
 		Assets:      application.AssetOptions{Handler: uiassets.Fallback(assets, application.AssetFileServerFS(assets))},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.drydock.app",
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
 				if window != nil {
-					window.Restore()
-					window.Focus()
+					windowToFront(frontOf{window}) // never Restore: it would un-maximise a maximised window
 				}
 			},
 		},
@@ -136,6 +137,8 @@ func Run(assets fs.FS) error {
 		fmt.Fprintf(os.Stderr, "drydock: crash reports: %v\n", err)
 	}
 	defer crash.Disarm()
+	// the windows for a sandbox's app (decision P134): one per forwarded address, brought to the front when opened again (X314)
+	viewers := openSandboxApp(dir)
 	// the tools folder the download carries beside drydock.exe (decision P77): installed from there at the first start
 	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), AutoSetup: true, CrashOutput: crash.Path(), PickFile: func(_ context.Context, p core.FilePick) (string, error) {
 		// the window's own Open dialog (the Security page's "Choose file..."); "" when the person cancels
@@ -150,12 +153,31 @@ func Run(assets fs.FS) error {
 			d = d.AttachToWindow(window)
 		}
 		return dialogResult(d.PromptForSingleSelection())
-	}, PickFolder: func(_ context.Context, p core.FolderPick) (string, error) {
+	}, PickSave: func(_ context.Context, p core.SavePick) (string, error) {
+		// the window's own Save dialog (a support bundle's or a project export's "Save to", A11); "" when the person cancels
+		if wa == nil {
+			return "", fmt.Errorf("the window is not open yet")
+		}
+		d := wa.Dialog.SaveFile().SetMessage(p.Title).CanCreateDirectories(true).SetFilename(p.Name)
+		if p.FilterPattern != "" {
+			d = d.AddFilter(p.FilterName, p.FilterPattern)
+		}
+		if p.Dir != "" {
+			d = d.SetDirectory(p.Dir)
+		}
+		if window != nil {
+			d = d.AttachToWindow(window)
+		}
+		return dialogResult(d.PromptForSingleSelection())
+	}, Reveal: reveal, PickFolder: func(_ context.Context, p core.FolderPick) (string, error) {
 		// the window's own folder dialog (a new project's "Choose folder...", decision P58); "" when the person cancels
 		if wa == nil {
 			return "", fmt.Errorf("the window is not open yet")
 		}
 		d := wa.Dialog.OpenFile().SetTitle(p.Title).CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true)
+		if p.Dir != "" {
+			d = d.SetDirectory(p.Dir) // the folder in the field, or the person's code folder (the core found the part that exists)
+		}
 		if window != nil {
 			d = d.AttachToWindow(window)
 		}
@@ -167,7 +189,7 @@ func Run(assets fs.FS) error {
 			return fmt.Errorf("the window is not open yet")
 		}
 		return wa.Browser.OpenURL(rawURL)
-	}, OpenSandboxApp: openSandboxApp(dir), Restart: func(context.Context) error {
+	}, OpenPath: openPath, OpenSandboxApp: viewers.open, SandboxAppShown: viewers.shown, CloseSandboxApp: viewers.close, Restart: func(context.Context) error {
 		// "Restart now" after a staged restore (decision P116)
 		if wa == nil {
 			return fmt.Errorf("the window is not open yet")
@@ -197,16 +219,25 @@ func Run(assets fs.FS) error {
 	if err := bridge.configureUpdater(wa, "stable", false); err != nil {
 		fmt.Fprintf(os.Stderr, "drydock: updates: %v\n", err)
 	}
-	window = wa.Window.NewWithOptions(application.WebviewWindowOptions{
+	// where and how big the person left the window (G8; window_windows.go), else centred at its default size
+	opts, kept := placeWindow(c, application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "Drydock",
-		Width:     1360,
-		Height:    860,
-		MinWidth:  1000,
-		MinHeight: 600,
+		Width:     defaultWindowW,
+		Height:    defaultWindowH,
+		MinWidth:  minWindowW,
+		MinHeight: minWindowH,
 		URL:       StartURL,
 	})
+	window = wa.Window.NewWithOptions(opts)
+	keepWindowPlacement(wa, c, window, kept)
 	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
 	attachWindowIcons(window)
+	// something new needs the person while the window is behind: the taskbar button asks for attention and a Windows notification
+	// shows; a click on it brings the window to the front on the item (G1, notify_windows.go)
+	toast.onClick(func(route string) { openFromNotification(wa, window, bridge, route) })
+	notifyCtx, stopNotify := context.WithCancel(context.Background())
+	defer stopNotify()
+	watchNeedsYou(notifyCtx, c, window, toast)
 	return wa.Run()
 }

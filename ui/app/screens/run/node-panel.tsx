@@ -295,7 +295,7 @@ export function NodePanel(
 
         {last?.logId ? (
           <div>
-            <Button size="sm" variant="ghost" icon={SquareTerminal} mix={[on('click', () => s.ui.openDock('logs'))]}>
+            <Button size="sm" variant="ghost" icon={SquareTerminal} mix={[on('click', () => s.ui.openLogs(taskId, last.logId))]}>
               Open its stream in the Logs tab
             </Button>
           </div>

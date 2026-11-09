@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { BackupInfo, BackupSettings } from '../../api/pkgTypes.ts';
-import { canRestore, currentVerifications, DAILY_ERROR, fingerprint, formFrom, madeMessage, parseSchedule, restoreTitle, settingsKey, WEEKLY_ERROR } from './backups.ts';
+import { canRestore, currentVerifications, DAILY_ERROR, fingerprint, formFrom, madeMessage, parseSchedule, restoreBlocked, restoreTitle, settingsKey, WEEKLY_ERROR } from './backups.ts';
 
 const b = (over: Partial<BackupInfo> = {}): BackupInfo => ({ path: 'p', name: 'b1.db', size: 2048, sha256: 'x', created: '2026-01-02T03:04:05Z', label: '', keep: false, ...over });
 const st = (over: Partial<BackupSettings> = {}): BackupSettings => ({ enabled: true, dir: 'C:\\b', defaultDir: 'C:\\b', daily: 7, weekly: 4, ...over });
@@ -20,8 +20,22 @@ describe('backups helpers', () => {
     expect(canRestore({ name: 'x', size: 1, created: '', ok: false })).toBe(false);
     expect(canRestore({ name: 'x', size: 1, created: '', ok: true, restorableHere: false })).toBe(false);
     expect(canRestore({ name: 'x', size: 1, created: '', ok: true, restorableHere: true })).toBe(true);
-    expect(restoreTitle({ pending: true }, true)).toContain('already staged');
-    expect(restoreTitle({ pending: false }, false)).toBe('Verify this backup first');
+    expect(restoreTitle({ pending: true }, undefined)).toContain('already staged');
+  });
+
+  it('Restore is open for an unchecked backup (it checks first) and closed for a damaged or newer one (F7)', () => {
+    expect(restoreBlocked({ pending: false }, undefined)).toBe('');
+    expect(restoreTitle({ pending: false }, undefined)).toBe('Check this backup, then stage it for the next start');
+    expect(restoreBlocked({ pending: false }, { name: 'x', size: 1, created: '', ok: false })).toBe('This backup is damaged');
+    expect(restoreBlocked({ pending: false }, { name: 'x', size: 1, created: '', ok: true, restorableHere: false })).toContain('newer Drydock');
+    expect(restoreBlocked({ pending: true }, undefined)).toContain('already staged');
+  });
+
+  it('a backup Drydock made counts as verified from its stored check, until a check in the page replaces it (F7)', () => {
+    const made = b({ verified: { schemaVersion: 30, at: '2026-01-02T03:04:05Z', restorableHere: true } });
+    expect(currentVerifications([made], {})).toEqual({ 'b1.db': { name: 'b1.db', size: 2048, created: made.created, ok: true, schemaVersion: 30, restorableHere: true, stored: true } });
+    const bad = { name: 'b1.db', size: 2048, created: '', ok: false, error: 'damaged' };
+    expect(currentVerifications([made], { 'b1.db': { v: bad, fp: fingerprint(made) } })).toEqual({ 'b1.db': bad });
   });
 
   it('words a new backup and the pruned ones', () => {

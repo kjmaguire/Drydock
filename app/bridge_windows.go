@@ -76,6 +76,13 @@ func (b *Bridge) Subscribe(after uint64) {
 	})
 }
 
+// subscribed says whether a page has started its event stream (a page is running and listens to the shell's events).
+func (b *Bridge) subscribed() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.cancel != nil
+}
+
 // ServiceShutdown stops the event forwarding.
 func (b *Bridge) ServiceShutdown() error {
 	b.mu.Lock()

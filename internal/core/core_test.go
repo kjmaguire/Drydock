@@ -273,6 +273,9 @@ func TestUIMethodsDriveATaskFromCreationToHumanMerge(t *testing.T) {
 		t.Fatalf("review item context = %+v", nc)
 	}
 
+	if detail.Merged != nil {
+		t.Fatalf("merged before the approval: %+v", detail.Merged)
+	}
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
 	a.waitFor("completion", func() bool {
 		a.call("task.get", map[string]string{"id": task.ID}, &detail)
@@ -280,6 +283,14 @@ func TestUIMethodsDriveATaskFromCreationToHumanMerge(t *testing.T) {
 	})
 	if detail.Task.AcceptedBy != "human:kyle" {
 		t.Fatalf("accepted by %q", detail.Task.AcceptedBy)
+	}
+	// the task page closes the task with how it landed: the merge commit and the branch it went into
+	a.waitFor("the merge in task.get", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return detail.Merged != nil
+	})
+	if m := detail.Merged; len(m.Commit) < 7 || m.Into == "" || m.PR != 0 || m.At <= 0 {
+		t.Fatalf("merged = %+v", m)
 	}
 	if b, _ := os.ReadFile(filepath.Join(repo, "calc.go")); !strings.Contains(string(b), "return a - b") {
 		t.Fatalf("the merge did not land:\n%s", b)

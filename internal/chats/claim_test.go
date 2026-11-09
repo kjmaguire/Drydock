@@ -128,3 +128,36 @@ func TestASendToAChatDeletedMeanwhileSaysTheChatIsGone(t *testing.T) {
 		t.Fatalf("the chat is still held: %v", s.running)
 	}
 }
+
+// A turn claims its chat while HoldFolders is held, and lets go once the claim is written: the core's Sync now holds it
+// exclusively, so no turn starts between its check that no chat is mid-turn and its fast-forward.
+func TestASendClaimsInsideTheFolderHold(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.OpenTemp(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var held, released int
+	var statusInHold string
+	s := New(Deps{DB: db, Runtime: &rt.Runtime{}, Capabilities: func(string) (agents.Capabilities, bool) { return agents.Capabilities{}, true },
+		HoldFolders: func() func() {
+			held++
+			return func() {
+				released++
+				_ = db.Reader().QueryRowContext(ctx, `SELECT status FROM chats`).Scan(&statusInHold)
+			}
+		}}, Options{})
+	defer s.Close()
+	c, err := s.Create(ctx, CreateReq{Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = s.Send(ctx, SendReq{ID: c.ID, Text: "hello"}) // the test runtime has no agent: the turn itself may fail after the claim
+	if held != 1 || released != 1 {
+		t.Fatalf("held %d, released %d", held, released)
+	}
+	if statusInHold != StatusRunning {
+		t.Fatalf("the hold ended before the chat was claimed: %q", statusInHold)
+	}
+}

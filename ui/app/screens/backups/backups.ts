@@ -14,24 +14,36 @@ export interface Checked {
   fp: string;
 }
 
-/** The verifications that still match a listed file, by backup name. */
-export function currentVerifications(backups: BackupInfo[], checked: Record<string, Checked>): Record<string, BackupVerify> {
-  const out: Record<string, BackupVerify> = {};
+/**
+ * The verifications that still match a listed file, by backup name: one made in this page, else the check Drydock ran when it made
+ * the backup (`stored`, effort review F7).
+ */
+export function currentVerifications(backups: BackupInfo[], checked: Record<string, Checked>): Record<string, BackupVerify & { stored?: boolean }> {
+  const out: Record<string, BackupVerify & { stored?: boolean }> = {};
   for (const b of backups) {
     const c = checked[b.name];
     if (c && c.fp === fingerprint(b)) out[b.name] = c.v;
+    else if (b.verified)
+      out[b.name] = { name: b.name, size: b.size, created: b.created, ok: true, schemaVersion: b.verified.schemaVersion, restorableHere: b.verified.restorableHere, stored: true };
   }
   return out;
 }
 
-/** Restore is offered only after a successful verify in this page that says this Drydock can restore it. */
+/** Stage is offered only after a successful verify that says this Drydock can restore it (Restore runs that verify first). */
 export function canRestore(v: BackupVerify | undefined): boolean {
   return v?.ok === true && v.restorableHere === true;
 }
 
-export function restoreTitle(pending: RestoreStatus | undefined, ok: boolean): string {
+/** Why Restore cannot be started for a backup, or '' when it can (an unchecked backup can: Restore checks it first). */
+export function restoreBlocked(pending: RestoreStatus | undefined, v: BackupVerify | undefined): string {
   if (pending?.pending) return 'A restore is already staged; cancel it first';
-  return ok ? 'Restore this backup (staged for the next start)' : 'Verify this backup first';
+  if (v && !v.ok) return 'This backup is damaged';
+  if (v && !v.restorableHere) return 'Made by a newer Drydock: update Drydock first';
+  return '';
+}
+
+export function restoreTitle(pending: RestoreStatus | undefined, v: BackupVerify | undefined): string {
+  return restoreBlocked(pending, v) || 'Check this backup, then stage it for the next start';
 }
 
 /** The line shown after "Back up now". */

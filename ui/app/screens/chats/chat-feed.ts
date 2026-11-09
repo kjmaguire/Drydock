@@ -25,11 +25,21 @@ export interface Streaming {
   thinking?: string;
 }
 
+/**
+ * How far the turn this view saw start has got before any text (D12): `since` is when it started here, `cli` that the agent
+ * CLI's process is up (the runtime's agent.started for this chat), `step` the tool it last called.
+ */
+export interface TurnPhase {
+  since: number;
+  cli: boolean;
+  step: string;
+}
+
 export const OLDER_PAGE = 100;
 
 type FeedClient = Pick<ChatClient, 'chatGet' | 'chatMessages'>;
 
-export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }> {
+export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event; rewound: CustomEvent<number> }> {
   chat: Chat | undefined;
   messages: ChatMessage[] = [];
   hasMore = false;
@@ -42,6 +52,8 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
   streaming: Streaming | undefined;
   /** The last turn's end, for a quiet note (fallback, error). */
   lastTurn: ChatTurnEnd | undefined;
+  /** The running turn's first seconds, when this view saw it start (undefined: opened mid-turn, or nothing runs). */
+  phase: TurnPhase | undefined;
 
   readonly id: string;
   #client: FeedClient;
@@ -139,6 +151,9 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
     this.#emit();
   };
 
+  /** A failed read's Retry (ErrorNote retry={retryFor(feed)} looks for `reload`): reads the chat and its latest messages again. */
+  reload = (): Promise<void> => this.load();
+
   /** Read the page before the oldest message shown; returns how many were added. */
   loadOlder = async (): Promise<number> => {
     if (this.loadingOlder || !this.hasMore || this.#stopped) return 0;
@@ -173,6 +188,7 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
     if (this.#stopped || this.lastTurn?.turnId === turnId) return;
     if (version > 0 && this.chat && this.chat.version >= version) return;
     this.#pending = { turnId, version };
+    this.phase ??= { since: Date.now(), cli: false, step: '' };
     this.#emit();
   }
 
@@ -188,12 +204,21 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
     this.chat = c;
     if (this.#pending && (c.version ?? 0) >= this.#pending.version) this.#pending = undefined; // it shows the send's turn
     if (c.status === 'running') this.streaming ??= { turnId: '', text: '' };
-    else if (!this.#pending) this.streaming = undefined;
+    else if (!this.#pending) {
+      this.streaming = undefined;
+      this.phase = undefined;
+    }
     return true;
   }
 
   #onEvent(e: DrydockEvent): void {
     const d = (e.data ?? {}) as Record<string, unknown>;
+    // the runtime announces the chat's CLI process with the chat id as its agent (docs/chats.md): the turn is past starting
+    if (e.type === 'agent.started' && e.agentId === this.id) {
+      if (!this.phase || this.phase.cli) return;
+      this.phase = { ...this.phase, cli: true };
+      return this.#emit();
+    }
     if (!e.type.startsWith('chat.') || d.chatId !== this.id) return;
     switch (e.type) {
       case 'chat.turn_started': {
@@ -201,6 +226,13 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
         this.streaming = { turnId, text: '' };
         if (this.#pending?.turnId === turnId) this.#pending = undefined;
         this.lastTurn = undefined;
+        this.phase ??= { since: Date.now(), cli: false, step: '' };
+        break;
+      }
+      case 'chat.tool': {
+        // the step the turn is on; a tool call also means the CLI is up
+        if (!this.phase) return;
+        this.phase = { ...this.phase, cli: true, step: String(d.name ?? '') };
         break;
       }
       case 'chat.thinking': {
@@ -240,6 +272,8 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
         const from = Number(d.fromSeq);
         if (!Number.isInteger(from) || from < 1) return this.#ignore(e, 'rewound');
         this.messages = this.messages.filter((m) => m.seq < from);
+        // the seqs from `from` on are used again by the new messages: a reader that remembers what it marked lowers it (D8)
+        this.dispatchEvent(new CustomEvent('rewound', { detail: from }));
         break;
       }
       case 'chat.tool_result': {
@@ -263,6 +297,7 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
         if (!isChatTurnEnd(d)) return this.#ignore(e, 'turn');
         this.lastTurn = d;
         this.streaming = undefined;
+        this.phase = undefined;
         if (this.#pending?.turnId === d.turnId) this.#pending = undefined;
         break;
       case 'chat.deleted':
@@ -270,6 +305,7 @@ export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }>
         this.deleted = true;
         this.chat = undefined;
         this.streaming = undefined;
+        this.phase = undefined;
         this.#pending = undefined;
         this.messages = [];
         this.hasMore = false;

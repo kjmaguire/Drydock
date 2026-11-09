@@ -213,14 +213,17 @@ export function agentToolVendors(all: readonly Vendor[]): Vendor[] {
 
 /**
  * A model provider's row (OpenRouter's, decision P103): set up when there is none; on while an enabled one is up; Down needs the
- * person; enabled but never checked is not counted as connected (its page in Models tests it); a disabled one is set up again
- * from its page.
+ * person, and so does one failing its checks (degraded); enabled but never checked is not counted as connected (Drydock reads a
+ * new one after saving and checks it in the background; its page in Models tests it now); a disabled one is set up again from
+ * its page.
  */
 export function providerRowState(list: readonly Pick<Provider, 'enabled' | 'status'>[]): RowState {
   const on = list.filter((p) => p.enabled);
   if (on.length === 0) return list.length > 0 ? { text: 'Disabled', tone: 'muted', bucket: 'setup' } : SETUP;
   if (on.some((p) => p.status === 'up')) return ON;
   if (on.every((p) => p.status === 'down')) return { text: 'Down', tone: 'err', bucket: 'needs', problem: 'OpenRouter did not answer its last check. Its page in Models checks it again.' };
+  if (on.some((p) => p.status === 'degraded'))
+    return { text: 'Having trouble', tone: 'warn', bucket: 'needs', problem: 'OpenRouter failed its last check. Drydock checks it again in a few minutes; its page in Models checks it now.' };
   return { text: 'Not checked', tone: 'none', bucket: 'setup' };
 }
 
@@ -390,3 +393,6 @@ export function sizeText(n: number): string {
   if (n < 1024 * 1024) return `${Math.round(n / 102.4) / 10} KB`;
   return `${Math.round(n / 104857.6) / 10} MB`;
 }
+
+/** Whether the address asks for a connected service's Reconnect form open (?reconnect=1, the Inbox's Reconnect, F14). */
+export const reconnectAsked = (search: string): boolean => new URLSearchParams(search).get('reconnect') === '1';

@@ -42,6 +42,7 @@ import type {
   IntegrationOAuthApp,
   IntegrationOAuthSession,
   MemoryEntry,
+  LinkSuggestion,
   Milestone,
   NotionPageText,
   Outbox,
@@ -54,6 +55,7 @@ import type {
   AttachmentText,
   Pack,
   PackAttachment,
+  PackTemplate,
   PackConsult,
   PackFile,
   PackRefreshResult,
@@ -69,6 +71,7 @@ import type {
   RequirementTrace,
   RequirementVersion,
   RoomTurn,
+  ReplyOutcome,
   RouteExplain,
   RoutePreview,
   RouteLevel,
@@ -76,6 +79,7 @@ import type {
   RouteSettingsPatch,
   RetentionBlock,
   RouteRule,
+  RuleTables,
   RuleReq,
   SchedulerStatus,
   LibrarySkill,
@@ -125,6 +129,7 @@ export interface ExtClient {
   routeRulesList(): Promise<RouteRule[]>;
   routeRulesSet(rule: RouteRule): Promise<RouteRule>;
   routeRulesDelete(id: string): Promise<void>;
+  routeRulesDescribe(): Promise<RuleTables>;
   routePreview(request: Record<string, unknown>): Promise<RoutePreview>;
   /** Several dry runs in one call, in the order asked (at most 32); a failed one is { error } in its place. */
   routePreviews(requests: Record<string, unknown>[]): Promise<(RoutePreview | { error: string })[]>;
@@ -161,6 +166,8 @@ export interface ExtClient {
   sandboxForwardClose(taskId: string, port: number): Promise<void>;
   /** Shows a forwarded port in Drydock's own isolated window, never in a browser (a person only). */
   sandboxForwardView(taskId: string, port: number): Promise<void>;
+  /** "Open the app": forwards the port (one already forwarded stays as it is) and shows it in Drydock's own window (a person only). */
+  sandboxForwardShow(taskId: string, port: number): Promise<SandboxForward>;
   telemetryStatus(): Promise<TelemetryStatus>;
   telemetryEnable(enabled: boolean): Promise<TelemetryStatus>;
   telemetryPreview(limit?: number): Promise<TelemetryDocument>;
@@ -176,6 +183,8 @@ export interface ExtClient {
   packList(): Promise<Pack[]>;
   packGet(id: string): Promise<Pack>;
   packInstall(yaml: string): Promise<Pack>;
+  /** The ready manifests the core ships (Cloudflare, Microsoft Learn). */
+  packTemplates(): Promise<PackTemplate[]>;
   packRemove(id: string): Promise<void>;
   packRefresh(id: string, force?: boolean): Promise<PackRefreshResult>;
   /** Makes a pack of the person's own files (private unless said otherwise); refresh it to index them. */
@@ -190,6 +199,8 @@ export interface ExtClient {
   packAttach(projectId: string, packId: string, agentId?: string, role?: string): Promise<void>;
   packDetach(projectId: string, packId: string, agentId?: string, role?: string): Promise<void>;
   packAttachments(projectId: string): Promise<PackAttachment[]>;
+  /** Attaches a pack to the project for the roles its manifest names (every role when it names none). */
+  packAttachDefaults(projectId: string, packId: string): Promise<void>;
   // requirements and milestones
   requirementList(projectId: string, includeArchived?: boolean): Promise<Requirement[]>;
   requirementAdd(projectId: string, title: string, text: string, format?: string): Promise<Requirement>;
@@ -202,6 +213,8 @@ export interface ExtClient {
   requirementSearch(projectId: string, query: string, docId?: string, k?: number): Promise<RequirementHit[]>;
   requirementLink(requirementId: string, taskId: string, criteria: string[]): Promise<RequirementLink[]>;
   requirementUnlink(requirementId: string, taskId: string): Promise<void>;
+  /** Open tasks whose own words match a passage of the requirement (X43): suggestions the person links or dismisses. */
+  requirementSuggestLinks(requirementId: string, k?: number, exclude?: string[]): Promise<LinkSuggestion[]>;
   requirementLinks(filter: { requirementId?: string; taskId?: string }): Promise<RequirementLink[]>;
   requirementTrace(id: string): Promise<RequirementTrace>;
   requirementCoverage(projectId: string): Promise<RequirementTrace[]>;
@@ -215,6 +228,8 @@ export interface ExtClient {
   // skills
   skillList(projectId: string, statuses?: string[]): Promise<Skill[]>;
   skillScan(projectId: string): Promise<SkillScan>;
+  /** The window got focus with the project open: the core scans the repository's skills when its last scan is 30 s old (E5). */
+  skillRefresh(projectId: string): Promise<boolean>;
   skillAccept(projectId: string, name: string): Promise<Skill>;
   skillReject(projectId: string, name: string): Promise<Skill>;
   skillRelease(projectId: string, name: string): Promise<Skill>;
@@ -254,6 +269,10 @@ export interface ExtClient {
   memorySearch(projectId: string, query: string, status?: string): Promise<MemoryEntry[]>;
   memoryPropose(projectId: string, kind: string, title: string, body: string): Promise<MemoryEntry>;
   memoryAccept(id: string): Promise<MemoryEntry>;
+  /** Accept all: the proposals named; answers the ids accepted (E10). */
+  memoryAcceptMany(ids: string[]): Promise<string[]>;
+  /** Undo of Accept all: the entries named become proposals again; answers the ids changed. */
+  memoryUnacceptMany(ids: string[]): Promise<string[]>;
   memoryReject(id: string): Promise<MemoryEntry>;
   memoryDelete(id: string): Promise<void>;
   // development flow
@@ -263,11 +282,15 @@ export interface ExtClient {
   roomInvite(roomId: string, agentId: string, role?: string, state?: string): Promise<RoomMember[]>;
   roomRemoveMember(roomId: string, agentId: string): Promise<RoomMember[]>;
   roomTurns(roomId: string, limit?: number): Promise<RoomTurn[]>;
-  roomReply(messageId: string): Promise<unknown>;
-  planPropose(projectId: string, goal: string, requirements?: string, plannerAgentId?: string): Promise<{ planId: string; runId: string; plannerAgentId: string }>;
+  /** Ask the agents to answer a person's message now; with agentId, that agent answers it (X12: Ask, Ask again). */
+  roomReply(messageId: string, agentId?: string): Promise<ReplyOutcome>;
+  /** What the newest chain of a room did while the app runs (X12); null when none ran. */
+  roomReplyOutcome(roomId: string): Promise<ReplyOutcome | null>;
+  /** requirementIds: the project's requirement documents to plan from (their text joins requirements; accepting links the tasks to them). */
+  planPropose(projectId: string, goal: string, requirements?: string, plannerAgentId?: string, requirementIds?: string[]): Promise<{ planId: string; runId: string; plannerAgentId: string; fallback?: boolean }>;
   planGet(planId: string): Promise<Plan>;
   planList(projectId: string): Promise<Plan[]>;
-  planAccept(planId: string, accept?: string[], edits?: Record<string, ProposedTask>): Promise<unknown>;
+  planAccept(planId: string, accept?: string[], edits?: Record<string, ProposedTask>, start?: boolean): Promise<Plan>;
   planReject(planId: string): Promise<unknown>;
   schedulerStatus(projectId: string): Promise<SchedulerStatus>;
   schedulerTick(projectId: string): Promise<TickResult>;
@@ -349,6 +372,7 @@ export function createExtClient(t: Transport): ExtClient {
     routeRulesList: async () => arr((await call<{ rules: RouteRule[] | null }>('route.rules.list')).rules),
     routeRulesSet: (rule) => call('route.rules.set', { rule }),
     routeRulesDelete: (id) => voidCall('route.rules.delete', { id }),
+    routeRulesDescribe: () => call('route.rules.describe', {}),
     routePreview: (request) => call('route.preview', { request }),
     routePreviews: async (requests) => (await call<(RoutePreview | { error: string })[] | null>('route.previews', { requests })) ?? [],
     routeCheapGet: (providerId) => call('route.cheap.get', { providerId }),
@@ -382,11 +406,12 @@ export function createExtClient(t: Transport): ExtClient {
     },
     sandboxForwards: async (taskId) => {
       const r = await call<SandboxForwards>('sandbox.forward.list', { taskId });
-      return { ...r, forwards: arr(r.forwards) };
+      return { ...r, forwards: arr(r.forwards), viewing: arr(r.viewing), listening: arr(r.listening) };
     },
     sandboxForwardOpen: (taskId, port) => call('sandbox.forward.open', { taskId, port }),
     sandboxForwardClose: (taskId, port) => voidCall('sandbox.forward.close', { taskId, port }),
     sandboxForwardView: (taskId, port) => voidCall('sandbox.forward.view', { taskId, port }),
+    sandboxForwardShow: (taskId, port) => call('sandbox.forward.show', { taskId, port }),
     telemetryStatus: () => call('telemetry.status'),
     telemetryEnable: (enabled) => call('telemetry.enable', { enabled }),
     telemetryPreview: async (limit = 0) => {
@@ -402,6 +427,7 @@ export function createExtClient(t: Transport): ExtClient {
     packList: async () => arr(await call<Pack[] | null>('pack.list')),
     packGet: (id) => call('pack.get', { id }),
     packInstall: (yaml) => call('pack.install', { yaml }),
+    packTemplates: async () => arr(await call<PackTemplate[] | null>('pack.templates')),
     packRemove: (id) => voidCall('pack.remove', { id }),
     packRefresh: (id, force = false) => call('pack.refresh', { id, force }),
     packCreateFromFiles: (p, files) => call('pack.createFromFiles', { ...p, files: files.map((f) => ({ name: f.name, data: encodeBase64(f.data) })) }),
@@ -421,6 +447,7 @@ export function createExtClient(t: Transport): ExtClient {
     packAttach: (projectId, packId, agentId = '', role = '') => voidCall('pack.attach', { projectId, packId, agentId, role }),
     packDetach: (projectId, packId, agentId = '', role = '') => voidCall('pack.detach', { projectId, packId, agentId, role }),
     packAttachments: async (projectId) => arr(await call<PackAttachment[] | null>('pack.attachments', { projectId })),
+    packAttachDefaults: (projectId, packId) => voidCall('pack.attachDefaults', { projectId, packId }),
 
     requirementList: async (projectId, includeArchived = false) => arr(await call<Requirement[] | null>('requirement.list', { projectId, includeArchived })),
     requirementAdd: (projectId, title, text, format = 'markdown') => call('requirement.add', { projectId, title, text, format, source: 'upload' }),
@@ -430,6 +457,7 @@ export function createExtClient(t: Transport): ExtClient {
     requirementVersions: async (id) => arr(await call<RequirementVersion[] | null>('requirement.versions', { id })),
     requirementText: async (id, version = 0) => String((await call<string | null>('requirement.text', { id, version })) ?? ''),
     requirementSearch: async (projectId, query, docId = '', k = 0) => arr(await call<RequirementHit[] | null>('requirement.search', { projectId, query, docId, k })),
+    requirementSuggestLinks: async (requirementId, k = 5, exclude = []) => arr(await call<LinkSuggestion[] | null>('requirement.suggestLinks', { requirementId, k, exclude })),
     requirementLink: async (requirementId, taskId, criteria) => arr(await call<RequirementLink[] | null>('requirement.link', { requirementId, taskId, criteria })),
     requirementUnlink: (requirementId, taskId) => voidCall('requirement.unlink', { requirementId, taskId }),
     requirementLinks: async ({ requirementId = '', taskId = '' }) => arr(await call<RequirementLink[] | null>('requirement.links', { requirementId, taskId })),
@@ -448,6 +476,7 @@ export function createExtClient(t: Transport): ExtClient {
 
     skillList: async (projectId, statuses = []) => arr(await call<Skill[] | null>('skill.list', { projectId, statuses })),
     skillScan: (projectId) => call('skill.scan', { projectId }),
+    skillRefresh: async (projectId) => (await call<boolean | null>('skill.refresh', { projectId })) === true,
     skillAccept: (projectId, name) => call('skill.accept', { projectId, name }),
     skillReject: (projectId, name) => call('skill.reject', { projectId, name }),
     skillRelease: (projectId, name) => call('skill.release', { projectId, name }),
@@ -487,6 +516,8 @@ export function createExtClient(t: Transport): ExtClient {
     memorySearch: async (projectId, query, status = '') => arr(await call<MemoryEntry[] | null>('memory.search', { projectId, query, status })),
     memoryPropose: (projectId, kind, title, body) => call('memory.propose', { projectId, kind, title, body }),
     memoryAccept: (id) => call('memory.accept', { id }),
+    memoryAcceptMany: async (ids) => arr(await call<string[] | null>('memory.acceptMany', { ids })),
+    memoryUnacceptMany: async (ids) => arr(await call<string[] | null>('memory.unacceptMany', { ids })),
     memoryReject: (id) => call('memory.reject', { id }),
     memoryDelete: (id) => voidCall('memory.delete', { id }),
 
@@ -496,11 +527,12 @@ export function createExtClient(t: Transport): ExtClient {
     roomInvite: async (roomId, agentId, role = '', state = '') => arr(await call<RoomMember[] | null>('room.invite', { roomId, agentId, role, state })),
     roomRemoveMember: async (roomId, agentId) => arr(await call<RoomMember[] | null>('room.removeMember', { roomId, agentId })),
     roomTurns: async (roomId, limit = 0) => arr(await call<RoomTurn[] | null>('room.turns', { roomId, limit })),
-    roomReply: (messageId) => call('room.reply', { messageId }),
-    planPropose: (projectId, goal, requirements = '', plannerAgentId = '') => call('plan.propose', { projectId, goal, requirements, plannerAgentId }),
+    roomReply: (messageId, agentId) => call<ReplyOutcome>('room.reply', agentId ? { messageId, agentId } : { messageId }),
+    roomReplyOutcome: (roomId) => call<ReplyOutcome | null>('room.replyOutcome', { roomId }),
+    planPropose: (projectId, goal, requirements = '', plannerAgentId = '', requirementIds = []) => call('plan.propose', { projectId, goal, requirements, plannerAgentId, requirementIds }),
     planGet: (planId) => call('plan.get', { planId }),
     planList: async (projectId) => arr(await call<Plan[] | null>('plan.list', { projectId })),
-    planAccept: (planId, accept, edits) => call('plan.accept', { planId, accept, edits }),
+    planAccept: (planId, accept, edits, start) => call('plan.accept', { planId, accept, edits, start: start === true }),
     planReject: (planId) => call('plan.reject', { planId }),
     schedulerStatus: (projectId) => call('scheduler.status', { projectId }),
     schedulerTick: (projectId) => call('scheduler.tick', { projectId }),

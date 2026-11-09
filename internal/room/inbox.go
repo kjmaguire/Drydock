@@ -15,8 +15,10 @@ type Unread struct {
 	RoomID   string `json:"roomId"`
 	RoomName string `json:"roomName"`
 	Kind     Kind   `json:"kind"`
-	Unread   int    `json:"unread"`   // messages from others with seq > last_read_seq
-	Mentions int    `json:"mentions"` // messages that mention the member with seq > last_mention_read_seq
+	// Unread counts messages from others with seq > last_read_seq. A SYSTEM line (a join, a notice) is not conversation and
+	// does not count, except in the project's #alerts channel, where a notice may have no other signal.
+	Unread   int `json:"unread"`
+	Mentions int `json:"mentions"` // messages that mention the member with seq > last_mention_read_seq
 	// Muted is a room the member muted (decision P130): its messages raise neither count nor an Inbox item, except a message
 	// that mentions the member by name (not a role it holds), which still counts in both.
 	Muted    bool  `json:"muted"`
@@ -38,6 +40,7 @@ func (s *Service) UnreadCounts(ctx context.Context, member Author, projectID str
 	rows, err := s.db.Reader().QueryContext(ctx, `
 SELECT r.id, r.name, r.kind, m.state, m.last_read_seq,
   (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_read_seq AND x.author <> m.member_id
+     AND (x.type <> 'SYSTEM' OR (r.kind = 'channel' AND r.name = 'alerts'))
      AND (m.state <> 'muted' OR (`+directMention+`)) LIMIT `+fmt.Sprint(UnreadCap)+`)),
   (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_mention_read_seq AND x.author <> m.member_id
      AND x.mentions <> '[]'
@@ -128,8 +131,32 @@ const (
 	NeedsTaskWaiting NeedsKind = "task_waiting"
 	NeedsMention     NeedsKind = "mention"
 	NeedsJoinRequest NeedsKind = "join_request"
-	NeedsAgent       NeedsKind = "agent"
-	NeedsConnection  NeedsKind = "connection"
+	// NeedsReply is an agent's answer to the person (a message that replies to theirs) not read yet: one item per room, the
+	// newest answer, gone when the room is read (X18). A reply in a thread mentions nobody, so without it the answer would be
+	// a number on the Rooms rail only.
+	NeedsReply      NeedsKind = "reply"
+	NeedsAgent      NeedsKind = "agent"
+	NeedsConnection NeedsKind = "connection"
+	// What the core already knows went wrong in the background, each with its fix (lane B batch B6, F14 and H7), added by the
+	// core from current state so each goes by itself once the state is fine again: a connected service whose key was refused,
+	// whose answers changed shape or whose sync failed three times in a row (NeedsIntegration), a model provider that is down
+	// (NeedsProvider), an MCP server whose sign-in expired (NeedsMCPSignIn), an agent CLI sending output Drydock does not read
+	// (NeedsAdapterDrift), a scan tool whose install failed (NeedsToolInstall) and a crash report from an earlier run
+	// (NeedsCrash). Subject names the thing: the integration's kind, the provider's id, the server's id, the adapter, the tool,
+	// the crash report's name.
+	NeedsIntegration  NeedsKind = "integration"
+	NeedsProvider     NeedsKind = "provider"
+	NeedsMCPSignIn    NeedsKind = "mcp_sign_in"
+	NeedsAdapterDrift NeedsKind = "adapter_drift"
+	NeedsToolInstall  NeedsKind = "tool_install"
+	NeedsCrash        NeedsKind = "crash"
+	// NeedsSecurityFindings is a scan a person's rule started (after a merge, a sync, weekly; lane B batch B7, H5) that found
+	// high or critical findings the scan before did not have. Subject is the scan's id.
+	NeedsSecurityFindings NeedsKind = "security_findings"
+	// NeedsPRReview is a pull request's review and merge that a collaborator asked changes on, on GitHub, while it waited for the
+	// person (H12): the review item itself, said once (the rule against duplicates), above the other reviews. It is answered like
+	// the review (the key is still the approval's), and the task can be sent back with the collaborator's words in one click.
+	NeedsPRReview NeedsKind = "pr_review"
 )
 
 // Budget states of a NeedsBudget item.
@@ -161,7 +188,9 @@ type NeedsYouItem struct {
 	TaskID     string    `json:"taskId,omitempty"`
 	AgentID    string    `json:"agentId,omitempty"`
 	ChatID     string    `json:"chatId,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	// RunID is the workflow run an agent item is about (its task's latest run): Report this picks it on the Support page (X56).
+	RunID     string    `json:"runId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 	// TaskSeq is the task's number in its project (with the project, the task's key); 0 for an item of no task.
 	TaskSeq int `json:"taskSeq,omitempty"`
 	// Phase says which gate a review item is, from the request that made it (workflow.RequestSpec.Phase): "spec" (accept the
@@ -182,6 +211,8 @@ type NeedsYouItem struct {
 	JoinRequestID string `json:"joinRequestId,omitempty"`
 	Adapter       string `json:"adapter,omitempty"`
 	ConnectionKey string `json:"connectionKey,omitempty"`
+	// Subject is what a background problem's item is about (see NeedsIntegration and the kinds after it); empty for the rest.
+	Subject string `json:"subject,omitempty"`
 }
 
 // NeedsContext is a task's state in one line: who did the work, how big the change is, how its checks went and what its
@@ -213,16 +244,18 @@ SELECT a.id, a.kind, a.title, a.task_id, a.project_id, a.created_at, a.phase, a.
   COALESCE(NULLIF(CASE WHEN a.run_id = '' AND json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.action.agentId') END, ''),
            (SELECT t.assignee FROM tasks t WHERE a.task_id <> '' AND t.id = a.task_id), ''),
   COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.gate') END, ''),
-  COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.exceeded[0].budget.id') END, '')
+  COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.exceeded[0].budget.id') END, ''),
+  COALESCE((SELECT e.summary FROM task_evidence e WHERE a.kind = 'review' AND a.phase = 'merge' AND a.task_id <> '' AND e.task_id = a.task_id
+            AND e.kind = 'pr_review_waiting' AND e.created_at >= a.created_at ORDER BY e.id DESC LIMIT 1), '')
 FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`, projectID, projectID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var it NeedsYouItem
-		var kind, gate, budgetID string
+		var kind, gate, budgetID, changes string
 		var at, expires int64
-		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.Phase, &expires, &it.RoomID, &it.AgentID, &gate, &budgetID); err != nil {
+		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.Phase, &expires, &it.RoomID, &it.AgentID, &gate, &budgetID, &changes); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -235,6 +268,9 @@ FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`,
 		case kind == "approval" && gate == "budget":
 			// the budget gate's pause (budget.PauseGate): a budget item that is answered like an approval
 			it.Kind, it.Severity, it.BudgetID, it.BudgetState, it.Detail = NeedsBudget, 0, budgetID, BudgetPaused, budgetPausedDo
+		case kind == "review" && changes != "":
+			// a collaborator asked for changes on GitHub after this review and merge was asked for (H12)
+			it.Kind, it.Severity, it.Detail = NeedsPRReview, 1, changes
 		case kind == "review":
 			it.Kind, it.Severity = NeedsReview, 2
 		case kind == "question":

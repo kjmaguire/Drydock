@@ -51,9 +51,19 @@ export interface SplitResult {
   invalid?: boolean;
 }
 
+/** A project's stand-up schedule (H11): off by default; when on, the lead posts once each weekday from hourLocal (the PC's time). */
+export interface StandupSchedule {
+  projectId: string;
+  enabled: boolean;
+  hourLocal: number;
+}
+
 export interface LeadClient {
   /** The lead posts a stand-up in #general (licensed). */
   leadStandup(projectId: string): Promise<StandupResult>;
+  leadStandupScheduleGet(projectId: string): Promise<StandupSchedule>;
+  /** Only the person sets it: a scheduled stand-up is a paid lead turn each weekday. */
+  leadStandupScheduleSet(s: StandupSchedule): Promise<StandupSchedule>;
   leadInterventions(projectId: string, taskId?: string): Promise<LeadIntervention[]>;
   /** Asks the project's team lead to split the task (licensed; refused without a lead on the team). */
   leadSplit(taskId: string): Promise<SplitResult>;
@@ -64,6 +74,8 @@ const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 export function createLeadClient(t: Transport): LeadClient {
   return {
     leadStandup: (projectId) => t.call('lead.standup', { projectId }),
+    leadStandupScheduleGet: (projectId) => t.call('lead.standup.schedule.get', { projectId }),
+    leadStandupScheduleSet: (s) => t.call('lead.standup.schedule.set', s),
     leadSplit: async (taskId) => {
       const r = await t.call<SplitResult>('lead.split', { taskId });
       return { ...r, createdTasks: arr(r.createdTasks) };

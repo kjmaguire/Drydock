@@ -107,6 +107,14 @@ func init() {
 			}) (any, error) {
 				return r.list(ctx, p.Refresh)
 			}),
+			// github.repos: the repositories the signed-in user can reach, each marked with the project whose origin it already is
+			// (B7: the clone picker offers that project instead of a second clone)
+			"github.repos": bind(func(ctx context.Context, p struct {
+				Owner string `json:"owner"`
+				Query string `json:"query"`
+			}) (any, error) {
+				return r.repos(ctx, p.Owner, p.Query)
+			}),
 		}, nil, nil
 	}})
 }
@@ -197,6 +205,50 @@ func (r *repoOverviews) list(ctx context.Context, refresh bool) (ProjectRepos, e
 			if strings.HasPrefix(a.ov.URL, "https://github.com/") {
 				row.URL = a.ov.URL
 			}
+		}
+	}
+	return out, nil
+}
+
+// GitHubRepoRow is a repository the clone picker lists: GitHub's summary, and the project whose origin remote it already is
+// (the first one, when several share it), so the picker says "Already a project" instead of cloning it again.
+type GitHubRepoRow struct {
+	host.RepoSummary
+	ProjectID string `json:"projectId,omitempty"`
+	Project   string `json:"project,omitempty"`
+}
+
+// repos lists owner's repositories (GitHubRepos) and marks each that is a project's origin. The origin remotes are read the way
+// the Repositories table reads them (kept for repoOverviewTTL, git on this PC; GitHub is not asked again).
+func (r *repoOverviews) repos(ctx context.Context, owner, query string) ([]GitHubRepoRow, error) {
+	list, err := r.c.GitHubRepos(ctx, owner, query)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]GitHubRepoRow, len(list))
+	for i, s := range list {
+		out[i] = GitHubRepoRow{RepoSummary: s}
+	}
+	if len(list) == 0 {
+		return out, nil
+	}
+	projects, err := r.c.Projects(ctx)
+	if err != nil || len(projects) == 0 {
+		return out, nil // the list itself is still the answer
+	}
+	byRepo := map[string]Project{}
+	for i, rem := range r.remotes(ctx, projects, false) {
+		if rem.state != RepoStateGitHub {
+			continue
+		}
+		k := strings.ToLower(rem.full)
+		if _, seen := byRepo[k]; !seen {
+			byRepo[k] = projects[i]
+		}
+	}
+	for i := range out {
+		if p, ok := byRepo[strings.ToLower(out[i].FullName)]; ok {
+			out[i].ProjectID, out[i].Project = p.ID, p.Name
 		}
 	}
 	return out, nil

@@ -1,8 +1,8 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { createDockClient, decodeBase64 } from '../../api/dockClient.ts';
+import { createDockClient, decodeBase64, type LogSource } from '../../api/dockClient.ts';
 import { FakeTransport } from '../../test/fakes.ts';
-import { diffAriaLabels, diffTotals, formatSize, LogBuffer, orderedWriter, parseColor, splitPath, TERMINAL_READ_RETRIES, terminalReadRetry, toHex, withAlpha } from './dock-format.ts';
+import { diffAriaLabels, diffTotals, autoLogSource, filterLogs, formatSize, LogBuffer, pickLogSource, orderedWriter, parseColor, splitPath, TERMINAL_READ_RETRIES, terminalReadRetry, toHex, withAlpha } from './dock-format.ts';
 
 describe('the dock client', () => {
   it('decodes terminal output from base64 and turns null lists into empty ones', async () => {
@@ -148,5 +148,50 @@ describe('diff editor names (F7)', () => {
       modifiedAriaLabel: 'calc/calc.go, after the change',
     });
     expect(diffAriaLabels('').ariaLabel).toBe('Diff of the file');
+  });
+});
+
+describe('the log the Logs tab opens on (X23) and its filter (X25)', () => {
+  const log = (id: string, created: number, over: Partial<LogSource> = {}): LogSource => ({ id, kind: 'check', title: 'test', size: 1, created, ...over });
+
+  it('opens a running stream first, else the newest failed check, else the newest log', () => {
+    const lint = log('ev:1', 1, { title: 'lint', passed: false });
+    const test = log('ev:2', 2, { passed: true });
+    const work = log('nx:work', 3, { kind: 'agent', title: 'work (step 2)' });
+    expect(pickLogSource([lint, test, work])?.id).toBe('ev:1');
+    expect(pickLogSource([lint, test, { ...work, running: true }])?.id).toBe('nx:work');
+    expect(pickLogSource([test, work])?.id).toBe('nx:work');
+    expect(pickLogSource([])).toBeUndefined();
+  });
+
+  it('does not open a failure a later run of the same check passed', () => {
+    const failed = log('ev:1', 1, { passed: false });
+    const passed = log('ev:2', 5, { passed: true });
+    const stream = log('nx:w', 3, { kind: 'agent', title: 'work (step 2)' });
+    expect(pickLogSource([failed, passed, stream])?.id).toBe('ev:2');
+  });
+
+  it('takes the later of two logs created at once, as the list orders them', () => {
+    expect(pickLogSource([log('ev:1', 4), log('nx:w', 4, { kind: 'agent' })])?.id).toBe('nx:w');
+  });
+
+  it('stays on the log it shows when its stream stops, and moves only to a source that starts running', () => {
+    const failed = log('ev:1', 1, { passed: false });
+    const work = log('nx:work', 2, { kind: 'agent', title: 'work (step 2)', running: true });
+    expect(autoLogSource([failed, work], undefined)?.id).toBe('nx:work');
+    const stopped = { ...work, running: false };
+    expect(pickLogSource([failed, stopped])?.id).toBe('ev:1');
+    expect(autoLogSource([failed, stopped], 'nx:work')?.id).toBe('nx:work');
+    const review = log('nx:review', 3, { kind: 'agent', title: 'review (step 3)', running: true });
+    expect(autoLogSource([failed, stopped, review], 'nx:work')?.id).toBe('nx:review');
+    // the shown log no longer listed (another filter): the pick
+    expect(autoLogSource([failed], 'nx:work')?.id).toBe('ev:1');
+    expect(autoLogSource([], 'nx:work')).toBeUndefined();
+  });
+
+  it('shows every log, or only the failed checks', () => {
+    const logs = [log('ev:1', 1, { passed: false }), log('ev:2', 2, { passed: true }), log('nx:w', 3, { kind: 'agent' })];
+    expect(filterLogs(logs, 'all').map((l) => l.id)).toEqual(['ev:1', 'ev:2', 'nx:w']);
+    expect(filterLogs(logs, 'failed').map((l) => l.id)).toEqual(['ev:1']);
   });
 });

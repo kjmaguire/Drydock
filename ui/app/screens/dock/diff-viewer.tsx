@@ -1,16 +1,22 @@
 // A task's changes, file by file, in Monaco's read-only diff editor (docs/ui.md 6.1). "Recorded" is the diff of the last
 // finished attempt; "Live" is the worktree as it is now, while an agent works. Used in the dock and on the task page.
+// While an agent works on the task the viewer shows Live, and Recorded once the run stops, until the person picks one (X21);
+// that pick and the file are remembered per task (UiModel.dockView, X22). A row of Work's file list opens it on that file
+// (ui.openDiff, X212). "Raw" shows the recorded patch as text lines, read for the exact diff evidence the list is of (L36).
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { ChevronDown, ChevronUp, Columns2, FileDiff, Rows2 } from 'lucide';
+import { ChevronDown, ChevronUp, Columns2, FileCode, FileDiff, Rows2 } from 'lucide';
 import type { DiffFile, DiffFileContent, DiffFiles } from '../../api/dockClient.ts';
-import { query, services } from '../../state/services.tsx';
+import { query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
-import { diffTotals, formatSize, splitPath, STATUS_LETTER } from './dock-format.ts';
-import { ellipsis, errorSlot, pane, paneHead, paneNote, panel, segmented, sideList, split, toolbar, toolbarNote } from './dock-ui.tsx';
+import { joinPath, OpenElsewhere } from '../shared/open-elsewhere.tsx';
+import { DiffView } from '../tasks/raw-diff.tsx';
+import { DiffTotals, FileRowContent } from './diff-files.tsx';
+import { formatSize } from './dock-format.ts';
+import { errorSlot, pane, paneHead, paneNote, panel, segmented, sideList, split, toolbar, toolbarNote } from './dock-ui.tsx';
 import { loadDiffEditor, type DiffEditorView } from './widgets.ts';
 
 const SIDE_KEY = 'drydock.diff.sideBySide';
@@ -29,25 +35,10 @@ function saveSide(side: boolean): void {
   }
 }
 
-const STATUS_COLOR: Record<DiffFile['status'], string> = { added: t.success, deleted: t.danger, modified: t.warning, renamed: t.info };
-
 // On a page the diff gets room of its own; inside the dock it fits the dock's height.
 const bodyCss = css({ minHeight: '320px', ':is(#dock-panel) &': { minHeight: '0' } });
-const statusCss = css({
-  display: 'inline-grid',
-  placeItems: 'center',
-  width: '16px',
-  flex: 'none',
-  fontFamily: t.mono,
-  fontSize: t.textXs,
-  fontWeight: '600',
-});
-const fileName = css({ color: t.text, fontFamily: t.mono, fontSize: t.textSm });
-const fileDir = css({ color: t.textFaint, fontSize: t.textXs, marginLeft: '6px' });
-const countsCss = css({ marginLeft: 'auto', paddingLeft: t.s2, display: 'inline-flex', gap: t.s2, fontFamily: t.mono, fontSize: t.textXs, flex: 'none' });
-const addCss = css({ color: t.success });
-const delCss = css({ color: t.danger });
-const binCss = css({ color: t.textFaint });
+const paneAction = css({ marginLeft: 'auto', display: 'inline-flex', flex: 'none' });
+const rawCss = css({ flex: '1', minHeight: '0', overflow: 'auto', padding: t.s3 });
 const totalsCss = css({ marginLeft: 'auto', display: 'inline-flex', gap: t.s2, alignItems: 'center', color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs });
 const hostWrap = css({ position: 'relative', flex: '1', minHeight: '300px', display: 'flex', ':is(#dock-panel) &': { minHeight: '0' } });
 const hostCss = css({ flex: '1', minWidth: '0', minHeight: '0' });
@@ -58,9 +49,17 @@ const noteSlot = css({ padding: `${t.s2} ${t.s3} 0` });
 
 export function DiffViewer(handle: Handle<{ taskId: string }>) {
   const s = services(handle);
-  let live = false;
+  watch(handle, s.ui);
+  // a file another page asked for (ui.openDiff) is the remembered one when the viewer mounts; taken here so it is not taken later
+  s.ui.takeDiffAsk(handle.props.taskId);
+  const view = s.ui.dockView(handle.props.taskId);
+  // the person's pick of Live or Recorded; undefined follows the run (Live while an agent works)
+  let choice = view.live;
+  let live = choice ?? false;
   let side = loadSide();
-  let selected: string | undefined;
+  // the recorded patch as text instead of the editor (not remembered: it is only there for a recorded diff)
+  let raw = false;
+  let selected = view.file;
   const list = query<DiffFiles>(handle, {
     load: () => s.client.taskDiffFiles(handle.props.taskId, live),
     when: (e) => e.taskId === handle.props.taskId,
@@ -69,29 +68,48 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
   });
   const setLive = (v: boolean) => {
     live = v;
+    choice = v;
+    s.ui.setDockView(handle.props.taskId, { live: v });
     void handle.update();
   };
   const setSide = (v: boolean) => {
     side = v;
+    raw = false;
     saveSide(v);
     void handle.update();
   };
   const select = (path: string) => {
     selected = path;
+    s.ui.setDockView(handle.props.taskId, { file: path });
     void handle.update();
   };
 
   return () => {
     const taskId = handle.props.taskId;
-    // the worktree went away: back to the recorded diff
-    if (live && list.data && !list.data.liveAvailable) live = false;
+    // a row of Work's file list (X212) while the viewer shows: that file, in the editor
+    const asked = s.ui.takeDiffAsk(taskId);
+    if (asked) {
+      selected = asked;
+      raw = false;
+    }
+    // Live while an agent works (or when the person chose it) and the worktree is there; Recorded otherwise. Changing it reads
+    // the other diff: the read of this one starts again (list.data is empty until it answers).
+    if (list.data) {
+      const want = list.data.liveAvailable && (choice ?? !!list.data.runActive);
+      if (want !== live) live = want;
+    }
     const d = list.data;
-    if (!d && list.error) return <div mix={noteSlot}><ErrorNote error={list.error} what="Could not load the diff" /></div>;
+    if (!d && list.error) return <div mix={noteSlot}><ErrorNote error={list.error} retry={list.reload} what="Could not load the diff" /></div>;
     if (!d) return <Loading label="Loading the diff..." />;
     const files = d.files;
     const current = files.find((f) => f.path === selected) ?? files[0];
     const idx = current ? files.indexOf(current) : -1;
-    const totals = diffTotals(files);
+    // the raw patch is of a recorded diff's evidence: there is none for the live worktree
+    const rawAvailable = !live && d.source === 'recorded' && d.diffId !== undefined;
+    // once the view leaves the recorded diff (an agent works again), Raw is not chosen any more: coming back to it shows the
+    // editor, and a newer patch is read only when the person asks (L36)
+    if (raw && !rawAvailable) raw = false;
+    const showRaw = raw;
 
     return (
       <div mix={panel} data-testid="diff-viewer">
@@ -111,13 +129,26 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
             </button>
           </div>
           <div role="group" aria-label="Layout" mix={segmented}>
-            <button type="button" aria-pressed={side} mix={on('click', () => setSide(true))}>
+            <button type="button" aria-pressed={!showRaw && side} mix={on('click', () => setSide(true))}>
               <Icon icon={Columns2} size={13} />
               Side by side
             </button>
-            <button type="button" aria-pressed={!side} mix={on('click', () => setSide(false))}>
+            <button type="button" aria-pressed={!showRaw && !side} mix={on('click', () => setSide(false))}>
               <Icon icon={Rows2} size={13} />
               Inline
+            </button>
+            <button
+              type="button"
+              aria-pressed={showRaw}
+              disabled={!rawAvailable}
+              title={rawAvailable ? 'The recorded patch as text' : 'The raw patch is of the recorded diff'}
+              mix={on('click', () => {
+                raw = true;
+                void handle.update();
+              })}
+            >
+              <Icon icon={FileCode} size={13} />
+              Raw
             </button>
           </div>
           <span class="sep" />
@@ -132,21 +163,24 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
             {d.head ? <code title={d.head}>{d.head.slice(0, 10)}</code> : null}
           </span>
           {files.length > 0 ? (
-            <span mix={totalsCss} aria-label={`${totals.files} files changed, ${totals.additions} additions, ${totals.deletions} deletions`}>
-              <span>{totals.files === 1 ? '1 file' : `${totals.files} files`}</span>
-              <span mix={addCss}>+{totals.additions}</span>
-              <span mix={delCss}>-{totals.deletions}</span>
+            <span mix={totalsCss}>
+              <DiffTotals files={files} />
             </span>
           ) : null}
         </div>
         {list.error ? (
           <div mix={errorSlot}>
-            <ErrorNote error={list.error} what="Could not refresh the diff" />
+            <ErrorNote error={list.error} retry={list.reload} what="Could not refresh the diff" />
           </div>
         ) : null}
         {d.source === 'none' ? (
           <Empty title="No diff yet" icon={FileDiff}>
-            <p>No diff has been recorded yet. {d.liveAvailable ? 'Choose Live to see the worktree now.' : ''}</p>
+            <p>No diff has been recorded yet.</p>
+            {d.liveAvailable ? (
+              <Button size="sm" mix={on('click', () => setLive(true))}>
+                Show the worktree now
+              </Button>
+            ) : null}
           </Empty>
         ) : files.length === 0 ? (
           <Empty title="No changes" icon={FileDiff}>
@@ -155,40 +189,29 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
         ) : (
           <div mix={[split, bodyCss]}>
             <ul aria-label="Changed files" mix={sideList}>
-              {files.map((f) => {
-                const p = splitPath(f.path);
-                return (
-                  <li key={f.path}>
-                    <button
-                      type="button"
-                      aria-current={f === current ? 'true' : undefined}
-                      title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
-                      mix={on('click', () => select(f.path))}
-                    >
-                      <span mix={statusCss} aria-label={f.status} style={{ color: STATUS_COLOR[f.status] }}>
-                        {STATUS_LETTER[f.status]}
-                      </span>
-                      <span mix={ellipsis}>
-                        <span mix={fileName}>{p.name}</span>
-                        {p.dir ? <span mix={fileDir}>{p.dir}</span> : null}
-                        <span class="sr-only"> {f.path}</span>
-                      </span>
-                      <span mix={countsCss}>
-                        {f.binary ? (
-                          <span mix={binCss}>binary</span>
-                        ) : (
-                          <>
-                            <span mix={addCss}>+{f.additions}</span>
-                            <span mix={delCss}>-{f.deletions}</span>
-                          </>
-                        )}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+              {files.map((f) => (
+                <li key={f.path}>
+                  <button
+                    type="button"
+                    aria-current={!showRaw && f === current ? 'true' : undefined}
+                    title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
+                    mix={on('click', () => {
+                      raw = false;
+                      select(f.path);
+                    })}
+                  >
+                    <FileRowContent file={f} />
+                  </button>
+                </li>
+              ))}
             </ul>
-            {current ? <FilePane key={`${live}:${current.path}`} taskId={taskId} file={current} live={live} sideBySide={side} /> : null}
+            {showRaw ? (
+              <div mix={[pane, rawCss]} aria-label="The raw patch" data-testid="diff-raw">
+                <DiffView key={taskId} taskId={taskId} diffId={d.diffId} auto />
+              </div>
+            ) : current ? (
+              <FilePane key={`${live}:${current.path}`} taskId={taskId} file={current} live={live} sideBySide={side} worktree={d.worktree} />
+            ) : null}
           </div>
         )}
       </div>
@@ -196,7 +219,7 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
   };
 }
 
-function FilePane(handle: Handle<{ taskId: string; file: DiffFile; live: boolean; sideBySide: boolean }>) {
+function FilePane(handle: Handle<{ taskId: string; file: DiffFile; live: boolean; sideBySide: boolean; worktree?: string | undefined }>) {
   const s = services(handle);
   let force = false;
   const c = query<DiffFileContent>(handle, {
@@ -207,17 +230,23 @@ function FilePane(handle: Handle<{ taskId: string; file: DiffFile; live: boolean
   });
 
   return () => {
-    const { file, sideBySide } = handle.props;
+    const { file, sideBySide, worktree, taskId } = handle.props;
     const v = c.data;
     return (
       <div mix={pane} aria-label={`Changes in ${file.path}`}>
         <div mix={paneHead}>
           <strong title={file.path}>{file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}</strong>
           <span>{file.status}</span>
+          {/* the file in the worktree, outside Drydock (X26): there only while the worktree is, and not for a deleted file */}
+          {worktree && file.status !== 'deleted' ? (
+            <span mix={paneAction}>
+              <OpenElsewhere where={{ taskId, path: file.path }} fullPath={joinPath(worktree, file.path)} label={`More ways to open ${file.path}`} testId="diff-file-open" />
+            </span>
+          ) : null}
         </div>
         {c.error ? (
           <div mix={errorSlot}>
-            <ErrorNote error={c.error} what="Could not load this file" />
+            <ErrorNote error={c.error} retry={c.reload} what="Could not load this file" />
           </div>
         ) : null}
         {!v ? (

@@ -313,6 +313,55 @@ func TestMarkingAnInboxItemDoneTakesItOut(t *testing.T) {
 	}
 }
 
+// needsyou.ack with keys marks several items done at once ("Mark N done"); a request among them refuses the whole call and nothing
+// is marked, so a request is never answered in bulk.
+func TestMarkingSeveralInboxItemsDoneAtOnce(t *testing.T) {
+	a := open(t, "")
+	p, _ := a.setup("gocalc")
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "x"}, &task)
+	var keys []string
+	for _, sig := range []string{"no_progress", "repeated_edit"} {
+		err := a.c.DB.WriteTx(context.Background(), func(tx *sql.Tx) error {
+			r, err := tx.Exec(`INSERT INTO watchdog_trips(task_id,signal,stage,created_at) VALUES(?,?,2,?)`, task.ID, sig, storage.Now())
+			if err == nil {
+				id, _ := r.LastInsertId()
+				keys = append(keys, "watchdog:"+jsonNumber(id))
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, k := range keys {
+		if _, ok := a.needsItem("", k); !ok {
+			t.Fatalf("%s is not in the inbox", k)
+		}
+	}
+	if err := a.callErr("needsyou.ack", map[string]any{"keys": append([]string{"approval:apr_1"}, keys...)}); err == nil || !strings.Contains(err.Error(), "approve or deny it instead") {
+		t.Fatalf("a request among them: %v", err)
+	}
+	for _, k := range keys {
+		if _, ok := a.needsItem("", k); !ok {
+			t.Fatalf("%s was marked done by a refused call", k)
+		}
+	}
+	var res map[string]any
+	a.call("needsyou.ack", map[string]any{"keys": append(keys, keys[0])}, &res)
+	if res["acked"] != true || res["done"] != float64(2) {
+		t.Fatalf("%v", res)
+	}
+	for _, k := range keys {
+		if _, ok := a.needsItem("", k); ok {
+			t.Fatalf("%s is still in the inbox", k)
+		}
+	}
+	if evs := a.eventsOf(core.EventNeedsYouAcked); len(evs) != 2 {
+		t.Fatalf("events %v", evs)
+	}
+}
+
 // A budget's warning or limit is marked done like the inbox offers it (canAck in the UI): it leaves the inbox. A budget pause is
 // a request and is answered instead.
 func TestMarkingABudgetAlertDoneTakesItOut(t *testing.T) {

@@ -2,13 +2,13 @@
 // gate before a pull request is merged. Only the human changes them.
 
 import { css, on, type Handle } from 'remix/component';
-import { CONTEXT_CEILING, DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
+import { CI_WAITS, CONTEXT_CEILING, DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ceilingOff, devBody, numOrUndef, parallelWarn } from './project.ts';
+import { ceilingOff, ciGraceTooLong, ciWaitOff, devBody, numOrUndef, parallelWarn } from './project.ts';
 import { SettingRow, SettingsGroup, ToggleRow, errorPad, footerCss, noteRow, subhead } from './settings-kit.tsx';
 
 const stackRow = css({ display: 'grid', gap: '6px', padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}`, '& label': { fontSize: t.textMd, fontWeight: '500' }, '& textarea': { fontFamily: t.mono, fontSize: t.textSm } });
@@ -26,7 +26,12 @@ const choiceCss = css({
 
 export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
   const s = services(handle);
-  const q = query(handle, { load: () => s.client.checksSettingsGet(handle.props.projectId), key: () => handle.props.projectId, when: (e) => e.type.startsWith('project.') });
+  // checks.settings_changed: the scan check turned on from the Security scan rules panel (H5)
+  const q = query(handle, {
+    load: () => s.client.checksSettingsGet(handle.props.projectId),
+    key: () => handle.props.projectId,
+    when: (e) => e.type.startsWith('project.') || (e.type === 'checks.settings_changed' && e.projectId === handle.props.projectId),
+  });
   const act = action(handle);
   let cur: CheckSettings | undefined;
   let loaded: CheckSettings | undefined;
@@ -58,7 +63,7 @@ export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
       >
         {!c ? (
           <div mix={errorPad}>
-            <ErrorNote error={q.error} what="Could not load check settings" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not load check settings" />
             {q.error ? null : <Loading />}
           </div>
         ) : (
@@ -88,7 +93,8 @@ export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
 
 export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
   const s = services(handle);
-  const q = query(handle, { load: () => s.client.projectdevGet(handle.props.projectId), key: () => handle.props.projectId });
+  // projectdev.changed: a person answered a pull request's CI question with "this repository has no CI" (H13)
+  const q = query(handle, { load: () => s.client.projectdevGet(handle.props.projectId), key: () => handle.props.projectId, when: (e) => e.type === 'projectdev.changed' && e.projectId === handle.props.projectId });
   const act = action(handle);
   let cur: DevSettings | undefined;
   let loaded: DevSettings | undefined;
@@ -122,6 +128,8 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
   const ciName = `ci-${handle.id}`;
   const skName = `skills-${handle.id}`;
   const ceilId = `ceiling-${handle.id}`;
+  const graceId = `ci-grace-${handle.id}`;
+  const maxWaitId = `ci-maxwait-${handle.id}`;
   return () => {
     if (q.data && q.data !== loaded) {
       loaded = q.data;
@@ -138,7 +146,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
       >
         {!d ? (
           <div mix={errorPad}>
-            <ErrorNote error={q.error} what="Could not load development settings" />
+            <ErrorNote error={q.error} retry={q.reload} what="Could not load development settings" />
             {q.error ? null : <Loading />}
           </div>
         ) : (
@@ -266,7 +274,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                   Required (default)
                 </label>
                 <p id={`${ciName}-required`}>
-                  Merges only after CI passed on the reviewed commit. With no CI after 2 minutes you are asked what to do.
+                  Merges only after CI passed on the reviewed commit. When CI says nothing or runs long, you are asked what to do (the waits below).
 </p>
               </div>
               <div>
@@ -286,6 +294,42 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
 </p>
               </div>
             </div>
+            <SettingRow
+              label="Minutes to wait for CI to start"
+              for={graceId}
+              description={`How long a pushed commit may show no CI result before you are asked. Empty means ${CI_WAITS.grace}; at most ${CI_WAITS.max}.`}
+            >
+              <input
+                id={graceId}
+                inputMode="numeric"
+                placeholder={String(CI_WAITS.grace)}
+                value={d.ciGraceMinutes ? String(d.ciGraceMinutes) : ''}
+                mix={[numCss, on('input', (e) => patch({ ciGraceMinutes: numOrUndef(e.currentTarget.value) ?? 0 }))]}
+              />
+            </SettingRow>
+            <SettingRow
+              label="Minutes to wait for running checks"
+              for={maxWaitId}
+              description={`How long CI checks may run before you are asked. Empty means ${CI_WAITS.maxWait}; at most ${CI_WAITS.max}.`}
+            >
+              <input
+                id={maxWaitId}
+                inputMode="numeric"
+                placeholder={String(CI_WAITS.maxWait)}
+                value={d.ciMaxWaitMinutes ? String(d.ciMaxWaitMinutes) : ''}
+                mix={[numCss, on('input', (e) => patch({ ciMaxWaitMinutes: numOrUndef(e.currentTarget.value) ?? 0 }))]}
+              />
+            </SettingRow>
+            {ciWaitOff(d.ciGraceMinutes) || ciWaitOff(d.ciMaxWaitMinutes) ? (
+              <p mix={[noteRow, warnNote]} data-testid="ci-wait-note">
+                {`The CI waits are between 0 (the defaults) and ${CI_WAITS.max} minutes.`}
+              </p>
+            ) : null}
+            {ciGraceTooLong(d.ciGraceMinutes, d.ciMaxWaitMinutes) ? (
+              <p mix={[noteRow, warnNote]} data-testid="ci-grace-note">
+                The wait for CI to start cannot be longer than the wait for running checks.
+              </p>
+            ) : null}
             {ciNone ? (
               <p mix={noteRow} data-testid="ci-none-note">
                 {d.ciNoneBy
@@ -303,8 +347,11 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
 
             <h3 mix={subhead}>Preview</h3>
             <ToggleRow label="Start a preview of the task before approval" checked={d.preview.enabled} onChange={(v) => patch({ preview: { ...d.preview, enabled: v } })} />
+            <p mix={noteRow} data-testid="preview-template-note">
+              Only the Full Stack SaaS template has a preview step: tasks of other templates go to approval without one.
+            </p>
             <div mix={stackRow}>
-              <label for={prevId}>Command (one argument per line)</label>
+              <label for={prevId}>Command (one argument per line; empty detects a Taskfile target or package.json script named preview)</label>
               <textarea id={prevId} rows={2} spellcheck={false} value={prevCmd} mix={on('input', (e) => touch(() => (prevCmd = e.currentTarget.value)))} />
             </div>
             <div mix={stackRow}>

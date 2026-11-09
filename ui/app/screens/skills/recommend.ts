@@ -44,3 +44,19 @@ export function triggerText(trigger: string): string {
 
 /** The items still waiting for the person. */
 export const openItems = (r: Recommendation | undefined): RecommendItem[] => (r?.items ?? []).filter((i) => i.status === 'open');
+
+/** An open item the person can apply with one click here (an integration is assigned on Integrations; a whole-team skill item
+ *  from before P76 cannot be applied). */
+export const canApply = (it: RecommendItem): boolean => it.status === 'open' && it.kind !== 'integration' && !(it.kind === 'skill' && it.action === 'team');
+
+/** The open items of the latest finished turn, for the line on Work: who recommends them and how many; undefined when none wait
+ *  (or the latest turn is still running or failed). */
+export function waitingRecommendations(runs: readonly Recommendation[], names: ReadonlyMap<string, string>): { who: string; count: number } | undefined {
+  const latest = runs[0];
+  if (!latest || latest.status !== 'done') return undefined;
+  const count = openItems(latest).length;
+  return count > 0 ? { who: names.get(latest.agentId) ?? 'An agent', count } : undefined;
+}
+
+/** "Lead recommends 3 changes". */
+export const recommendsText = (w: { who: string; count: number }): string => `${w.who} recommends ${w.count} change${w.count === 1 ? '' : 's'}`;

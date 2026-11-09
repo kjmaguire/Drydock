@@ -41,6 +41,9 @@ export interface PermissionPayload {
   editable: boolean;
   /** The input is a shell command (the command alone is shown and changed). */
   shell: boolean;
+  /** The call can be allowed for the rest of its task (run.respond scope "task", P97); `approveForTaskNote` says why not. */
+  approveForTask: boolean;
+  approveForTaskNote?: string;
 }
 
 export function permissionPayload(p: PendingRequest): PermissionPayload | undefined {
@@ -59,6 +62,8 @@ export function permissionPayload(p: PendingRequest): PermissionPayload | undefi
     expiresAt: typeof v.expiresAt === 'number' && v.expiresAt > 0 ? v.expiresAt : undefined,
     editable: v.editable === true,
     shell: v.shell === true,
+    approveForTask: v.approveForTask === true,
+    approveForTaskNote: str(v.approveForTaskNote) || undefined,
   };
 }
 
@@ -121,9 +126,13 @@ type Respond = (decision: string, data?: unknown) => Promise<void>;
 
 /**
  * The tool, its exact input, why Drydock asks and when the request expires, then Allow once (approved) or Refuse (rejected).
+ * Where the core allows it and the page passes `onAllowForTask`, "Allow for the rest of this task" comes first: the same call of
+ * the same agent is then allowed without asking until the task ends (a rule the task page lists with Stop allowing).
  * Read-only (license) turns off allowing only.
  */
-export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
+export function PermissionPromptPanel(
+  handle: Handle<{ payload: PermissionPayload; busy: boolean; readOnly: boolean; onRespond: Respond; onAllowForTask?: () => Promise<void> }>,
+) {
   let editing = false;
   let draft = '';
   let problem = '';
@@ -144,12 +153,15 @@ export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayloa
     void handle.props.onRespond('approved', { input: r.input });
   };
   return () => {
-    const { payload: p, busy, readOnly, onRespond } = handle.props;
+    const { payload: p, busy, readOnly, onRespond, onAllowForTask } = handle.props;
+    const forTask = p.approveForTask && !!onAllowForTask;
     return (
       <div mix={panelCss} data-testid="permission-prompt" data-tool={p.tool}>
         <p>
-          The worker asks to use <code>{p.tool}</code>, which its rules do not allow. Its turn waits for your answer. Allowing covers exactly this
-          call, once.
+          The worker asks to use <code>{p.tool}</code>, which its rules do not allow. Its turn waits for your answer.{' '}
+          {forTask
+            ? 'Allowing for the rest of this task covers this exact call by this agent until the task ends; any other call still asks you.'
+            : 'Allowing covers exactly this call, once.'}
         </p>
         <Targets targets={p.targets} testId="permission-prompt-targets" />
         <ShownNotes shortened={p.shortened} texts={[p.input, ...p.targets]} testId="permission-prompt" />
@@ -221,7 +233,23 @@ export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayloa
             </>
           ) : (
             <>
-              <Button variant="primary" icon={Check} disabled={busy || readOnly} mix={on('click', () => void onRespond('approved'))}>
+              {forTask ? (
+                <Button
+                  variant="primary"
+                  data-variant="primary"
+                  icon={Check}
+                  disabled={busy || readOnly}
+                  mix={on('click', () => void onAllowForTask!())}
+                  data-testid="permission-prompt-for-task"
+                >
+                  Allow for the rest of this task
+                </Button>
+              ) : null}
+              <Button
+                variant={forTask ? 'secondary' : 'primary'}
+                data-variant={forTask ? 'secondary' : 'primary'}
+                icon={forTask ? undefined : Check}
+                disabled={busy || readOnly} mix={on('click', () => void onRespond('approved'))}>
                 Allow once
               </Button>
               {p.editable ? (
@@ -235,6 +263,11 @@ export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayloa
             Refuse
           </Button>
         </div>
+        {!p.approveForTask && p.approveForTaskNote ? (
+          <p style={{ fontSize: t.textSm, color: t.textMuted }} data-testid="permission-prompt-once-note">
+            This call can only be allowed once: {p.approveForTaskNote}.
+          </p>
+        ) : null}
       </div>
     );
   };

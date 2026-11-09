@@ -2,11 +2,13 @@
 // included; raw run output is opt-in behind an acknowledgement), and import an archive as a NEW project where everything is
 // untrusted until the person decides. Works in every license state and with no project selected.
 
-import { css, on, type Handle } from 'remix/component';
-import { ArrowDownUp, FileDown, FileUp, ScanSearch } from 'lucide';
+import { css, navigate, on, type Handle } from 'remix/component';
+import { ArrowDownUp, FileDown, FileSearch, FileUp, FolderInput, ScanSearch } from 'lucide';
 import type { ExportManifest, ExportPreview, ExportResult, ImportPreview, ImportResult, ImportStats } from '../../api/pkgTypes.ts';
 import { formatBytes, formatDateTime, plural } from '../../lib/format.ts';
-import { action, services, watch } from '../../state/services.tsx';
+import { projectWorkHref } from '../../lib/project-work.ts';
+import type { FolderHints } from '../../api/folderClient.ts';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -14,9 +16,11 @@ import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { Done, Group, intro, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
+import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
+import { Done, Group, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
 import { exportKey, exportProjectId, pendingRows } from './data.ts';
 import { RuleCounts } from './rule-counts.tsx';
+import { ChooseSave, SavedFile } from '../shared/file-actions.tsx';
 
 const formCss = css({ display: 'grid', gap: t.s4 });
 const previewCss = css({
@@ -248,7 +252,12 @@ function ExportSection(handle: Handle) {
                 />
               ) : null}
               <Field label="Save to (optional full path; empty uses the exports folder in the Drydock data folder)">
-                {(id) => <input id={id} mix={[mono, on('input', (e) => ((dest = e.currentTarget.value), void handle.update()))]} value={dest} spellcheck={false} />}
+                {(id) => (
+                  <div mix={folderRow}>
+                    <input id={id} mix={[mono, on('input', (e) => ((dest = e.currentTarget.value), void handle.update()))]} value={dest} spellcheck={false} />
+                    <ChooseSave kind="project-export" dir={dest} testId="export-choose-save" onPick={(p) => ((dest = p), void handle.update())} />
+                  </div>
+                )}
               </Field>
               <div mix={formActions}>
                 <Button variant="primary" icon={FileDown} disabled={busy || (includeRuns && !ack)} mix={on('click', () => void runExport())}>
@@ -265,14 +274,26 @@ function ExportSection(handle: Handle) {
             </span>
           </Done>
         ) : null}
+        {result?.path ? <SavedFile path={result.path} testId="export-saved" /> : null}
       </Group>
     );
   };
 }
 
-function ImportSection(handle: Handle) {
+/** `onNavigate` replaces the router's navigate (tests). */
+function ImportSection(handle: Handle<{ onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   const act = action(handle);
+  // whether the window has a file dialog: the desktop app does; the browser in development types the path
+  const hints = query(handle, {
+    load: async (): Promise<Pick<FolderHints, 'canPickFile'>> => {
+      try {
+        return await s.client.fsFolderHints();
+      } catch {
+        return { canPickFile: false };
+      }
+    },
+  });
   let path = '';
   let repo = '';
   let name = '';
@@ -285,6 +306,23 @@ function ImportSection(handle: Handle) {
     const r = await act.run('importPreview', () => s.client.projectImportPreview(p));
     if (r) preview = { ...r, path: p };
     void handle.update();
+  };
+  // the window's file dialog, filtered to project archives: a chosen archive is previewed at once (choosing reads nothing else)
+  const pickArchive = async () => {
+    const p = await act.run('pick', () => s.client.fsPickFile('project-archive'));
+    if (!p) return;
+    path = p;
+    preview = undefined;
+    result = undefined;
+    await runPreview();
+  };
+  // the new project becomes the selected one and its Work page opens
+  const openProject = (id: string) => {
+    s.workspace.selectProject(id);
+    void s.workspace.projects.reload();
+    const href = projectWorkHref();
+    if (handle.props.onNavigate) handle.props.onNavigate(href);
+    else void navigate(href).catch(() => {});
   };
   const runImport = async () => {
     const r = await act.run('import', () => s.client.projectImport({ path: path.trim(), repoPath: repo.trim(), name: name.trim() || undefined }));
@@ -299,6 +337,7 @@ function ImportSection(handle: Handle) {
   return () => {
     const fresh = preview?.path === path.trim();
     const busy = act.busy !== '';
+    const canPickFile = !!hints.data?.canPickFile;
     return (
       <Group
         title="Import a project"
@@ -306,7 +345,8 @@ function ImportSection(handle: Handle) {
         label="Import a project"
         description={
           <>
-            Importing creates a <strong>new</strong> project linked to a repository you choose. What comes in is untrusted until you decide; nothing starts.
+            Importing creates a <strong>new</strong> project, linked to a repository you choose now or later in its settings. What comes in is untrusted until you
+            decide; nothing starts.
           </>
         }
       >
@@ -315,21 +355,28 @@ function ImportSection(handle: Handle) {
           <div mix={formCss}>
             <Field label="Archive path (a .drydock-project.zip on this computer)">
               {(id) => (
-                <input
-                  id={id}
-                  value={path}
-                  spellcheck={false}
-                  placeholder="C:\Users\you\project.drydock-project.zip"
-                  mix={[
-                    mono,
-                    on('input', (e) => {
-                      path = e.currentTarget.value;
-                      preview = undefined;
-                      result = undefined;
-                      void handle.update();
-                    }),
-                  ]}
-                />
+                <div mix={folderRow}>
+                  <input
+                    id={id}
+                    value={path}
+                    spellcheck={false}
+                    placeholder="C:\Users\you\project.drydock-project.zip"
+                    mix={[
+                      mono,
+                      on('input', (e) => {
+                        path = e.currentTarget.value;
+                        preview = undefined;
+                        result = undefined;
+                        void handle.update();
+                      }),
+                    ]}
+                  />
+                  {canPickFile ? (
+                    <Button type="button" size="sm" icon={FileSearch} data-testid="import-choose-file" disabled={busy} mix={on('click', () => void pickArchive())}>
+                      {act.busy === 'pick' ? 'Choosing…' : 'Choose file…'}
+                    </Button>
+                  ) : null}
+                </div>
               )}
             </Field>
             <div mix={formActions}>
@@ -359,22 +406,25 @@ function ImportSection(handle: Handle) {
             <h3 mix={subhead}>What will not be trusted</h3>
             <PendingList p={preview.pending} />
             <div mix={formCss}>
-              <Field label="Local repository to link (path)">
+              <Field label="Local repository to link (optional; you can attach one later in the project's settings)">
                 {(id) => (
-                  <input
-                    id={id}
-                    value={repo}
-                    spellcheck={false}
-                    placeholder="C:\src\my-repo"
-                    mix={[mono, on('input', (e) => ((repo = e.currentTarget.value), void handle.update()))]}
-                  />
+                  <div mix={folderRow}>
+                    <input
+                      id={id}
+                      value={repo}
+                      spellcheck={false}
+                      placeholder="C:\src\my-repo"
+                      mix={[mono, on('input', (e) => ((repo = e.currentTarget.value), void handle.update()))]}
+                    />
+                    <ChooseFolder title="Choose the repository to link" dir={repo} disabled={busy} testId="import-choose-repo" onPick={(p) => ((repo = p), void handle.update())} />
+                  </div>
                 )}
               </Field>
               <Field label="New project name (optional)">
                 {(id) => <input id={id} value={name} mix={on('input', (e) => ((name = e.currentTarget.value), void handle.update()))} />}
               </Field>
               <div mix={formActions}>
-                <Button variant="primary" icon={FileUp} disabled={!repo.trim() || busy} mix={on('click', () => void runImport())}>
+                <Button variant="primary" icon={FileUp} disabled={busy} mix={on('click', () => void runImport())}>
                   {act.busy === 'import' ? 'Importing...' : 'Import as a new project'}
                 </Button>
               </div>
@@ -386,8 +436,13 @@ function ImportSection(handle: Handle) {
             <p>
               Imported <strong data-testid="import-result-name">{result.name}</strong> as a new project ({result.idsRemapped} ids remapped, {plural(result.runFilesRestored, 'run file')}
               restored
-              {result.migratedForward ? ', migrated forward' : ''}). Choose it in the project switcher at the top of the sidebar.
+              {result.migratedForward ? ', migrated forward' : ''}).
             </p>
+            <div>
+              <Button variant="primary" icon={FolderInput} data-testid="import-open-project" mix={on('click', () => openProject(result!.projectId))}>
+                Open the project
+              </Button>
+            </div>
             <p>It came in untrusted:</p>
             <PendingList p={result.pending} />
           </div>
@@ -397,13 +452,12 @@ function ImportSection(handle: Handle) {
   };
 }
 
-export function DataScreen(_handle: Handle) {
+export function DataScreen(handle: Handle<{ onNavigate?: (href: string) => void }>) {
   return () => (
-    <Page title="Export and import" icon={ArrowDownUp} subtitle="Local files only">
+    <Page title="Export and import" icon={ArrowDownUp} subtitle="Local files only, in every license state">
       <div mix={settingsColumn}>
-        <p mix={intro}>Export and import work in every license state. Files are written to and read from this computer only.</p>
         <ExportSection />
-        <ImportSection />
+        <ImportSection onNavigate={handle.props.onNavigate} />
       </div>
     </Page>
   );

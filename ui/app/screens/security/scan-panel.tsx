@@ -14,7 +14,7 @@ import type { DrydockEvent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { typing } from '../../lib/keys.ts';
 import { pollWhile } from '../../lib/poll.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -24,7 +24,7 @@ import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
 import { Meter } from '../budgets/meter.tsx';
 import { FindingPane, SeverityBadge } from './finding-pane.tsx';
 import { summaryKey, type ScanScope } from './scan-scope.ts';
-import {
+import { triggerWords,
   agoText,
   countsText,
   DISMISS_WORDS,
@@ -608,7 +608,7 @@ export function ScanPanel(
                     {updated}
                   </Notice>
                 ) : null}
-                <ErrorNote error={act.error ?? current.error ?? history.error} what="Security scan" />
+                <ErrorNote error={act.error ?? current.error ?? history.error} retry={retryFor(act, current, history)} what="Security scan" />
                 {report?.storeError ? (
                   <Notice tone="warn" testId="scan-store-error">
                     {report.storeError}
@@ -714,7 +714,7 @@ export function ScanPanel(
                           data-folder={h.folder}
                           data-project={h.projectId || undefined}
                           aria-pressed={report?.id === h.id ? 'true' : 'false'}
-                          title={`${h.folder ?? name}: ${h.status === 'running' ? 'in progress' : countsText(h.counts)}, ${formatDateTime(h.startedAt)}`}
+                          title={`${h.folder ?? name}: ${h.status === 'running' ? 'in progress' : countsText(h.counts)}, ${formatDateTime(h.startedAt)}${h.trigger ? `, started by the rule ${triggerWords(h.trigger)}` : ''}`}
                           disabled={busy}
                           mix={[chipCss, on('click', () => void open(h))]}
                         >

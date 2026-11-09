@@ -67,6 +67,20 @@ func TestAccountListing(t *testing.T) {
 	}
 }
 
+// A repository typed as its GitHub address becomes owner/name; anything else is left for ValidFullName to judge (W9).
+func TestFullNameOf(t *testing.T) {
+	for in, want := range map[string]string{
+		"acme/shop": "acme/shop", "  acme/shop ": "acme/shop",
+		"https://github.com/acme/shop": "acme/shop", "https://github.com/acme/shop.git": "acme/shop", "https://GitHub.com/acme/shop/": "acme/shop",
+		"github.com/acme/shop": "acme/shop", "git@github.com:acme/shop.git": "acme/shop", "https://github.com/acme/shop/tree/main?x=1": "acme/shop",
+		"https://evil.example/acme/shop": "https://evil.example/acme/shop", "https://github.com/acme": "https://github.com/acme", "acme/shop.git": "acme/shop.git",
+	} {
+		if got := host.FullNameOf(in); got != want {
+			t.Errorf("%q: got %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestValidFullName(t *testing.T) {
 	for s, want := range map[string]bool{
 		"acme/shop": true, "kyle/my.site_v2": true, "a/b": true,

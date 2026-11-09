@@ -82,12 +82,13 @@ describe('BackupsScreen', () => {
     expect(byLabel(r.container, /^Label \(optional/).value).toBe('');
   });
 
-  it('requires a successful verify before restore, then explains the staged restore and stages it with confirm', async () => {
+  it('Restore checks the backup itself first, then explains the staged restore and stages it with confirm (F7)', async () => {
     const restores: [string, boolean][] = [];
+    const verifies: string[] = [];
     let pending = false;
     const r = show({
       backupList: async () => backups(),
-      backupVerify: async (name) => ok(name),
+      backupVerify: async (name) => (verifies.push(name), ok(name)),
       backupRestore: async (n, c) => {
         restores.push([n, c]);
         pending = true;
@@ -95,14 +96,14 @@ describe('BackupsScreen', () => {
       },
       backupRestoreStatus: async () => (pending ? { pending: true, backup: 'b1.db', requested: 1760000000000 } : { pending: false }),
     });
+    // no Verify click first: Restore is open, and runs the check itself
     const restore = await waitFor(() => btn(r.container, 'Restore b1.db'), r);
-    expect(restore.disabled).toBe(true);
-    expect(restore.title).toBe('Verify this backup first');
-    await r.act(() => btn(r.container, 'Verify b1.db').click());
-    expect((await waitFor(() => tid(r.container, 'verify-result'), r)).getAttribute('data-ok')).toBe('true');
-    await waitFor(() => expect(btn(r.container, 'Restore b1.db').disabled).toBe(false), r);
-    await r.act(() => btn(r.container, 'Restore b1.db').click());
+    expect(restore.disabled).toBe(false);
+    expect(restore.title).toBe('Check this backup, then stage it for the next start');
+    await r.act(() => restore.click());
     const c = await waitFor(() => tid(r.container, 'restore-confirm'), r);
+    await waitFor(() => expect(c.querySelector('[data-testid="verify-result"]')?.getAttribute('data-ok')).toBe('true'), r);
+    expect(verifies).toEqual(['b1.db']);
     expect(c.textContent).toContain('staged, not applied now');
     expect(c.textContent).toContain('Nothing is destroyed');
     expect(r.container.querySelector('dialog')!.open).toBe(true);
@@ -119,6 +120,34 @@ describe('BackupsScreen', () => {
     // a second restore cannot be staged on top
     expect(btn(r.container, 'Restore b1.db').disabled).toBe(true);
     expect(btn(r.container, 'Restore b1.db').title).toBe('A restore is already staged; cancel it first');
+  });
+
+  it('a damaged backup found by Restore\'s check offers no Stage; a backup Drydock made shows verified without a click (F7)', async () => {
+    let restores = 0;
+    const list = backups();
+    list.backups![0] = { ...list.backups![0]!, verified: { schemaVersion: 30, at: '2026-01-02T03:04:05Z', restorableHere: true } };
+    list.backups!.push({ path: 'C:\\data\\backups\\b2.db', name: 'b2.db', size: 10, sha256: 'def', created: '2026-01-01T03:04:05Z', label: 'manual', keep: false });
+    const r = show({
+      backupList: async () => list,
+      backupVerify: async (name) => ({ name, size: 10, created: '', ok: false, error: 'it does not match its recorded SHA-256' }),
+      backupRestore: async () => (restores++, null as never),
+    });
+    const badge = await waitFor(() => tid(r.container, 'backup-verified'), r);
+    expect(badge.textContent).toBe('verified');
+    expect(badge.getAttribute('data-stored')).toBe('true');
+    expect(badge.closest('[data-testid="backup-row"]')!.getAttribute('data-name')).toBe('b1.db');
+    // the stored check writes no paragraph of its own under the table
+    expect(none(r.container, 'verify-result')).toBe(true);
+    await r.act(() => btn(r.container, 'Restore b2.db').click());
+    const c = await waitFor(() => tid(r.container, 'restore-confirm'), r);
+    await waitFor(() => expect(c.querySelector('[data-testid="verify-result"]')?.getAttribute('data-ok')).toBe('false'), r);
+    expect(c.textContent).toContain('does not match');
+    expect(c.textContent).not.toContain('Stage this restore');
+    expect(restores).toBe(0);
+    await r.act(() => btn(c, 'Do not restore').click());
+    // the row now says damaged and its Restore is off
+    await waitFor(() => expect(btn(r.container, 'Restore b2.db').disabled).toBe(true), r);
+    expect(btn(r.container, 'Restore b2.db').title).toBe('This backup is damaged');
   });
 
   it('declining the confirmation stages nothing', async () => {
@@ -304,11 +333,11 @@ describe('BackupsScreen', () => {
     let list = backups();
     const r = show({ backupList: async () => list, backupVerify: async (n) => ok(n) });
     await r.act(async () => (await waitFor(() => btn(r.container, 'Verify b1.db'), r)).click());
-    await waitFor(() => expect(btn(r.container, 'Restore b1.db').disabled).toBe(false), r);
-    // same name, different file on disk: it must be verified again
+    await waitFor(() => expect(tid(r.container, 'backup-verified').textContent).toBe('verified'), r);
+    // same name, different file on disk: it is no longer shown as verified (Restore would check it again)
     list = backups({ backups: [{ ...backups().backups![0]!, size: 4096, created: '2026-02-02T00:00:00Z' }] });
     r.s.emit({ type: 'backup.created' });
-    await waitFor(() => expect(btn(r.container, 'Restore b1.db').disabled).toBe(true), r);
+    await waitFor(() => expect(none(r.container, 'backup-verified')).toBe(true), r);
     expect(none(r.container, 'verify-result')).toBe(true);
   });
 

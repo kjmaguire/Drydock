@@ -72,8 +72,10 @@ export function SteerBox(handle: Handle<{ detail: TaskDetail; agentName: string;
   return () => {
     const { detail, agentName } = handle.props;
     const task = detail.task;
-    const going = isRunActive(detail.run) && !isTerminal(task.status);
-    const off = !going ? (isTerminal(task.status) ? 'The task is closed: there is no run to steer.' : 'Start the task to steer its agent.') : '';
+    // a closed task has no run to steer: the box goes, so the page does not end on a dead control (critique 2026-11-08)
+    if (isTerminal(task.status)) return null;
+    const going = isRunActive(detail.run);
+    const off = !going ? 'Start the task to steer its agent.' : '';
     const busy = act.busy !== '';
     const paused = !!detail.paused;
     return (

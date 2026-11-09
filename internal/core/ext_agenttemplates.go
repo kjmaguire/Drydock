@@ -19,9 +19,10 @@ import (
 
 // Agent templates: define a team member once, drop it into any project. Applying a template creates an ordinary agent in the
 // project (through CreateAgent, so every check on creating an agent applies), grants it the library MCP servers the template
-// lists, and installs and assigns the registry skills it carries (as a prebuilt agent does, decision P27). The agent is not
-// linked to the template afterwards. Templates are the human's own text, held in the workspace; they are
-// never part of a project export.
+// lists, and installs and assigns the registry skills it carries (as a prebuilt agent does, decision P27). The agent records
+// the template it came from (decision P137) but does not follow it: only the agent editor's "Everywhere" carries a change of
+// one agent to its template and to the other agents made from it (updateEverywhere in ext_agentmgmt.go). Templates are
+// the human's own text, held in the workspace; they are never part of a project export.
 
 func init() {
 	RegisterExtension(Extension{Name: "agenttemplates", After: []string{"agentmgmt", "mcpservers"}, Start: startAgentTemplates})
@@ -224,7 +225,11 @@ func (t *agentTemplates) delete(ctx context.Context, id string) error {
 		return err
 	}
 	err := t.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `DELETE FROM agent_templates WHERE id=?`, id)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_templates WHERE id=?`, id); err != nil {
+			return err
+		}
+		// the agents made from it keep everything they have; they are no longer linked to a template (decision P137)
+		_, err := tx.ExecContext(ctx, `UPDATE agents SET template_id='' WHERE template_id=?`, id)
 		return err
 	})
 	if err == nil {
@@ -365,13 +370,27 @@ func (t *agentTemplates) skillChoices(ctx context.Context) ([]SkillChoice, error
 	return out, nil
 }
 
-// fromAgent saves an existing agent as a template, with the library servers it is granted in its project and the registry
+// fromAgent saves an existing agent as a template and links the agent to it, with the library servers it is granted in its project and the registry
 // skills assigned to it (pinned to the commit the project has).
 func (t *agentTemplates) fromAgent(ctx context.Context, agentID string) (AgentTemplate, error) {
 	a, err := t.c.agent(ctx, agentID)
 	if err != nil || a.Archived {
 		return AgentTemplate{}, fmt.Errorf("agent %s not found", agentID)
 	}
+	spec, err := t.specOf(ctx, a)
+	if err != nil {
+		return AgentTemplate{}, err
+	}
+	tpl, err := t.save(ctx, spec)
+	if err != nil {
+		return AgentTemplate{}, err
+	}
+	// the agent is now made from it (decision P137): its "Everywhere" changes this template
+	return tpl, t.c.linkTemplate(ctx, a.ID, tpl.ID)
+}
+
+// specOf is the template an agent would be saved as (not saved).
+func (t *agentTemplates) specOf(ctx context.Context, a Agent) (AgentTemplate, error) {
 	var servers []string
 	rows, err := t.c.DB.Reader().QueryContext(ctx, `SELECT server_id FROM agent_mcp_access WHERE project_id=? AND agent_id=? ORDER BY server_id`, a.ProjectID, a.ID)
 	if err == nil {
@@ -395,8 +414,8 @@ func (t *agentTemplates) fromAgent(ctx context.Context, agentID string) (AgentTe
 			}
 		}
 	}
-	return t.save(ctx, AgentTemplate{Name: a.Name, Role: a.Role, Purpose: a.Purpose, Adapter: a.Adapter, Model: a.Model, Effort: a.Effort,
-		PermissionMode: a.PermissionMode, ProviderID: a.ProviderID, MCPServers: servers, Skills: refs, Practices: &a.Practices})
+	return AgentTemplate{Name: a.Name, Role: a.Role, Purpose: a.Purpose, Adapter: a.Adapter, Model: a.Model, Effort: a.Effort,
+		PermissionMode: a.PermissionMode, ProviderID: a.ProviderID, MCPServers: servers, Skills: refs, Practices: &a.Practices}, nil
 }
 
 // apply creates the agent in the project. name overrides the template's name; a name already used by an agent of the project
@@ -419,6 +438,11 @@ func (t *agentTemplates) apply(ctx context.Context, templateID, projectID, name 
 	if err != nil {
 		return AppliedTemplate{}, err
 	}
+	// the agent remembers its template (decision P137): the editor's "Everywhere" saves a change to it
+	if err := t.c.linkTemplate(ctx, ag.ID, tpl.ID); err != nil {
+		return AppliedTemplate{}, err
+	}
+	ag.TemplateID = tpl.ID
 	res := AppliedTemplate{Agent: ag, Granted: []string{}, Skipped: []string{}, Skills: newSkillsInstalled()}
 	svc := t.c.mcpServerSvc()
 	for _, sid := range tpl.MCPServers {

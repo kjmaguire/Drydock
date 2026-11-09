@@ -12,7 +12,7 @@ import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
@@ -265,6 +265,32 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
             </li>
           ))}
         </ul>
+        {agents.length > 1 && agents.some((a) => !(want.get(a.id) ?? granted(a.id))) ? (
+          <div mix={actionsRow}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={act.busy !== '' || ro.readOnly}
+              title={ro.readOnly ? ro.reason : undefined}
+              aria-describedby={startsOnGrant ? reachId : undefined}
+              data-testid="mcp-grant-all"
+              mix={on('click', async () => {
+                // the person's one click grants each agent not ticked yet, through the same call a tick makes (F12)
+                for (const a of agents) {
+                  if (want.get(a.id) ?? granted(a.id)) continue;
+                  want.set(a.id, true);
+                  if (!(await act.run('access', () => s.client.mcpServerGrant(srv.projectId, srv.id, a.id, true)))) {
+                    want.delete(a.id);
+                    break;
+                  }
+                }
+                onChanged();
+              })}
+            >
+              Let every agent of this project use it
+            </Button>
+          </div>
+        ) : null}
         <p mix={faint} style={{ margin: '0' }}>
           No agent can use a server until you tick it here.
         </p>
@@ -320,13 +346,13 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
 }
 
 /** A connected server this project does not have yet, as the panel under its tile: what it is, and Add to this project. */
-function LibraryServerPanel(handle: Handle<{ x: McpLibraryServer; projectId: string; onAdded: (id: string) => void }>) {
+function LibraryServerPanel(handle: Handle<{ x: McpLibraryServer; projectId: string; agents: readonly Agent[]; onAdded: (id: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
 
   return () => {
-    const { x, projectId, onAdded } = handle.props;
+    const { x, projectId, agents, onAdded } = handle.props;
     const ro = s.workspace.license;
     return (
       <article mix={[card, cardBody, panelCss]} data-testid="library-server" data-server={x.id}>
@@ -356,6 +382,28 @@ function LibraryServerPanel(handle: Handle<{ x: McpLibraryServer; projectId: str
           >
             {act.busy === `add-${x.id}` ? 'Adding...' : 'Add to this project'}
           </Button>
+          {agents.length > 0 ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={act.busy !== '' || ro.readOnly}
+              title={ro.readOnly ? ro.reason : undefined}
+              data-testid="mcp-add-grant-all"
+              mix={[
+                on('click', async () => {
+                  // one click, the person's: add the server, then grant it to each agent of the project (F12)
+                  const r = await act.run(`add-all-${x.id}`, async () => {
+                    await s.client.mcpServerAdd(projectId, x.id);
+                    for (const a of agents) await s.client.mcpServerGrant(projectId, x.id, a.id, true);
+                    return true;
+                  });
+                  if (r) onAdded(x.id);
+                }),
+              ]}
+            >
+              {act.busy === `add-all-${x.id}` ? 'Adding...' : agents.length === 1 ? `Add and let ${agents[0]!.name} use it` : `Add and grant to all ${agents.length}`}
+            </Button>
+          ) : null}
         </div>
       </article>
     );
@@ -392,7 +440,7 @@ export function ProjectServers(handle: Handle<{ projectId: string; agents: reado
         title="Agent tools"
         description="The MCP servers connected for the workspace, and which of this project's agents may use each. A server nobody was granted is never reached; every tool not marked read-only waits for your approval."
       >
-        <ErrorNote error={servers.error ?? lib.error} what="Could not load the servers" />
+        <ErrorNote error={servers.error ?? lib.error} retry={retryFor(servers, lib)} what="Could not load the servers" />
         {(servers.loading && !servers.data) || (lib.loading && !lib.data) ? <Loading /> : null}
         {servers.data && lib.data && inProject.length === 0 ? (
           <p mix={emptyLine} data-testid="no-project-servers">
@@ -435,6 +483,7 @@ export function ProjectServers(handle: Handle<{ projectId: string; agents: reado
             key={current.id}
             x={current}
             projectId={projectId}
+            agents={agents}
             onAdded={(id) => {
               selected = id; // the added server opens, to tick who may use it
               servers.reload();

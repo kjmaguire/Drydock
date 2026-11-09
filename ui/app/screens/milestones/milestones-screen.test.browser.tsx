@@ -1,9 +1,9 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { Milestone } from '../../api/extTypes.ts';
+import type { Milestone, Plan } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { MilestonesScreen } from './milestones-screen.tsx';
 
 afterEach(cleanup);
@@ -83,16 +83,49 @@ describe('MilestonesScreen', () => {
     await waitFor(() => byText(card, 'a', '#1 Task 1'), r);
     expect(byText(card, 'a', '#1 Task 1').getAttribute('href')).toBe('/task/t1');
     // a task already in the milestone is not offered again
-    expect(optionsOf(byLabel(card, 'Add a task to Beta')).map((o) => o.value)).toEqual(['', 't2']);
-    type(byLabel<HTMLElement>(card, 'Add a task to Beta'), 't2');
-    r.root.flush();
-    await r.act(() => byText(card, 'button', 'Add').click());
+    await r.act(() => byText(card, 'button', 'Add tasks…').click());
+    const list = byLabel(card, 'Tasks to add to Beta');
+    expect(Array.from(list.querySelectorAll('li')).map((li) => li.textContent)).toEqual(['#2 Task 2']);
+    await r.act(() => byLabel<HTMLInputElement>(card, '#2 Task 2').click());
+    await r.act(() => byText(card, 'button', 'Add 1 task').click());
     await waitFor(() => expect(set).toEqual([['ms_1', ['t2'], []]]), r);
     type(byLabel(r.container, 'Title'), 'GA');
     type(byLabel(r.container, /Due date/), '2027-03-01');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Create milestone').click());
     await waitFor(() => expect(created).toEqual([['prj_1', 'GA', undefined, '2027-03-01T00:00:00.000Z']]), r);
+  });
+
+  it('fills a milestone in one go: a filtered checklist, all tasks of a plan, all tasks with a label, one setTasks (X49)', async () => {
+    const set: unknown[][] = [];
+    const lab = (id: string, seq: number, labels: string[]) => ({ ...task(id, seq), labels }) as Task;
+    const plan = { id: 'plan_1', projectId: 'prj_1', runId: 'r', goal: 'Add arithmetic', status: 'ACCEPTED', plannerAgent: '', createdAt: 1, createdTasks: { a: 't2', b: 't3', c: 't1' } } as Plan;
+    const r = mount(
+      <MilestonesScreen />,
+      servicesWith({
+        taskList: async () => [task('t1', 1), lab('t2', 2, ['ui']), lab('t3', 3, []), lab('t4', 4, ['ui']), task('t5', 5)],
+        planList: async () => [plan, { ...plan, id: 'plan_2', status: 'REJECTED' }],
+        milestoneList: async () => [ms()],
+        milestoneSetTasks: async (...a) => (set.push(a), ms()),
+      }),
+    );
+    const card = await waitFor(() => need(r.$('[data-testid="milestone"]')), r);
+    await waitFor(() => byText(card, 'a', '#1 Task 1'), r);
+    await r.act(() => byText(card, 'button', 'Add tasks…').click());
+    // only the plan's tasks not in the milestone yet are counted; a rejected plan offers nothing
+    await waitFor(() => byText(card, 'button', 'All tasks of the plan "Add arithmetic" (2)'), r);
+    expect(Array.from(card.querySelectorAll('button')).filter((b) => /All tasks of the plan/.test(b.textContent ?? '')).length).toBe(1);
+    await r.act(() => byText(card, 'button', 'All tasks of the plan "Add arithmetic" (2)').click());
+    await r.act(() => byText(card, 'button', 'All tasks labelled ui (2)').click());
+    // the filter narrows the list; ticked tasks stay ticked
+    type(byLabel(card, 'Filter tasks for Beta'), '#5');
+    r.root.flush();
+    expect(Array.from(byLabel(card, 'Tasks to add to Beta').querySelectorAll('li')).map((li) => li.textContent)).toEqual(['#5 Task 5']);
+    await r.act(() => byLabel<HTMLInputElement>(card, '#5 Task 5').click());
+    await r.act(() => byText(card, 'button', 'Add 4 tasks').click());
+    await waitFor(() => expect(set.length).toBe(1), r);
+    expect(set[0]![0]).toBe('ms_1');
+    expect([...(set[0]![1] as string[])].sort()).toEqual(['t2', 't3', 't4', 't5']);
   });
 
   it('says the picker holds only the newest tasks while the project has more (M21), and a milestone task beyond them shows by its id', async () => {
@@ -126,12 +159,55 @@ describe('MilestonesScreen', () => {
     expect(card.textContent).not.toContain('overdue');
     await r.act(() => byText(card, 'button', 'Remove').click());
     await waitFor(() => expect(calls).toEqual(['set ms_1 + -t1']), r);
+    // one task is not finished: Close asks first, and only "Close anyway" closes it, with force (X410)
     await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Close milestone').click());
-    await waitFor(() => expect(calls[1]).toBe('status ms_1 closed false'), r);
+    expect(calls.length).toBe(1);
+    expect(r.$('[data-testid="milestone"] [role="group"]')!.getAttribute('aria-label')).toBe('1 task in "Beta" is not finished. Close anyway? Reopen undoes it.');
+    await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Close "Beta" anyway').click());
+    await waitFor(() => expect(calls[1]).toBe('status ms_1 closed true'), r);
     await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Delete').click());
     expect(calls.length).toBe(2);
     await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Yes, delete').click());
     await waitFor(() => expect(calls[2]).toBe('delete ms_1'), r);
+  });
+
+  // X410: a milestone whose tasks are all finished offers to close in one click, without force; a closed one reopens
+  it('a finished milestone offers "All done · Close milestone"; a closed one offers Reopen', async () => {
+    const calls: string[] = [];
+    const done = { total: 2, completed: 1, inProgress: 0, blocked: 0, open: 0, cancelled: 1, failed: 0, percent: 100 };
+    const r = mount(
+      <MilestonesScreen />,
+      servicesWith({
+        milestoneList: async () => [ms({ progress: done }), ms({ id: 'ms_2', title: 'Old', status: 'closed', progress: done })],
+        milestoneSetStatus: async (id, status, force) => (calls.push(`status ${id} ${status} ${force}`), ms()),
+      }),
+    );
+    const beta = await waitFor(() => need(r.$('[data-testid="milestone"][data-title="Beta"]')), r);
+    await r.act(() => byText(beta, 'button', 'All done · Close milestone').click());
+    await waitFor(() => expect(calls).toEqual(['status ms_1 closed false']), r);
+    const old = r.$('[data-testid="milestone"][data-title="Old"]')!;
+    expect(() => byText(old, 'button', 'Close milestone')).toThrow();
+    await r.act(() => byText(old, 'button', 'Reopen').click());
+    await waitFor(() => expect(calls[1]).toBe('status ms_2 open false'), r);
+  });
+
+  // X410 review: a milestone whose tasks failed is not "All done"; it still closes without force, under a plain Close milestone
+  it('a milestone with failed tasks offers a plain Close milestone, not "All done"', async () => {
+    const calls: string[] = [];
+    const failed = { total: 3, completed: 0, inProgress: 0, blocked: 0, open: 0, cancelled: 0, failed: 3, percent: 0 };
+    const r = mount(
+      <MilestonesScreen />,
+      servicesWith({
+        milestoneList: async () => [ms({ progress: failed })],
+        milestoneSetStatus: async (id, status, force) => (calls.push(`status ${id} ${status} ${force}`), ms()),
+      }),
+    );
+    const beta = await waitFor(() => need(r.$('[data-testid="milestone"][data-title="Beta"]')), r);
+    expect(beta.textContent).not.toContain('All done');
+    const close = byText<HTMLButtonElement>(beta, 'button', 'Close milestone');
+    expect(close.getAttribute('data-testid')).toBe('milestone-close');
+    await r.act(() => close.click());
+    await waitFor(() => expect(calls).toEqual(['status ms_1 closed false']), r);
   });
 
   // audit 2026-10-16, M27: a task the team lead split off says so wherever it is a row

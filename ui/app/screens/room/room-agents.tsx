@@ -4,21 +4,26 @@
 // mode is a human action, and the core has the last word on every change.
 
 import { css, on, type Handle } from 'remix/component';
-import { MessageSquareReply, Trash2, UserPlus } from 'lucide';
+import { MessageSquareReply, Pencil, ScanSearch, Trash2, UserPlus } from 'lucide';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { formatCost } from '../../lib/format.ts';
 import { parseWhole } from '../../lib/limits.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, retryFor, services } from '../../state/services.tsx';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { ExplainText } from '../shared/explain.tsx';
-import { Button } from '../../ui/button.tsx';
+import { routes } from '../../routes.ts';
+import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Icon } from '../../ui/icon.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { errorAttrs, Field } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { RoomDecisions } from './decisions-list.tsx';
+import { askableAgents, NO_ANSWER_STATUSES, outcomeWords } from './asks.ts';
 import { lastHumanMessageId, memberKey, MODE_TEXT } from './messages.ts';
 import { JoinRules } from './join-rules.tsx';
+import { defaultModerator, defaultOrder, inOrder } from './turn-taking.ts';
 import { tightList } from '../../ui/layout.tsx';
 
 const railCss = css({ display: 'grid', gap: t.s3, minWidth: '0' });
@@ -72,25 +77,32 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
   let mode: string = init.mode;
   let order: string[] = init.modeParams?.order ?? [];
   let moderator = init.modeParams?.moderator ?? '';
-  let rounds = String(init.modeParams?.max_rounds ?? 3);
+  let rounds = String(init.modeParams?.max_rounds || 3);
   let roundsError: string | undefined;
-  let invite = '';
+  // the order and the round limit are shown in words; Change opens their controls (X14)
+  let editOrder = false;
+  let editRounds = false;
   let explainOf: string | undefined; // the decision whose "Why this model?" is open
+  // what "Ask agents to reply" found when nobody answered (X12): the responder's outcome in words, instead of nothing
+  let replyNote = '';
   const update = () => void handle.update();
 
   const name = (key: string) => (key.startsWith('human:') ? key.slice(6) : (handle.props.agents.find((a) => a.id === key)?.name ?? key));
 
-  const saveMode = (button: HTMLElement) => {
+  /** Saves the room's turn-taking as it stands on the panel. A round limit that is not a whole number is told and nothing is sent. */
+  const save = (what: string, button?: HTMLElement) => {
     // empty is the core's default (0); text that is not a whole number is told under the field and nothing is sent
     const limit = parseWhole(rounds, 1, ROUNDS_ERROR);
     if (!limit.ok) {
       roundsError = limit.error;
+      editRounds = true;
       act.clear();
-      handle.queueTask(() => button.closest('[data-testid="room-agents"]')?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      handle.queueTask(() => (button?.closest('[data-testid="room-agents"]') ?? document).querySelector<HTMLElement>('[data-testid="room-agents"] [aria-invalid="true"]')?.focus());
+      update();
       return undefined;
     }
     roundsError = undefined;
-    return act.run('mode', () =>
+    return act.run(what, () =>
       s.client.roomSetMode({
         roomId: handle.props.room.id,
         mode,
@@ -108,115 +120,176 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
     const invitable = agents.filter((a) => !memberKeys.includes(a.id));
     const list = turns.data ?? [];
     const busy = act.busy !== '';
+    // a direct message has one agent and nobody to take turns with: only its row and its turns (X16)
+    const dm = room.kind === 'dm';
+    const shownOrder = order.length ? order : defaultOrder(members);
     return (
       <div mix={railCss} class="room-agents" data-testid="room-agents">
-        <ErrorNote error={act.error ?? turns.error} />
-        <section mix={cardCss} aria-label="Turn-taking mode">
-          <h3>Turn-taking mode</h3>
-          <p class="muted">
-            Current mode: <Badge tone="accent">{room.mode}</Badge>
-          </p>
-          <Field label="Mode">
-            {(id) => (
-              <Select
-                id={id}
-                label="Mode"
-                value={mode}
-                options={selectValues(['auto', 'sequential', 'moderator'])}
-                onChange={(v) => {
-                  mode = v;
-                  update();
-                }}
-              />
-            )}
-          </Field>
-          <p mix={modeText} data-testid="mode-text">
-            {MODE_TEXT[mode]}
-          </p>
-          {mode === 'sequential' ? (
-            <div style={{ display: 'grid', gap: '8px' }}>
-              <p class="muted">Speaking order: {order.length ? order.map(name).join(' > ') : 'not set'}</p>
-              <div mix={orderCss}>
-                {memberKeys
-                  .filter((k) => k !== 'system')
-                  .map((k) => (
+        <ErrorNote error={act.error ?? turns.error} retry={retryFor(act, turns)} />
+        {dm ? null : (
+          <section mix={cardCss} aria-label="Turn-taking mode">
+            <h3>Turn-taking mode</h3>
+            <p class="muted">
+              Current mode: <Badge tone="accent">{room.mode}</Badge>
+            </p>
+            <Field label="Mode">
+              {(id) => (
+                <Select
+                  id={id}
+                  label="Mode"
+                  value={mode}
+                  disabled={busy}
+                  options={selectValues(['auto', 'sequential', 'moderator'])}
+                  onChange={(v) => {
+                    // choosing a mode applies it; a moderator room starts with the lead, or you
+                    mode = v;
+                    if (v === 'moderator' && !moderator) moderator = defaultModerator(members, agents);
+                    void save('mode')?.then((r) => {
+                      // refused: the select goes back to the room's mode and the refusal is shown above
+                      if (!r) {
+                        mode = handle.props.room.mode;
+                        update();
+                      }
+                    });
+                    update();
+                  }}
+                />
+              )}
+            </Field>
+            {act.busy === 'mode' ? <p class="muted" role="status">Saving...</p> : null}
+            <p mix={modeText} data-testid="mode-text">
+              {MODE_TEXT[mode]}
+            </p>
+            {mode === 'sequential' ? (
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <p class="muted" data-testid="speaking-order">
+                  Order: {shownOrder.length ? inOrder(shownOrder.map(name)) : 'no agent yet'}
+                  {order.length ? '' : ' (the order they joined)'}
+                  {editOrder ? null : (
+                    <>
+                      {' · '}
+                      <Button variant="link" size="sm" mix={[on('click', () => ((editOrder = true), update()))]}>
+                        Change order
+                      </Button>
+                    </>
+                  )}
+                </p>
+                {editOrder ? (
+                  <div mix={orderCss}>
+                    {memberKeys
+                      .filter((k) => k !== 'system')
+                      .map((k) => (
+                        <Button
+                          key={k}
+                          size="sm"
+                          disabled={order.includes(k)}
+                          mix={[
+                            on('click', () => {
+                              order = [...order, k];
+                              update();
+                            }),
+                          ]}
+                        >
+                          Add {name(k)}
+                        </Button>
+                      ))}
+                    {order.length ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        mix={[
+                          on('click', () => {
+                            order = [];
+                            update();
+                          }),
+                        ]}
+                      >
+                        Clear order
+                      </Button>
+                    ) : null}
                     <Button
-                      key={k}
                       size="sm"
-                      disabled={order.includes(k)}
+                      variant="primary"
+                      disabled={busy}
                       mix={[
-                        on('click', () => {
-                          order = [...order, k];
+                        on('click', async (e) => {
+                          if (await save('order', e.currentTarget)) editOrder = false;
                           update();
                         }),
                       ]}
                     >
-                      Add {name(k)}
+                      {act.busy === 'order' ? 'Saving...' : 'Save order'}
                     </Button>
-                  ))}
-                {order.length ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    mix={[
-                      on('click', () => {
-                        order = [];
-                        update();
-                      }),
-                    ]}
-                  >
-                    Clear order
-                  </Button>
+                  </div>
                 ) : null}
               </div>
-            </div>
-          ) : null}
-          <div mix={inlineRow}>
-            {mode === 'moderator' ? (
-              <div style={{ flex: '1', minWidth: '180px' }}>
-                <Field label="Moderator">
-                  {(id) => (
-                    <Select
-                      id={id}
-                      label="Moderator"
-                      value={moderator}
-                      options={[{ value: '', label: 'Choose a moderator' }, ...memberKeys.map((k) => ({ value: k, label: name(k) }))]}
-                      onChange={(v) => {
-                        moderator = v;
-                        update();
-                      }}
-                    />
-                  )}
-                </Field>
-              </div>
             ) : null}
-            <div style={roundsError ? { flex: '1 1 280px' } : { width: '120px' }}>
-              <Field label="Round limit" error={roundsError}>
+            {mode === 'moderator' ? (
+              <Field label="Moderator">
                 {(id) => (
-                  <input
+                  <Select
                     id={id}
-                    aria-label="Round limit"
-                    inputMode="numeric"
-                    value={rounds}
-                    {...errorAttrs(id, roundsError)}
-                    mix={[
-                      on('input', (e) => {
-                        rounds = (e.currentTarget as HTMLInputElement).value;
-                        roundsError = undefined;
-                        update();
-                      }),
-                    ]}
+                    label="Moderator"
+                    value={moderator}
+                    disabled={busy}
+                    options={[{ value: '', label: 'Choose a moderator' }, ...memberKeys.filter((k) => k !== 'system').map((k) => ({ value: k, label: k.startsWith('human:') ? `You (${name(k)})` : name(k) }))]}
+                    onChange={(v) => {
+                      moderator = v;
+                      void save('moderator');
+                      update();
+                    }}
                   />
                 )}
               </Field>
-            </div>
-            <Button variant="primary" disabled={busy} mix={[on('click', (e) => void saveMode(e.currentTarget))]}>
-              {act.busy === 'mode' ? 'Saving...' : 'Save mode'}
-            </Button>
-          </div>
-        </section>
+            ) : null}
+            {editRounds ? (
+              <div mix={inlineRow}>
+                <div style={roundsError ? { flex: '1 1 280px' } : { width: '120px' }}>
+                  <Field label="Round limit" error={roundsError}>
+                    {(id) => (
+                      <input
+                        id={id}
+                        aria-label="Round limit"
+                        inputMode="numeric"
+                        value={rounds}
+                        {...errorAttrs(id, roundsError)}
+                        mix={[
+                          on('input', (e) => {
+                            rounds = (e.currentTarget as HTMLInputElement).value;
+                            roundsError = undefined;
+                            update();
+                          }),
+                        ]}
+                      />
+                    )}
+                  </Field>
+                </div>
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  mix={[
+                    on('click', async (e) => {
+                      if (await save('rounds', e.currentTarget)) editRounds = false;
+                      update();
+                    }),
+                  ]}
+                >
+                  {act.busy === 'rounds' ? 'Saving...' : 'Save round limit'}
+                </Button>
+              </div>
+            ) : (
+              <p class="muted" data-testid="round-limit">
+                Round limit {room.modeParams?.max_rounds || 3}
+                {' · '}
+                <Button variant="link" size="sm" mix={[on('click', () => ((editRounds = true), update()))]}>
+                  Change round limit
+                </Button>
+              </p>
+            )}
+          </section>
+        )}
         <section mix={cardCss} aria-label="Agents">
-          <h3>Agents</h3>
+          <h3>{dm ? 'Agent' : 'Agents'}</h3>
           <ul mix={listCss}>
             {agentMembers.map((m) => (
               <li key={memberKey(m)} mix={memberRow}>
@@ -227,17 +300,30 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                     {m.role} {m.state}
                   </span>
                 </div>
-                <ConfirmAction
-                  label="Remove"
-                  icon={Trash2}
-                  yes="Yes, remove"
-                  yesName={`Yes, remove ${name(m.member.id)} from this room`}
-                  keepName={`Keep ${name(m.member.id)} in this room`}
-                  question={`Remove ${name(m.member.id)} from this room? It stops taking part here, and inviting it again starts it fresh.`}
-                  disabled={busy}
-                  testId="room-agent-remove"
-                  onConfirm={() => act.run('remove', () => s.client.roomRemoveMember(room.id, m.member.id))}
-                />
+                {dm ? (
+                  <>
+                    <Button size="sm" variant="ghost" icon={ScanSearch} mix={[on('click', () => s.ui.openInspector(m.member.id))]} aria-label={`Inspect ${name(m.member.id)}`}>
+                      Inspect
+                    </Button>
+                    {/* the agent editor opens on the Crew tab (decision P137: /team?edit=<id>) */}
+                    <a href={`${routes.team.href()}?edit=${encodeURIComponent(m.member.id)}`} mix={buttonStyle('ghost', 'sm')} aria-label={`Edit ${name(m.member.id)}`}>
+                      <Icon icon={Pencil} size={14} />
+                      Edit
+                    </a>
+                  </>
+                ) : (
+                  <ConfirmAction
+                    label="Remove"
+                    icon={Trash2}
+                    yes="Yes, remove"
+                    yesName={`Yes, remove ${name(m.member.id)} from this room`}
+                    keepName={`Keep ${name(m.member.id)} in this room`}
+                    question={`Remove ${name(m.member.id)} from this room? It stops taking part here, and inviting it again starts it fresh.`}
+                    disabled={busy}
+                    testId="room-agent-remove"
+                    onConfirm={() => act.run('remove', () => s.client.roomRemoveMember(room.id, m.member.id))}
+                  />
+                )}
               </li>
             ))}
             {agentMembers.length === 0 ? (
@@ -246,46 +332,44 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
               </li>
             ) : null}
           </ul>
-          <div mix={inlineRow}>
-            <Select
-              label="Invite an agent"
-              value={invite}
-              style={{ flex: '1', minWidth: '160px', width: 'auto' }}
-              options={[{ value: '', label: 'Invite an agent...' }, ...invitable.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
-              onChange={(v) => {
-                invite = v;
-                update();
-              }}
-            />
-            <Button
-              icon={UserPlus}
-              disabled={!invite || busy}
-              mix={[
-                on('click', async () => {
-                  const id = invite;
-                  await act.run('invite', () => s.client.roomInvite(room.id, id));
-                  invite = '';
-                  update();
-                }),
-              ]}
-            >
-              Invite
-            </Button>
-          </div>
-          {lastHumanMessageId ? (
+          {/* one click per agent not yet here (X15); nothing when the whole crew is in the room */}
+          {!dm && invitable.length ? (
+            <div mix={orderCss} role="group" aria-label="Invite to this room" data-testid="room-invite">
+              {invitable.map((a) => (
+                <Button
+                  key={a.id}
+                  size="sm"
+                  icon={UserPlus}
+                  disabled={busy}
+                  title={`Invite ${a.name} (${a.role}) to this room`}
+                  mix={[on('click', () => void act.run('invite', () => s.client.roomInvite(room.id, a.id)))]}
+                >
+                  Invite {a.name}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {!dm && lastHumanMessageId ? (
             <Button
               icon={MessageSquareReply}
               disabled={busy}
               title="Ask the agents to answer your latest message now"
               mix={[
                 on('click', async () => {
-                  await act.run('reply', () => s.client.roomReply(lastHumanMessageId));
+                  const o = await act.run('reply', () => s.client.roomReply(lastHumanMessageId));
+                  replyNote = o && !(o.turns ?? []).length ? outcomeWords(o) || 'No agent answered this message.' : '';
                   turns.reload();
+                  update();
                 }),
               ]}
             >
               Ask agents to reply to my last message
             </Button>
+          ) : null}
+          {replyNote ? (
+            <p class="muted" role="status" data-testid="room-reply-note">
+              {replyNote}
+            </p>
           ) : null}
         </section>
         {/* the project's join rules (P130): they add agents to new task rooms, so they are shown beside a channel's and a task room's agents */}
@@ -316,6 +400,23 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                       <td>
                         {tr.status}
                         {tr.error ? `: ${tr.error}` : ''}
+                        {/* a turn on the person's message that gave no answer: the person can ask that agent again (X12), a new turn on the same message */}
+                        {NO_ANSWER_STATUSES.has(tr.status) && tr.askable && askableAgents(handle.props.members).includes(tr.agentId) && !list.some((x) => x.triggerId === tr.triggerId && x.agentId === tr.agentId && x.startedAt > tr.startedAt) ? (
+                          <Button
+                            variant="link"
+                            size="sm"
+                            disabled={!!act.busy}
+                            data-testid="room-turn-ask-again"
+                            mix={[
+                              on('click', async () => {
+                                await act.run('again', () => s.client.roomReply(tr.triggerId, tr.agentId));
+                                turns.reload();
+                              }),
+                            ]}
+                          >
+                            Ask again
+                          </Button>
+                        ) : null}
                       </td>
                       <td data-testid="room-turn-model">
                         {tr.model ? <code>{tr.model}</code> : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}
@@ -375,12 +476,14 @@ export function RoomTab(handle: Handle<{ roomId: string }>) {
   });
   return () => {
     const r = room.data?.id === handle.props.roomId ? room.data : undefined;
-    if (!r) return room.error ? <ErrorNote error={room.error} what="Could not load the room" /> : <Loading label="Loading the room..." />;
+    if (!r) return room.error ? <ErrorNote error={room.error} retry={room.reload} what="Could not load the room" /> : <Loading label="Loading the room..." />;
     if (r.archived) return <p style={{ margin: '0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>This channel is archived: its members and mode cannot change.</p>;
     return (
       <>
-        <ErrorNote error={members.error} what="Could not load the members" />
+        <ErrorNote error={members.error} retry={members.reload} what="Could not load the members" />
         <RoomAgentsPanel key={r.id} room={r} agents={s.project.agentList} members={members.data ?? []} lastHumanMessageId={lastHumanMessageId(recent.data ?? [])} />
+        {/* the decisions taken here, or in every room of the project in #decisions (X110) */}
+        {r.kind === 'channel' || r.kind === 'task' ? <RoomDecisions key={`dec:${r.id}`} room={r} /> : null}
       </>
     );
   };

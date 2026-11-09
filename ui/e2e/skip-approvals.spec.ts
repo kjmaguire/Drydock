@@ -12,7 +12,9 @@ test('a permission mode that skips approvals needs the box ticked; the template 
 
   // the Library's template form: a mode that keeps approvals asks nothing
   await workspaceNav(page, 'nav-library');
-  await page.getByRole('button', { name: 'New agent template' }).click();
+  await page.getByTestId('library-new-agent').click();
+  // New agent opens on Describe (E12); the full form is Configure
+  await page.getByTestId('library-new-configure').click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('Free hand');
   await tf.getByLabel('Role').fill('backend');

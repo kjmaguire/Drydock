@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { bodyNote, charCount, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memorySource, memoryTone } from './memory.ts';
+import { bodyNote, charCount, inGroups, MEMORY_MANY_LIMIT, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memorySource, memoryTone, proposalsOf, proposalsText } from './memory.ts';
 
 describe('Memory helpers', () => {
   it('says a proposal is invisible to agents until accepted', () => {
@@ -49,5 +49,27 @@ describe('Memory helpers', () => {
     const long = bodyNote('x'.repeat(8001));
     expect(long.over).toBe(true);
     expect(long.text).toBe(`${(8001).toLocaleString()} characters. This is longer than the ${(8000).toLocaleString()} characters a proposal may have now. All of it is shown above.`);
+  });
+});
+
+describe('memory proposals in words (E10)', () => {
+  it('splits a long list into groups the core takes, in order', () => {
+    expect(MEMORY_MANY_LIMIT).toBe(200);
+    expect(inGroups([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+    expect(inGroups([])).toEqual([]);
+    expect(inGroups(Array.from({ length: 401 }, (_, i) => i)).map((g) => g.length)).toEqual([200, 200, 1]);
+  });
+
+  it('counts them and finds one agent\'s own open ones', () => {
+    expect(proposalsText(1)).toBe('1 memory proposal');
+    expect(proposalsText(3)).toBe('3 memory proposals');
+    const es = [
+      { id: 'a', status: 'proposed', source: 'agent:agt_1 task:t1' },
+      { id: 'b', status: 'proposed', source: 'agent:agt_1' },
+      { id: 'c', status: 'accepted', source: 'agent:agt_1' },
+      { id: 'd', status: 'proposed', source: 'agent:agt_12' },
+      { id: 'e', status: 'proposed', source: 'human:me' },
+    ];
+    expect(proposalsOf(es, 'agt_1').map((e) => e.id)).toEqual(['a', 'b']);
   });
 });

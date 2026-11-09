@@ -44,7 +44,7 @@ describe('deleting a project', () => {
     await r.act(() => confirm().click());
     await waitFor(() => expect(navigated).toEqual(['/home']), r);
     expect(calls).toEqual([['p1', 'gocalc']]);
-    expect(s.ui.takeFlash()).toEqual({ text: 'gocalc was deleted.', tone: 'ok' });
+    expect(s.ui.toasts.map((x) => [x.text, x.tone, !!x.sticky])).toEqual([['gocalc was deleted.', 'ok', false]]); // a toast now (G2)
   });
 
   it("shows the core's refusal (work is running) and stays on the page", async () => {
@@ -63,6 +63,6 @@ describe('deleting a project', () => {
     await r.act(() => (r.$('[data-testid="delete-project-open"]') as HTMLButtonElement).click());
     await r.act(() => type(r.$('[data-testid="delete-confirm"]') as HTMLInputElement, 'gocalc'));
     await r.act(() => (r.$('[data-testid="delete-project-confirm"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(s.ui.takeFlash()).toEqual({ text: 'gocalc was deleted. Not cleaned up: the folder C:\\x: in use', tone: 'warn' }), r);
+    await waitFor(() => expect(s.ui.toasts.map((x) => [x.text, x.tone, !!x.sticky])).toEqual([['gocalc was deleted. Not cleaned up: the folder C:\\x: in use', 'warn', true]]), r); // a warning toast stays until closed (G2)
   });
 });

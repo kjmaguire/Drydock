@@ -50,6 +50,16 @@ type Info struct {
 	StartedAt time.Time `json:"startedAt"`
 	Exited    bool      `json:"exited"`
 	ExitCode  int       `json:"exitCode"`
+	// ProjectID and TaskID say whose folder a shell opened in (the core's terminal.open): the dock shows its project's terminals
+	// and folds the rest. Empty for a program that belongs to no project (a Connection's sign-in).
+	ProjectID string `json:"projectId,omitempty"`
+	TaskID    string `json:"taskId,omitempty"`
+}
+
+// Owner is the project, and the task, a shell is opened for (Info.ProjectID, Info.TaskID).
+type Owner struct {
+	ProjectID string
+	TaskID    string
 }
 
 // Chunk is output read from an offset. Next is the offset to read from next; Dropped counts bytes that were no longer kept.
@@ -132,11 +142,16 @@ func DefaultShell() (string, []string) {
 
 // Open starts a shell in dir.
 func (m *Manager) Open(dir, title string, cols, rows int) (Info, error) {
+	return m.OpenFor(Owner{}, dir, title, cols, rows)
+}
+
+// OpenFor starts a shell in dir as Open does, marked as the owner's (a project's repository or a task's worktree).
+func (m *Manager) OpenFor(owner Owner, dir, title string, cols, rows int) (Info, error) {
 	shell, args := DefaultShell()
 	if m.Shell != nil {
 		shell, args = m.Shell()
 	}
-	return m.open(dir, title, cols, rows, Program{Path: shell, Args: args})
+	return m.open(dir, title, cols, rows, Program{Path: shell, Args: args}, owner)
 }
 
 // OpenProgram starts a program in dir instead of a shell: a command the person watches and answers in the terminal (an
@@ -150,7 +165,7 @@ func (m *Manager) OpenProgram(dir, title string, cols, rows int, prog Program) (
 		return Info{}, err
 	}
 	prog.Path = path
-	return m.open(dir, title, cols, rows, prog)
+	return m.open(dir, title, cols, rows, prog, Owner{})
 }
 
 // resolve makes a program name something the pseudo-terminal can start: go-pty does not search PATH, and resolves a bare or
@@ -172,7 +187,7 @@ func resolve(name string) (string, error) {
 	return filepath.Abs(name)
 }
 
-func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, error) {
+func (m *Manager) open(dir, title string, cols, rows int, prog Program, owner Owner) (Info, error) {
 	shell, args := prog.Path, prog.Args
 	m.mu.Lock()
 	if m.terms == nil {
@@ -238,7 +253,8 @@ func (m *Manager) open(dir, title string, cols, rows int, prog Program) (Info, e
 		return Info{}, fmt.Errorf("terminal: %w", err)
 	}
 	t := &term{pty: p, cmd: cmd, kill: kill, onExit: prog.OnExit, changed: make(chan struct{}), pumped: make(chan struct{}),
-		info: Info{ID: newID(), Title: title, Cwd: dir, Shell: shell, Cols: cols, Rows: rows, StartedAt: time.Now().UTC()}}
+		info: Info{ID: newID(), Title: title, Cwd: dir, Shell: shell, Cols: cols, Rows: rows, StartedAt: time.Now().UTC(),
+			ProjectID: owner.ProjectID, TaskID: owner.TaskID}}
 	// on Unix the parent's copy of the terminal's slave end would keep reads from ever ending
 	if u, ok := p.(pty.UnixPty); ok {
 		_ = u.Slave().Close()

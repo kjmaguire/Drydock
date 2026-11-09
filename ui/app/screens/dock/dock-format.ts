@@ -1,7 +1,7 @@
 // Pure helpers for the dock panels (no DOM, no framework): sizes, diff summaries, the log line buffer and the color
 // conversions the editor and terminal themes need.
 
-import type { DiffFile } from '../../api/dockClient.ts';
+import type { DiffFile, LogSource } from '../../api/dockClient.ts';
 
 export const STATUS_LETTER: Record<DiffFile['status'], string> = { added: 'A', deleted: 'D', modified: 'M', renamed: 'R' };
 
@@ -141,4 +141,41 @@ export function terminalReadRetry(err: unknown, failures: number): number | unde
   if (/no such terminal|unknown terminal/i.test(msg)) return undefined;
   if (failures > TERMINAL_READ_RETRIES) return undefined;
   return Math.min(250 * 2 ** (Math.max(1, failures) - 1), 5000);
+}
+
+/** The newest of some logs: the latest created, a later one in the list winning a tie (the core lists streams after checks). */
+function newest(logs: readonly LogSource[]): LogSource | undefined {
+  let best: LogSource | undefined;
+  for (const l of logs) if (!best || l.created >= best.created) best = l;
+  return best;
+}
+
+/**
+ * The log the Logs tab opens on until the person picks one (effort review X23): a source still being written, else the newest
+ * failed check that no later run of the same check passed, else the newest log.
+ */
+export function pickLogSource(logs: readonly LogSource[]): LogSource | undefined {
+  const running = newest(logs.filter((l) => l.running));
+  if (running) return running;
+  const failed = logs.filter((l) => l.passed === false && !logs.some((o) => o.title === l.title && o.passed === true && o.created > l.created));
+  return newest(failed) ?? newest(logs);
+}
+
+/**
+ * The log the Logs tab shows while the person has not picked one, given the one it shows now (`shown`, kept only in memory). It
+ * stays on that log while it is listed and moves only when another source starts running: a stream that stops does not hand the
+ * view to an older failed check (X23).
+ */
+export function autoLogSource(logs: readonly LogSource[], shown: string | undefined): LogSource | undefined {
+  const pick = pickLogSource(logs);
+  const current = shown === undefined ? undefined : logs.find((l) => l.id === shown);
+  if (!current) return pick;
+  return pick && pick.running && pick.id !== current.id ? pick : current;
+}
+
+/** The Logs list's filter: every log, or only the failed checks. */
+export type LogFilter = 'all' | 'failed';
+
+export function filterLogs(logs: readonly LogSource[], mode: LogFilter): LogSource[] {
+  return mode === 'failed' ? logs.filter((l) => l.passed === false) : [...logs];
 }

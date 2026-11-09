@@ -3,12 +3,17 @@ package core
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
+	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/terminal"
 )
@@ -16,6 +21,9 @@ import (
 // The human's terminals for the bottom dock (internal/terminal). A terminal opens in a task's worktree or a project's
 // repository, never at a path the caller names. Output is read by offset with a long poll, so both transports (the Wails
 // bridge and the development HTTP server) carry it with the ordinary call path, and none of it reaches the event log.
+
+// ghSignInKey is the GitHub CLI's sign-in among the running sign-ins (no Connection key has a colon in front).
+const ghSignInKey = ":github"
 
 func init() {
 	RegisterExtension(Extension{Name: "terminal", Start: func(extCtx context.Context, c *Core) (map[string]Method, func(), error) {
@@ -28,12 +36,20 @@ func init() {
 				TaskID    string `json:"taskId"`
 				Cols      int    `json:"cols"`
 				Rows      int    `json:"rows"`
+				// Reuse brings up the newest shell still running in the same folder instead of starting another (the task page's
+				// "Open the worktree", X27); the dock's "New terminal" buttons leave it off and always start one.
+				Reuse bool `json:"reuse"`
 			}) (any, error) {
-				dir, title, err := c.terminalDir(ctx, p.ProjectID, p.TaskID)
+				dir, title, owner, err := c.terminalDir(ctx, p.ProjectID, p.TaskID)
 				if err != nil {
 					return nil, err
 				}
-				return m.Open(dir, title, p.Cols, p.Rows)
+				if p.Reuse {
+					if in, ok := runningShellIn(m.List(), dir); ok {
+						return in, nil
+					}
+				}
+				return m.OpenFor(owner, dir, title, p.Cols, p.Rows)
 			}),
 			"terminal.read": bind(func(ctx context.Context, p struct {
 				ID     string `json:"id"`
@@ -139,32 +155,207 @@ func init() {
 				c.publish(ctx, "connection.sign_in_started", "", map[string]any{"key": conn.Key, "by": c.Human()})
 				return info, nil
 			}),
+			// github.signIn runs the person's own `gh auth login` in a terminal they answer (F4), as connection.signIn does for an
+			// agent CLI: Drydock runs the unmodified gh, reads only its exit code and never what gh stores. One at a time: asking
+			// again while it runs returns the same terminal. When it ends, the kept github.status answer is dropped, gh is asked
+			// again, and github.sign_in_finished (with the new state) makes the GitHub page, the clone picker and the pull-request
+			// pages read it.
+			"github.signIn": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				signMu.Lock()
+				defer signMu.Unlock()
+				if in, ok := runningSignIn(m, signIns, ghSignInKey); ok {
+					return in, nil
+				}
+				gh, err := exec.LookPath("gh")
+				if err != nil {
+					return nil, errors.New("the GitHub CLI (gh) is not installed: install it from https://cli.github.com, then sign in")
+				}
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				var id string
+				ready := make(chan struct{})
+				info, err := m.OpenProgram(home, "Sign in: GitHub CLI", 100, 24, terminal.Program{Path: gh, Args: []string{"auth", "login"}, OnExit: func(code int) {
+					<-ready
+					signMu.Lock()
+					if signIns[ghSignInKey] == id {
+						delete(signIns, ghSignInKey)
+					}
+					signMu.Unlock()
+					c.ghStatus.drop()
+					if extCtx.Err() != nil {
+						return // not while the core shuts down
+					}
+					cctx, cancel := context.WithTimeout(extCtx, 60*time.Second)
+					st := c.CachedGitHubStatus(cctx, true)
+					cancel()
+					c.publish(extCtx, "github.sign_in_finished", "", map[string]any{"exitCode": code, "signedIn": st.LoggedIn})
+				}})
+				if err != nil {
+					return nil, err
+				}
+				id = info.ID
+				signIns[ghSignInKey] = id
+				close(ready)
+				c.publish(ctx, "github.sign_in_started", "", map[string]any{"by": c.Human()})
+				return info, nil
+			}),
+			// connection.installTerminal opens a shell that belongs to no project (in the person's home folder; inside the distro
+			// for a WSL install) with the CLI's install or update command typed at its prompt and NOT run (A5): the person reads it
+			// and presses Enter themselves, so Drydock still installs nothing (D9). The Agents page checks the CLI again when the
+			// shell ends.
+			"connection.installTerminal": bind(func(ctx context.Context, p struct {
+				Adapter string `json:"adapter"`
+				Distro  string `json:"distro"`
+				Cols    int    `json:"cols"`
+				Rows    int    `json:"rows"`
+			}) (any, error) {
+				key := p.Adapter
+				if p.Distro != "" {
+					key = connections.WSLKey(p.Adapter, p.Distro)
+				}
+				conn, err := c.Connections.CheckKey(ctx, key)
+				if err != nil {
+					return nil, err
+				}
+				// the manifest's own command, not the Connection's InstallHint: that is a display label ("powershell: ...",
+				// "inside the distro: ...") which no shell runs as typed
+				var installs []manifests.Install
+				if man, ok := c.Connections.Registry.Set.Get(conn.Adapter); ok {
+					installs = man.Install
+				}
+				shell, _ := terminal.DefaultShell()
+				line := installLine(installs, p.Distro != "", shell)
+				if line == "" {
+					return nil, errors.New("this CLI names no install command")
+				}
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				title := "Install: " + conn.Adapter
+				var info terminal.Info
+				if p.Distro != "" {
+					if c.wsl == nil {
+						return nil, errors.New("WSL is not available here")
+					}
+					exe, err := c.wsl.Path()
+					if err != nil {
+						return nil, err
+					}
+					title += " WSL"
+					info, err = m.OpenProgram(home, title, p.Cols, p.Rows, terminal.Program{Path: exe, Args: []string{"-d", p.Distro, "--cd", "~"}})
+					if err != nil {
+						return nil, err
+					}
+				} else if info, err = m.OpenFor(terminal.Owner{}, home, title, p.Cols, p.Rows); err != nil {
+					return nil, err
+				}
+				if err := m.Write(info.ID, []byte(line)); err != nil {
+					_ = m.Close(info.ID)
+					return nil, err
+				}
+				return info, nil
+			}),
 		}, m.CloseAll, nil
 	}})
 }
 
+// installLine is the install command typed in the shell Drydock opens for it (A5): inside a distro, the manifest's first wsl
+// line; on Windows, a line for that shell (powershell when the shell is PowerShell, cmd when it is cmd.exe), else a cmd line
+// run through cmd from PowerShell, so neither PowerShell's syntax nor its script policy (npm.ps1) gets in the way. On a
+// development host (sh) the first Windows line as written. Never a display label such as "powershell: ...".
+func installLine(installs []manifests.Install, inWSL bool, shell string) string {
+	if inWSL {
+		for _, in := range installs {
+			if in.RunMode == agents.RunModeWSL {
+				return typedLine(in.Command)
+			}
+		}
+		return ""
+	}
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(shell, `\`, "/")))
+	kind := "sh"
+	switch {
+	case strings.Contains(base, "pwsh") || strings.Contains(base, "powershell"):
+		kind = "powershell"
+	case strings.HasPrefix(base, "cmd"):
+		kind = "cmd"
+	}
+	var native []manifests.Install
+	for _, in := range installs {
+		if in.RunMode == "" && typedLine(in.Command) != "" {
+			native = append(native, in)
+		}
+	}
+	for _, in := range native {
+		if in.Shell == kind {
+			return typedLine(in.Command)
+		}
+	}
+	if kind == "powershell" {
+		for _, in := range native {
+			if in.Shell == "cmd" {
+				return "cmd /c '" + strings.ReplaceAll(typedLine(in.Command), "'", "''") + "'"
+			}
+		}
+	}
+	if len(native) > 0 {
+		return typedLine(native[0].Command)
+	}
+	return ""
+}
+
+// typedLine is an install command as it is typed at a prompt for the person to run: its first line only, with no line break, so
+// typing it runs nothing (A5, D9).
+func typedLine(hint string) string {
+	line, _, _ := strings.Cut(strings.ReplaceAll(hint, "\r", "\n"), "\n")
+	return strings.TrimSpace(line)
+}
+
 // terminalDir is a task's worktree while it exists, else its project's repository (or, before one is attached, the project's
-// private workspace folder).
-func (c *Core) terminalDir(ctx context.Context, projectID, taskID string) (dir, title string, err error) {
+// private workspace folder), with the project (and the task, for its worktree) the shell belongs to.
+func (c *Core) terminalDir(ctx context.Context, projectID, taskID string) (dir, title string, owner terminal.Owner, err error) {
 	if taskID != "" {
 		t, err := c.Tasks.Get(ctx, taskID)
 		if err != nil {
-			return "", "", err
+			return "", "", owner, err
 		}
 		if worktreeExists(t) {
-			return t.Worktree, "task #" + strconv.Itoa(t.Seq), nil
+			return t.Worktree, "task #" + strconv.Itoa(t.Seq), terminal.Owner{ProjectID: t.ProjectID, TaskID: t.ID}, nil
 		}
 		projectID = t.ProjectID
 	}
 	if projectID == "" {
-		return "", "", errors.New("terminal: name a project or a task")
+		return "", "", owner, errors.New("terminal: name a project or a task")
 	}
 	p, err := c.GetProject(ctx, projectID)
 	if err != nil {
-		return "", "", err
+		return "", "", owner, err
 	}
 	dir, err = c.projectDir(p)
-	return dir, p.Name, err
+	return dir, p.Name, terminal.Owner{ProjectID: p.ID}, err
+}
+
+// runningShellIn is the newest shell (one terminal.open started, not a sign-in) still running in dir, from a list oldest first.
+func runningShellIn(list []terminal.Info, dir string) (terminal.Info, bool) {
+	for i := len(list) - 1; i >= 0; i-- {
+		in := list[i]
+		if !in.Exited && in.ProjectID != "" && sameDir(in.Cwd, dir) {
+			return in, true
+		}
+	}
+	return terminal.Info{}, false
+}
+
+// sameDir compares two folders as the file system does: case-insensitively on Windows.
+func sameDir(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // runningSignIn is the terminal of key's sign-in while its program runs (keys compare as Windows compares distro names).

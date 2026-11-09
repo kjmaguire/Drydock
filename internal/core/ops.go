@@ -50,6 +50,99 @@ func (c *Core) CreateTask(ctx context.Context, req tasks.CreateReq) (tasks.Task,
 	return c.Tasks.Create(ctx, req)
 }
 
+// CreateTaskReq is task.create: a task, and optionally its crew and its start in the same click (the New task page's "Create and
+// start"). Assignee names the worker; a missing Reviewer is chosen as task.assign chooses one (reviewerFor). Start starts the
+// task's workflow under StartTask's checks (licence, repository), which are made before the task is created, so a refused start
+// leaves no task behind.
+type CreateTaskReq struct {
+	tasks.CreateReq
+	Assignee string `json:"assignee"`
+	Reviewer string `json:"reviewer"`
+	Start    bool   `json:"start"`
+}
+
+// CreateTaskResult is task.create's answer: the task, and StartError when the task was made but its assignment or start then
+// failed (the engine refused it). That is not an error of the call: the task exists, so the page opens it (or says it was made)
+// instead of offering to make it a second time.
+type CreateTaskResult struct {
+	tasks.Task
+	StartError string `json:"startError,omitempty"`
+}
+
+// CreateTaskWith is task.create: CreateTask, then the assignment and the start the request asks for. An assignment or start that
+// fails once the task exists returns the task with StartError naming it, so the person can start it from its page.
+func (c *Core) CreateTaskWith(ctx context.Context, req CreateTaskReq) (CreateTaskResult, error) {
+	t, err := c.createTaskWith(ctx, req)
+	var made *madeButNotStarted
+	if errors.As(err, &made) {
+		return CreateTaskResult{Task: made.task, StartError: made.Error()}, nil
+	}
+	return CreateTaskResult{Task: t}, err
+}
+
+// madeButNotStarted is createTaskWith's failure after the task was made.
+type madeButNotStarted struct {
+	task tasks.Task
+	err  error
+}
+
+func (e *madeButNotStarted) Error() string { return e.err.Error() }
+func (e *madeButNotStarted) Unwrap() error { return e.err }
+
+func (c *Core) createTaskWith(ctx context.Context, req CreateTaskReq) (tasks.Task, error) {
+	if req.Assignee == "" && req.Reviewer == "" && !req.Start {
+		return c.CreateTask(ctx, req.CreateReq)
+	}
+	if req.Assignee == "" {
+		return tasks.Task{}, errors.New("choose a worker for the task, or create it without one")
+	}
+	if strings.HasPrefix(req.Assignee, tasks.PersonPrefix) {
+		return tasks.Task{}, errors.New("a task made and started here goes to an agent of the team; take it on yourself from its page")
+	}
+	if _, err := c.GetProject(ctx, req.ProjectID); err != nil {
+		return tasks.Task{}, err
+	}
+	if req.Start {
+		if err := c.RequireLicensed(ctx, "start_task"); err != nil {
+			return tasks.Task{}, err
+		}
+		if err := c.requireRepo(ctx, req.ProjectID); err != nil {
+			return tasks.Task{}, err
+		}
+	}
+	reviewer, err := c.reviewerFor(ctx, tasks.Task{ProjectID: req.ProjectID}, req.Assignee, req.Reviewer)
+	if err != nil {
+		return tasks.Task{}, err
+	}
+	if reviewer == req.Assignee {
+		return tasks.Task{}, errors.New("a task needs a worker and a different agent as reviewer")
+	}
+	for _, id := range []string{req.Assignee, reviewer} {
+		if a, err := c.agent(ctx, id); err != nil || a.ProjectID != req.ProjectID || a.Archived {
+			return tasks.Task{}, fmt.Errorf("agent %s is not on this project's team", id)
+		}
+	}
+	t, err := c.Tasks.Create(ctx, req.CreateReq)
+	if err != nil {
+		return t, err
+	}
+	if nt, err := c.AssignTask(ctx, t.ID, req.Assignee, reviewer); err != nil {
+		return t, &madeButNotStarted{t, fmt.Errorf("task #%d was created but not assigned: %w", t.Seq, err)}
+	} else {
+		t = nt
+	}
+	if !req.Start {
+		return t, nil
+	}
+	if _, err := c.StartTask(ctx, t.ID); err != nil {
+		return t, &madeButNotStarted{t, fmt.Errorf("task #%d was created but did not start: %w", t.Seq, err)}
+	}
+	if nt, err := c.Tasks.Get(ctx, t.ID); err == nil {
+		t = nt
+	}
+	return t, nil
+}
+
 // AssignTask sets a task's worker and independent reviewer. They must be different agents of the project.
 func (c *Core) AssignTask(ctx context.Context, taskID, assignee, reviewer string) (tasks.Task, error) {
 	t, err := c.Tasks.Get(ctx, taskID)
@@ -291,6 +384,61 @@ type TaskDetail struct {
 	Criteria []pipeline.CriterionStatus `json:"criteria"`
 	// Paused says a person paused the task's run (task.pause), who and when; absent otherwise.
 	Paused *TaskPause `json:"paused,omitempty"`
+	// RunAgain says a failed or cancelled task can be run again as a new task (task.runAgain, P124), RunAgainWhy why not; both
+	// are absent while the task has not failed or been cancelled, so the task page offers it where the failure is shown.
+	RunAgain    bool   `json:"runAgain,omitempty"`
+	RunAgainWhy string `json:"runAgainWhy,omitempty"`
+	// Sandboxed says the task's project runs its commands in a sandbox (sandbox.set): the preview on demand does not run on this
+	// machine there (errSandboxedHere), so the task page does not offer it.
+	Sandboxed bool `json:"sandboxed,omitempty"`
+	// SandboxStart is how the last start of the task's sandbox went while Drydock runs (X39): the steps so far, ready or failed.
+	// While neither, the task page says the step it is at. Absent when the sandbox was not created since Drydock started.
+	SandboxStart *SandboxStart `json:"sandboxStart,omitempty"`
+	// PRReview is a collaborator's change request on GitHub that arrived while the task's review and merge waited (H12): the
+	// decision card offers to send the task back with it; absent otherwise.
+	PRReview *PRReviewNote `json:"prReview,omitempty"`
+	// WorktreeGone says the task names a worktree whose folder is not there any more (removed after the merge): the task page then
+	// offers no way to open it outside Drydock (X26). Absent while the folder is there or the task has none.
+	WorktreeGone bool `json:"worktreeGone,omitempty"`
+	// Merged is how a completed task's change landed: the merge commit and the branch it went into, or the pull request GitHub
+	// merged. The task page closes the task with it ("Merged into main as 1a2b3c4"). Absent until the change is merged.
+	Merged *TaskMerged `json:"merged,omitempty"`
+}
+
+// TaskMerged is the merge of a task's change, from the event the pipeline published when it merged (git.commit_created with
+// "merged", or github.pr_merged). At is Unix milliseconds.
+type TaskMerged struct {
+	Commit string `json:"commit,omitempty"`
+	Into   string `json:"into,omitempty"`
+	PR     int    `json:"pr,omitempty"`
+	At     int64  `json:"at"`
+}
+
+// taskMerged reads the newest merge event of a task; nil when its change was never merged.
+func (c *Core) taskMerged(ctx context.Context, taskID string) *TaskMerged {
+	var typ string
+	var ts int64
+	var data []byte
+	if c.DB.Reader().QueryRowContext(ctx, `SELECT type, ts, data FROM events WHERE task_id=? AND type IN ('git.commit_created','github.pr_merged') ORDER BY seq DESC LIMIT 1`, taskID).Scan(&typ, &ts, &data) != nil {
+		return nil
+	}
+	var v struct {
+		Commit string `json:"commit"`
+		Merged string `json:"merged"`
+		Into   string `json:"into"`
+		Number int    `json:"number"`
+		SHA    string `json:"sha"`
+	}
+	if json.Unmarshal(data, &v) != nil {
+		return nil
+	}
+	if typ == "github.pr_merged" {
+		return &TaskMerged{Commit: v.SHA, PR: v.Number, At: ts}
+	}
+	if v.Merged == "" {
+		return nil
+	}
+	return &TaskMerged{Commit: v.Commit, Into: v.Into, At: ts}
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -299,7 +447,16 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	if err != nil {
 		return TaskDetail{}, err
 	}
-	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}}
+	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}, Sandboxed: c.sandboxSwitch(ctx, t.ProjectID).Enabled}
+	d.WorktreeGone = t.Worktree != "" && !worktreeExists(t)
+	d.SandboxStart = c.sbStarts.get(t.ID)
+	if t.Status == tasks.Failed || t.Status == tasks.Cancelled {
+		d.RunAgainWhy = runAgainRefusal(t)
+		d.RunAgain = d.RunAgainWhy == ""
+	}
+	if t.Status == tasks.Completed {
+		d.Merged = c.taskMerged(ctx, t.ID)
+	}
 	if rules, err := c.TaskRules(ctx, id); err == nil {
 		d.AllowRules = rules
 	}
@@ -315,7 +472,7 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 			// a finished, failed or cancelled run waits for nobody: its last checkpoint may still list a request, which can no
 			// longer be answered ("run is in a terminal state")
 			if p, err := c.Engine.Pending(ctx, info.ID); err == nil && p != nil && !info.Status.Terminal() {
-				d.Pending = p
+				d.Pending = c.withInterruptedCrash(ctx, p, info.Created)
 			}
 			// a worker's permission requests wait in its live turn, not in the run's checkpoint (ext_permprompt.go)
 			if !info.Status.Terminal() {
@@ -325,6 +482,12 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	}
 	if r, err := c.Room.RoomByTask(ctx, id); err == nil {
 		d.RoomID = r.ID
+	}
+	// the review and merge that waits for the person (its approvals row), and a change request recorded since it was asked for
+	var created int64
+	if c.DB.Reader().QueryRowContext(ctx, `SELECT created_at FROM approvals WHERE task_id = ? AND status = 'REQUESTED' AND kind = 'review' AND phase = 'merge'
+ORDER BY created_at DESC LIMIT 1`, id).Scan(&created) == nil {
+		d.PRReview = c.prReviewNote(ctx, id, created)
 	}
 	return d, nil
 }
@@ -377,6 +540,9 @@ func (c *Core) RespondScoped(ctx context.Context, runID, requestID, decision, sc
 	}
 	c.trustOnApproval(ctx, runID, requestID, decision)
 	review := c.isReviewRequest(ctx, runID, requestID)
+	if review && decision == "rejected" {
+		c.consumePRReview(ctx, runID, data)
+	}
 	var d []byte = data
 	if err := c.Engine.Resume(ctx, workflow.RunID(runID), workflow.Response{RequestID: workflow.RequestID(requestID), Decision: decision, By: c.Human(), Data: d}); err != nil {
 		return err
@@ -463,6 +629,15 @@ func (c *Core) Replay(ctx context.Context, after uint64, f events.Filter, limit 
 		limit = 500
 	}
 	return c.Bus.Replay(ctx, after, f, limit)
+}
+
+// ReplayBefore returns the newest events with seq < before matching f, oldest first (the Activity page and the run page reading
+// further back, X53/X55). The limit is bounded as Replay's is.
+func (c *Core) ReplayBefore(ctx context.Context, before uint64, f events.Filter, limit int) ([]events.Event, error) {
+	if limit <= 0 || limit > 2000 {
+		limit = 500
+	}
+	return c.Bus.ReplayBefore(ctx, before, f, limit)
 }
 
 // DescribeAdapters reports every adapter's detection and verified capabilities.

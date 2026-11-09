@@ -142,6 +142,18 @@ export class EventStore {
     this.publish(true);
   }
 
+  /**
+   * Try the stream again now instead of after the backoff (the shell's Try now, decision G4). Does nothing unless the stream is
+   * broken and waiting to reopen; the backoff it was on carries on if this try fails too.
+   */
+  retryNow(): boolean {
+    if (this.status !== 'reconnecting' || this.stream) return false;
+    this.sched.clearTimeout(this.retry);
+    this.retry = undefined;
+    this.open('reconnecting');
+    return true;
+  }
+
   /** Events refused for not being events at all (a missing seq or type); each is warned about in the console, the first few. */
   get malformed(): number {
     return this.badEvents.count;

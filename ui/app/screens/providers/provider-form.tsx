@@ -14,7 +14,7 @@ import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectOptions } from '../../ui/select.tsx';
 import { card } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ATTESTATIONS, emptyProviderForm, FLAVORS, newProviderRequest, type ProviderFormValues } from './providers.ts';
+import { applyPreset, ATTESTATIONS, attestationsFor, emptyProviderForm, FLAVORS, newProviderRequest, PROVIDER_PRESETS, presetForUrl, type ProviderFormValues } from './providers.ts';
 
 const wide = css({ gridColumn: '1 / -1' });
 // two fields to a row in the Models page's detail (name and kind, address and key, data class and tier), one on a narrow window:
@@ -31,6 +31,10 @@ const fieldsetCss = css({
   '& legend': { padding: `0 ${t.s1}`, fontSize: t.textSm, fontWeight: '500', color: t.text },
 });
 type Option = [value: string, label: string];
+const chipsCss = css({ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: t.s2, margin: '0', padding: '0', border: '0' });
+const foldedCss = css({ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, fontSize: t.textMd, color: t.textMuted, '& code': { fontSize: t.textSm } });
+/** Presets that fill the address: their fields fold under "Change" once picked. */
+const FOLDS = new Set(PROVIDER_PRESETS.filter((p) => p.values.baseUrl).map((p) => p.id));
 
 /**
  * `onCreated` gets the provider the core created (when it answered with one), so the screen can open it. `initial` starts the form
@@ -41,14 +45,28 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
   watch(handle, s.workspace);
   const act = action(handle);
   const fresh = (): ProviderFormValues => (handle.props.initial ? { ...handle.props.initial, att: { ...handle.props.initial.att } } : emptyProviderForm());
-  const v = fresh();
+  let v = fresh();
+  let preset = ''; // the vendor chip picked ('' none: every field shows, as for "Other")
+  let changing = false; // "Change": the picked vendor's fields are shown
+  let autoPreset = ''; // the vendor a typed address last filled the form from: it fills again only when the address's vendor changes
   let keyInput: HTMLInputElement | undefined;
+  const pick = (id: string) => {
+    const p = PROVIDER_PRESETS.find((x) => x.id === id);
+    if (!p) return;
+    preset = id;
+    autoPreset = '';
+    changing = false;
+    v = applyPreset(v, p);
+    redraw();
+  };
   const redraw = () => void handle.update();
 
   const submit = async () => {
     const apiKey = keyInput?.value ?? '';
     if (keyInput) keyInput.value = '';
-    const body = newProviderRequest(v, apiKey);
+    // only the attestations the address needs are shown, and only those are sent (a box ticked for another address is not)
+    const needed = attestationsFor(v.baseUrl, v.flavor);
+    const body = newProviderRequest({ ...v, att: Object.fromEntries(Object.entries(v.att).filter(([k]) => needed.includes(k))) }, apiKey);
     let ok = false;
     let made: Provider | undefined;
     await act.run('create', async () => {
@@ -61,6 +79,9 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
       v.name = f.name;
       v.baseUrl = f.baseUrl;
       v.att = f.att;
+      preset = '';
+      autoPreset = '';
+      changing = false;
       redraw();
       handle.props.onCreated(made);
     }
@@ -78,6 +99,16 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
           spellcheck={opts.mono ? false : undefined}
           mix={on('input', (e) => {
             v[key] = e.currentTarget.value;
+            // a known vendor's address typed in: the rest is filled from it (its name only when none is typed), once per vendor,
+            // so a data class, kind or tier changed by hand stays when the address is edited again
+            if (key === 'baseUrl' && !preset) {
+              const known = presetForUrl(v.baseUrl);
+              if (known && known.id !== autoPreset) {
+                const name = v.name;
+                v = { ...v, ...known.values, baseUrl: v.baseUrl, name: name.trim() ? name : (known.values.name ?? '') };
+              }
+              autoPreset = known?.id ?? '';
+            }
             redraw();
           })}
         />
@@ -103,6 +134,7 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
 
   return () => {
     const ro = s.workspace.license;
+    const needed = attestationsFor(v.baseUrl, v.flavor);
     return (
       <form
         autocomplete="off"
@@ -121,39 +153,58 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
           <ErrorNote error={act.error} what="Provider not created" />
           <ReadOnlyNote />
         </div>
-        {text('Provider name', 'name', { required: true })}
-        {select('Kind', 'kind', [
+        <fieldset mix={chipsCss} aria-label="Vendor" data-testid="provider-presets">
+          {PROVIDER_PRESETS.map((p) => (
+            <Button key={p.id} size="sm" variant={preset === p.id ? 'secondary' : 'ghost'} aria-pressed={preset === p.id ? 'true' : 'false'} data-preset={p.id} mix={on('click', () => pick(p.id))}>
+              {p.label}
+            </Button>
+          ))}
+        </fieldset>
+        {FOLDS.has(preset) && !changing ? (
+          <p mix={foldedCss} data-testid="provider-preset-summary">
+            <span>
+              {v.name} · {v.kind} · <code>{v.baseUrl}</code> · {v.dataClass} · {v.tier}
+            </span>
+            <Button size="sm" variant="ghost" mix={on('click', () => ((changing = true), redraw()))}>
+              Change
+            </Button>
+          </p>
+        ) : null}
+        {FOLDS.has(preset) && !changing ? null : text('Provider name', 'name', { required: true })}
+        {FOLDS.has(preset) && !changing ? null : select('Kind', 'kind', [
           ['aggregator', 'aggregator (for example OpenRouter)'],
           ['direct', 'direct (a model vendor’s own API)'],
           ['host', 'host (a server you run: Ollama, vLLM, ...)'],
         ])}
-        {text('Base URL', 'baseUrl', { required: true, placeholder: 'https://api.example.com/v1', mono: true })}
+        {FOLDS.has(preset) && !changing ? null : text('Base URL', 'baseUrl', { required: true, placeholder: preset === 'host' ? 'http://localhost:11434/v1' : 'https://api.example.com/v1', mono: true })}
         <Field label="API key (optional for a local host)" hint="Stored in the Windows Credential Manager; never shown again.">
           {(id) => <input id={id} type="password" autocomplete="new-password" spellcheck={false} name="provider-api-key" mix={ref((n: HTMLInputElement) => (keyInput = n))} />}
         </Field>
-        {select('Data class', 'dataClass', [
+        {FOLDS.has(preset) && !changing ? null : select('Data class', 'dataClass', [
           ['private', 'private (may receive repository content)'],
           ['trainable', 'trainable (public documentation questions only)'],
         ])}
-        {select('Tier', 'tier', [
+        {FOLDS.has(preset) && !changing ? null : select('Tier', 'tier', [
           ['premium', 'premium'],
           ['cheap', 'cheap'],
           ['free', 'free'],
         ])}
-        <fieldset mix={fieldsetCss}>
-          <legend>Attestations (only what is true)</legend>
-          {ATTESTATIONS.map(([k, label]) => (
-            <Checkbox
-              key={k}
-              label={label}
-              checked={!!v.att[k]}
-              onChange={(on_) => {
-                v.att = { ...v.att, [k]: on_ };
-                redraw();
-              }}
-            />
-          ))}
-        </fieldset>
+        {needed.length > 0 ? (
+          <fieldset mix={fieldsetCss} data-testid="provider-attestations">
+            <legend>Attestations (only what is true)</legend>
+            {ATTESTATIONS.filter(([k]) => needed.includes(k)).map(([k, label]) => (
+              <Checkbox
+                key={k}
+                label={label}
+                checked={!!v.att[k]}
+                onChange={(on_) => {
+                  v.att = { ...v.att, [k]: on_ };
+                  redraw();
+                }}
+              />
+            ))}
+          </fieldset>
+        ) : null}
         <Disclosure summary="Advanced" wide>
           <div mix={formGrid}>
             {select('Flavor', 'flavor', [['', 'detect from the URL'], ...FLAVORS.map((f): Option => [f, f])])}

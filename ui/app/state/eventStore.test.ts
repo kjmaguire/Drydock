@@ -23,6 +23,26 @@ describe('EventStore', () => {
     expect(store.getSnapshot().status).toBe('open');
   });
 
+  it('Try now reopens a broken stream at once from the last seq, and only a broken one (G4)', () => {
+    const { t, sched, store } = setup();
+    expect(store.retryNow()).toBe(false); // idle
+    store.start();
+    t.current.h.onOpen();
+    t.current.h.onEvent(ev(4));
+    expect(store.retryNow()).toBe(false); // open
+    t.current.h.onError();
+    expect(store.getSnapshot().status).toBe('reconnecting');
+    expect(sched.tasks.size).toBe(1);
+    expect(store.retryNow()).toBe(true);
+    expect(t.opens).toHaveLength(2);
+    expect(t.current.after).toBe(4);
+    expect(sched.tasks.size).toBe(0); // the backoff's own reopen is cancelled
+    expect(store.retryNow()).toBe(false); // already trying
+    t.current.h.onOpen();
+    expect(store.getSnapshot().status).toBe('open');
+    expect(store.getSnapshot().epoch).toBe(1);
+  });
+
   it('dedupes by seq and reports each event once', () => {
     const { t, store } = setup();
     const seen: number[] = [];

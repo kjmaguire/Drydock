@@ -5,20 +5,23 @@
 
 import { css, on, type Handle } from 'remix/component';
 import type { Budget } from '../../api/extTypes.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
-import { BUDGET_SCOPES, formValues, parseBudgetForm, scopeIdAfter, type BudgetFormValues } from './budgets.ts';
+import { ANOTHER_ID, BUDGET_SCOPES, formValues, parseBudgetForm, scopeIdAfter, scopeTargets, type BudgetFormValues } from './budgets.ts';
 
 const wide = css({ gridColumn: '1 / -1' });
+const TARGET_LABEL: Record<string, string> = { task: 'Task', run: 'Run', agent: 'Agent' };
 
 export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget; onDone: () => void; onCancel?: () => void }>) {
   const s = services(handle);
   const act = action(handle);
   const workflows = query(handle, { load: () => s.client.budgetWorkflows() });
+  watch(handle, s.project); // the crew and the tasks a budget can be picked for (F13)
   const v: BudgetFormValues = formValues(handle.props.projectId, handle.props.initial);
+  let typing = false; // "Another id...": the scope id is typed
   // the text of a limit that is not a number, by field; an error goes when its field is edited
   const errors: Partial<Record<keyof BudgetFormValues, string>> = {};
 
@@ -66,6 +69,8 @@ export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget;
     const editing = !!initial;
     // the workflow scope was chosen before the list arrived: it starts on the first workflow, as choosing it now would
     if (v.scope === 'workflow' && !v.scopeId && workflows.data?.length) v.scopeId = workflows.data[0]!;
+    // a task, run or agent budget is picked by name; the typed id stays for "Another id..." and for an id not listed
+    const targets = scopeTargets(v.scope, s.project.agentList, s.project.taskList);
     return (
       <form
         mix={[
@@ -88,7 +93,14 @@ export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget;
               disabled={editing}
               options={selectValues(BUDGET_SCOPES)}
               onChange={(sc) => {
-                v.scopeId = scopeIdAfter(v.scope, sc, v.scopeId, handle.props.projectId, workflows.data ?? []);
+                const from = v.scope;
+                v.scopeId = scopeIdAfter(from, sc, v.scopeId, handle.props.projectId, workflows.data ?? []);
+                if (sc !== from) {
+                  // a task, run or agent budget starts on "every ..." from its list; a project budget is the project's own
+                  typing = false;
+                  if (scopeTargets(sc, [], [])) v.scopeId = '*';
+                  else if (sc === 'project') v.scopeId = handle.props.projectId;
+                }
                 v.scope = sc;
                 delete errors.scopeId;
                 void handle.update();
@@ -106,6 +118,26 @@ export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget;
                 options={selectValues(workflows.data!.includes(v.scopeId) || !v.scopeId ? workflows.data! : [v.scopeId, ...workflows.data!])}
                 onChange={(wf) => {
                   v.scopeId = wf;
+                  void handle.update();
+                }}
+              />
+            )}
+          </Field>
+        ) : targets && !typing && (v.scopeId === '' || targets.some((o) => o.value === v.scopeId)) ? (
+          <Field label={TARGET_LABEL[v.scope] ?? 'For'}>
+            {(id) => (
+              <Select
+                id={id}
+                value={v.scopeId}
+                disabled={editing}
+                testId="budget-target"
+                options={targets}
+                onChange={(to) => {
+                  if (to === ANOTHER_ID) {
+                    typing = true;
+                    v.scopeId = '';
+                  } else v.scopeId = to;
+                  delete errors.scopeId;
                   void handle.update();
                 }}
               />

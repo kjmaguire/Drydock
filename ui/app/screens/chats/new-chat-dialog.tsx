@@ -5,7 +5,7 @@
 // It also takes the chat's properties (decision P60): skills from the workspace skill library and MCP servers from the
 // workspace MCP library, which reach the chat's CLI through Drydock's MCP gateway.
 
-import { on, type Handle } from 'remix/component';
+import { css, on, type Handle } from 'remix/component';
 import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -14,12 +14,21 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { ModelField } from '../shared/model-field.tsx';
-import type { ChatMcpGrant, ChatSkillRef } from '../../api/chatClient.ts';
+import type { ChatLastChoice, ChatMcpGrant, ChatSkillRef } from '../../api/chatClient.ts';
 import { ServerPicker, SkillPicker, useMcpLibrary, useSkillLibrary } from './chat-properties.tsx';
 import { chatChoices, pickChatChoice, skipsApprovals } from './chats.ts';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
+import { noteFromLast } from './from-last.ts';
+import { CliFixButton } from '../shared/cli-fix.tsx';
+import { t } from '../../ui/tokens.ts';
+import { adapterLabel } from '../shared/cli-name.ts';
+
+// a CLI listed that cannot be used yet, with its fix (A9)
+const blockedCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', gridColumn: '1 / -1', '& > span': { color: t.textMuted, fontSize: t.textSm } });
 
 const NO_PROJECT = '';
+const FROM_LAST = 'From your last chat.';
+const noChoice: ChatLastChoice = { model: '', effort: '', permissionMode: '' };
 
 export function NewChatDialog(
   handle: Handle<{ open: boolean; onClose: () => void; projects: Project[]; projectId: string | undefined; adapters: AdapterInfo[] | undefined; adaptersError?: Error; onCreated: (chatId: string) => void }>,
@@ -36,6 +45,22 @@ export function NewChatDialog(
         return await s.client.connectionList();
       } catch {
         return [];
+      }
+    },
+  });
+  // what a chat of the project and CLI starts with when a field is left alone (chat.lastChoice, D2): the fields show it, so
+  // what the dialog shows is what is created. Read for the project and CLI picked; an older core carries nothing.
+  const lastKey = () => `${project ?? handle.props.projectId ?? NO_PROJECT}\n${pickChatChoice(chatChoices(handle.props.adapters ?? [], conns.data ?? []), adapter)?.adapter.id ?? ''}`;
+  const last = query(handle, {
+    key: lastKey,
+    enabled: () => handle.props.open && !lastKey().endsWith('\n'),
+    load: async (): Promise<{ key: string; choice: ChatLastChoice }> => {
+      const key = lastKey();
+      const [pid, id] = key.split('\n') as [string, string];
+      try {
+        return { key, choice: await s.client.chatLastChoice(pid, id) };
+      } catch {
+        return { key, choice: noChoice };
       }
     },
   });
@@ -76,15 +101,30 @@ export function NewChatDialog(
     wasOpen = open;
     const choices = chatChoices(adapters ?? [], conns.data ?? []);
     const chosen = pickChatChoice(choices, adapter);
+    // the first CLI listed that cannot be used yet, offered with its fix
+    // the CLI chosen is not signed in (it can still be chosen: a turn would be refused), or the first listed that cannot be used
+    const firstBlocked = choices.find((c) => !!c.why && c.adapter.detection.installed) ?? (chosen ? undefined : choices.find((c) => !!c.why));
+    const blocked =
+      chosen && !chosen.wslDistro && chosen.adapter.detection.status === 'unauthenticated'
+        ? { adapter: chosen.adapter, wslDistro: '', text: `${adapterLabel(chosen.adapter.id)} is not signed in.` }
+        : firstBlocked;
     const caps = chosen?.adapter.capabilities;
     const distro = chosen?.wslDistro ?? '';
     const models = caps?.models ?? [];
     const efforts = caps?.efforts ?? [];
     const modes = caps?.permissionModes ?? [];
     const pid = project ?? projectId ?? NO_PROJECT;
-    const modeNow = mode || (modes.includes('default') ? 'default' : '');
+    // the last choice for this project and CLI, once read for them (until then Start chat waits, so nothing differs from the form)
+    const lastRead = chosen && last.data?.key === `${pid}\n${chosen.adapter.id}` ? last.data.choice : undefined;
+    const carried = lastRead ?? noChoice;
+    // a field left empty takes the last choice (the core fills it, chats/prefs.go), so it shows it
+    const modelNow = model || carried.model;
+    // the core keeps the last effort only for a model it suits: with another model picked the effort shown is sent as it is
+    const effortNow = effort || carried.effort;
+    const modeNow = mode || carried.permissionMode || (modes.includes('default') ? 'default' : '');
+    const fromLast = (picked: string, was: string) => !picked && !!was;
     // the folder is checked by the core (it knows its own system's paths): a refusal shows as "Could not start the chat"
-    const canCreate = !!chosen && !act.busy;
+    const canCreate = !!chosen && !!lastRead && !act.busy;
 
     const create = async () => {
       if (!canCreate || !chosen) return;
@@ -95,7 +135,8 @@ export function NewChatDialog(
           adapter: chosen.adapter.id,
           ...(chosen.wslDistro ? { wslDistro: chosen.wslDistro } : {}),
           model: model.trim() || undefined,
-          effort: effort || undefined,
+          // read when sent: the model may have changed since this render (the last choice is fixed once read)
+          effort: (model && model !== carried.model ? effort || carried.effort : effort) || undefined,
           permissionMode: mode || undefined,
           readHistory,
           ...(skills.length ? { skills } : {}),
@@ -103,7 +144,10 @@ export function NewChatDialog(
         }),
       );
       // the screen closes the dialog and navigates once (closing first would race a second navigation)
-      if (c) handle.props.onCreated(c.id);
+      if (c) {
+        noteFromLast(c);
+        handle.props.onCreated(c.id);
+      }
     };
 
     return (
@@ -173,31 +217,48 @@ export function NewChatDialog(
                 />
               )}
             </Field>
-            <Field label="Model">
+            {/* a CLI listed but not usable yet (not signed in, a notice, not installed): fixed in place (A9) */}
+            {blocked ? (
+              <div mix={blockedCss} data-testid="new-chat-blocked">
+                <span>{blocked.text}</span>
+                <CliFixButton adapter={blocked.adapter.id} distro={blocked.wslDistro || undefined} testId="new-chat-dialog-fix" />
+              </div>
+            ) : null}
+            <Field label="Model" hint={fromLast(model, carried.model) ? FROM_LAST : undefined}>
               {(id) => (
                 <ModelField
                   id={id}
-                  value={model}
+                  value={models.length ? modelNow : model}
                   models={models}
-                  emptyLabel="CLI default"
-                  placeholder="CLI default"
+                  // with a last choice, an empty model takes it: no "CLI default" to pick that would not be kept
+                  emptyLabel={carried.model ? undefined : 'CLI default'}
+                  placeholder={carried.model || 'CLI default'}
                   disabled={caps?.modelSelection === false && models.length === 0}
                   onChange={(v) => set(() => (model = v))}
                 />
               )}
             </Field>
-            <Field label="Effort">
+            <Field label="Effort" hint={fromLast(effort, carried.effort) ? FROM_LAST : undefined}>
               {(id) => (
                 <Select
                   id={id}
-                  value={effort}
+                  value={effortNow}
                   disabled={efforts.length === 0}
-                  options={[{ value: '', label: 'CLI default' }, ...selectValues(efforts)]}
+                  options={[...(carried.effort ? [] : [{ value: '', label: 'CLI default' }]), ...selectValues(efforts)]}
                   onChange={(v) => set(() => (effort = v))}
                 />
               )}
             </Field>
-            <Field label="Permission mode" hint={chosen?.adapter.id === 'claude' && modeNow === 'default' ? 'Tools outside the mode are refused and shown, with a rule you can allow.' : undefined}>
+            <Field
+              label="Permission mode"
+              hint={
+                fromLast(mode, carried.permissionMode)
+                  ? FROM_LAST
+                  : chosen?.adapter.id === 'claude' && modeNow === 'default'
+                    ? 'Tools outside the mode are refused and shown, with a rule you can allow.'
+                    : undefined
+              }
+            >
               {(id) => (
                 <Select
                   id={id}

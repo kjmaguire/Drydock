@@ -5,8 +5,12 @@ import { needsChanged } from '../../state/project.ts';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import { summariesChanged } from '../../state/workspace.ts';
 import {
+  answerKeys,
   answerOf,
+  inboxAddress,
+  tabOfItem,
   canAck,
+  KIND_LABEL,
   clock,
   doingWords,
   msOf,
@@ -17,6 +21,7 @@ import {
   needsRowTitle,
   needsSubtitle,
   needsTarget,
+  runningBesideNeeds,
   scanProgress,
   shortHash,
   startOfToday,
@@ -51,6 +56,11 @@ describe('Needs you targets and hints', () => {
     expect(needsHint({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toContain("project's Integrations page");
   });
 
+  it("says what a task whose sandbox could not start needs, and the Inbox answers it with the task page's panel (X38)", () => {
+    const it1 = { ...base, kind: 'question', title: "The task's sandbox could not start: no container engine is reachable.", taskId: 't1' };
+    expect(needsHint(it1)).toBe("The task's sandbox could not start. Try again once it is fixed, confirm a changed sandbox definition, or open the sandbox settings.");
+  });
+
   it("opens a chat whose agent waits to be allowed a tool call, where Allow once and Refuse are", () => {
     const ask = { ...base, kind: 'chat_permission', title: 'Asks to use Bash: go test ./...', chatId: 'chat 1' };
     expect(needsTarget(ask)).toBe('/chats/chat%201');
@@ -59,7 +69,7 @@ describe('Needs you targets and hints', () => {
 
   it('reloads every Needs you list on the same events, a chat asking among them', () => {
     const ev = (type: string): DrydockEvent => ({ type, seq: 1, time: '' });
-    for (const t of ['chat.permission', 'chat.permission_answered', 'approval.requested', 'task.updated', 'watchdog.paused', 'room.message_posted', 'needsyou.acked', 'approval.rule.added']) expect(needsChanged(ev(t))).toBe(true);
+    for (const t of ['chat.permission', 'chat.permission_answered', 'approval.requested', 'task.updated', 'watchdog.paused', 'room.message_posted', 'room.read_cursor_updated', 'room.join_requested', 'room.join_answered', 'needsyou.acked', 'approval.rule.added']) expect(needsChanged(ev(t))).toBe(true);
     for (const t of ['chat.tool_result', 'agent.output', 'room.presence_changed']) expect(needsChanged(ev(t))).toBe(false);
   });
 
@@ -178,8 +188,16 @@ describe('the Inbox helpers', () => {
     expect(answerOf(d({}))).toEqual({ kind: 'approval', runId: 'run1' });
     expect(answerOf(d({ kind: 'review', phase: 'spec', payload: { phase: 'spec' } }))).toEqual({ kind: 'spec', runId: 'run1' });
     expect(answerOf(d({ kind: 'review', phase: 'merge' }))).toEqual({ kind: 'merge', runId: 'run1' });
+    // H12: a review and merge a collaborator asked changes on while it waited is sent back with their words, not merged by a key
+    expect(answerOf(d({ kind: 'review', phase: 'merge', prReview: { summary: 's', feedback: 'quoted words' } }))).toEqual({ kind: 'changes', runId: 'run1', feedback: 'quoted words' });
+    expect(needsLook({ kind: 'pr_review', phase: 'merge' })).toBe('changes');
     // the task's page answers these: a budget pause, a CI gate, the limit question, a watchdog pause, a plan, a question
     for (const payload of [{ gate: 'budget' }, { gate: 'ci' }, { phase: 'limit' }, { signal: 'tool_spin', stage: 2 }]) expect(answerOf(d({ payload })).kind).toBe('open');
+    // with the task page's panel for it, a gate is answered in place (C3); one without a panel stays on its page
+    expect(answerOf(d({ kind: 'question', payload: { gate: 'ci' } }), (p) => (p.spec.payload as { gate?: string }).gate === 'ci')).toEqual({ kind: 'gate', runId: 'run1' });
+    expect(answerOf(d({ payload: { gate: 'outbound' } }), () => false).kind).toBe('open');
+    // the sandbox question's payload names its gate, so the Inbox answers it with the task page's panel (X38)
+    expect(answerOf(d({ kind: 'question', payload: { gate: 'sandbox', reason: 'engine' } }), (p) => (p.spec.payload as { gate?: string }).gate === 'sandbox')).toEqual({ kind: 'gate', runId: 'run1' });
     expect(answerOf(d({ kind: 'review', phase: 'plan' })).kind).toBe('open');
     expect(answerOf(d({ kind: 'question' })).kind).toBe('open');
     // answered already, or not answered on a run (an outbound write, a mode change recorded decided)
@@ -245,5 +263,81 @@ describe('the Inbox items of P130', () => {
     expect(needsHint(item({ kind: 'join_request' }))).toContain('it never joins by itself');
     expect(needsSubtitle(item({ kind: 'join_request', agentName: 'Sec', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · request to join · asked 2 min ago');
     expect(needsSubtitle(item({ kind: 'agent', agentName: 'Cx', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · agent · Cx · 2 min ago');
+  });
+
+  it('opens what went wrong in the background where it is fixed, with one look, and each can be marked done (B6: F14, H7)', () => {
+    expect(needsTarget(item({ key: 'integration:int_1:key:2026-11-03', kind: 'integration', subject: 'linear' }))).toBe('/integrations/linear?reconnect=1');
+    expect(needsTarget(item({ key: 'provider:p1:down:2026-11-03', kind: 'provider', subject: 'p1' }))).toBe('/models/p1');
+    expect(needsTarget(item({ key: 'mcp-sign-in:s1:5', kind: 'mcp_sign_in', subject: 's1' }))).toBe('/integrations/server-s1');
+    expect(needsTarget(item({ key: 'adapter-drift:claude:5', kind: 'adapter_drift', adapter: 'claude', subject: 'claude' }))).toBe('/agents/claude');
+    expect(needsTarget(item({ key: 'tool-install:osv-scanner:5', kind: 'tool_install', subject: 'osv-scanner' }))).toBe('/security');
+    expect(needsTarget(item({ key: 'crash:crash-1.txt', kind: 'crash', subject: 'crash-1.txt' }))).toBe('/support');
+    const kinds = ['integration', 'provider', 'mcp_sign_in', 'adapter_drift', 'tool_install', 'crash'];
+    expect(kinds.map((kind) => needsLook({ kind }))).toEqual(kinds.map(() => 'problem'));
+    expect(kinds.every((k) => !!KIND_LABEL[k])).toBe(true);
+    expect(
+      ['integration:i:key:d', 'provider:p:down:d', 'mcp-sign-in:s:1', 'adapter-drift:a:1', 'tool-install:t:1', 'crash:c'].map((key) => canAck({ key })),
+    ).toEqual([true, true, true, true, true, true]);
+  });
+
+  it('opens the new high findings of a rule\'s scan on the Security page, as a problem that can be marked done (B7, H5)', () => {
+    const it = item({ key: 'security-findings:prj_1:scn_1', kind: 'security_findings', projectId: 'prj_1', subject: 'scn_1' });
+    expect(needsTarget(it)).toBe('/security');
+    expect(needsLook(it)).toBe('problem');
+    expect(KIND_LABEL.security_findings).toBe('Security scan');
+    expect(canAck(it)).toBe(true);
+    const ev = (type: string) => ({ type }) as DrydockEvent;
+    for (const t of ['security.scan.finished', 'security.finding.dismissed', 'security.finding.restored']) expect(needsChanged(ev(t))).toBe(true);
+  });
+
+  it('reads the Inbox again when a background problem may have come or gone', () => {
+    const ev = (type: string) => ({ type }) as DrydockEvent;
+    for (const t of ['integration.sync.failed', 'integration.auth_expired', 'provider.down', 'provider.up', 'mcp.server_oauth_expired', 'adapter.drift', 'security.settings', 'app.crashed', 'app.crash_deleted'])
+      expect(needsChanged(ev(t))).toBe(true);
+    expect(needsChanged(ev('integration.item.upserted'))).toBe(false);
+  });
+
+  it("opens an agent's answer to the person in its room, and it can be marked done (X18)", () => {
+    const answer = item({ key: 'reply:m9', kind: 'reply', roomId: 'r3', taskId: 't1', agentName: 'Ada' });
+    expect(needsTarget(answer)).toBe('/room/r3');
+    expect(needsLook(answer)).toBe('reply');
+    expect(canAck(answer)).toBe(true);
+    expect(KIND_LABEL.reply).toBe('Answer');
+  });
+});
+
+describe('the Running group under Needs you (decision P144)', () => {
+  it('leaves out a running task that has an item of its own; an item of no task changes nothing', () => {
+    const running = [{ taskId: 't1' }, { taskId: 't2' }, { taskId: 't3' }];
+    expect(runningBesideNeeds(running, [{ taskId: 't2' }, { taskId: undefined }, { taskId: 't9' }])).toEqual([{ taskId: 't1' }, { taskId: 't3' }]);
+    expect(runningBesideNeeds(running, [])).toEqual(running);
+    expect(runningBesideNeeds([], [{ taskId: 't1' }])).toEqual([]);
+  });
+});
+
+describe("the Inbox's address", () => {
+  it('carries the selected row (?item=) and drops a ?tab= (the tab is remembered)', () => {
+    expect(inboxAddress('/needs-you', '?tab=running', 'task:t4')).toBe('/needs-you?item=task%3At4');
+    expect(inboxAddress('/needs-you', '?item=needs%3Acheck%3Am1', undefined)).toBe('/needs-you');
+    expect(inboxAddress('/needs-you', '', 'needs:approval:apr1')).toBe('/needs-you?item=needs%3Aapproval%3Aapr1');
+  });
+
+  it("an ?item= opens the tab it is on, unless the tab left open shows it", () => {
+    expect(tabOfItem('needs:check:m1', 'done')).toBe('needs');
+    expect(tabOfItem('done:t9', 'needs')).toBe('done');
+    expect(tabOfItem('task:t4', 'needs')).toBe(undefined);
+    expect(tabOfItem('task:t4', 'mine')).toBe('running');
+    expect(tabOfItem(undefined, 'mine')).toBe(undefined);
+  });
+});
+
+describe("the Inbox footer's keys (critique 2026-11-08)", () => {
+  it('names what A and D do on the selected item in the words of its buttons, and leaves out a key that does nothing', () => {
+    expect(answerKeys('merge')).toEqual({ a: 'merge' });
+    expect(answerKeys('spec')).toEqual({ a: 'accept spec' });
+    expect(answerKeys('approval')).toEqual({ a: 'approve', d: 'deny' });
+    expect(answerKeys('chat')).toEqual({ a: 'allow', d: 'deny' });
+    expect(answerKeys('failed_check')).toEqual({});
+    expect(answerKeys(undefined)).toEqual({});
   });
 });

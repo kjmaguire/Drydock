@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AssignPreview } from '../api/controlClient.ts';
-import { PER_GROUP, arrange, buildItems, contextItems, filterItems, isLeadRole, parseQuery, previewBlock, previewSteps, previewWait, score, taskKey, type TaskContext } from './palette-items.ts';
+import { PER_GROUP, RECENT_KEY, RECENT_MAX, arrange, buildItems, contextItems, filterItems, isLeadRole, keepsRecent, parseQuery, previewBlock, previewSteps, previewWait, pushRecent, readRecent, recordRecent, score, taskKey, type TaskContext } from './palette-items.ts';
 
 const rooms = [
   { id: 'r1', projectId: 'p', name: 'general', kind: 'channel', archived: false },
@@ -59,10 +59,10 @@ describe('command palette items', () => {
     expect(items.find((i) => i.label === 'Integrations')!.href).toBe('/integrations');
     expect(filterItems(items, 'project integrations')[0]!.label).toBe('Project integrations');
     expect(filterItems(items, 'approvals').map((i) => i.label)).toContain('Project integrations');
-    // the Library keeps the agent templates; the MCP servers you add are on Integrations (decision P98)
-    expect(items.find((i) => i.label === 'Agent templates')!.href).toBe('/library');
+    // the Agents library keeps the agent templates as My agents (decision P140); the MCP servers you add are on Integrations (P98)
+    expect(items.find((i) => i.label === 'My agents')!.href).toBe('/library');
     expect(items.map((i) => i.label)).not.toContain('Library: agents and MCP servers');
-    expect(filterItems(items, 'templates')[0]!.label).toBe('Agent templates');
+    expect(filterItems(items, 'templates')[0]!.label).toBe('My agents');
   });
 
   it('offers the GitHub settings page, found by "gh" and by what it holds', () => {
@@ -72,12 +72,12 @@ describe('command palette items', () => {
     expect(filterItems(items, 'runners').map((i) => i.label)).toContain('GitHub');
   });
 
-  it('offers Models, Agents and Integrations, the sidebar\'s own pages, found by what they hold (decision P98)', () => {
+  it('offers Models, Agent CLIs and Integrations, sections of Settings, found by what they hold (decisions P98, P140)', () => {
     const items = buildItems(rooms, tasks, agents);
     const models = items.find((i) => i.label === 'Models')!;
     expect(models).toMatchObject({ group: 'Navigate', href: '/models', what: 'Goes to Models.' });
-    // a workspace page, not a settings page: not listed by ">"
-    expect(models.scope).toBe(undefined);
+    // a section of Settings: listed by ">"
+    expect(models.scope).toBe('>');
     expect(filterItems(items, 'models on this pc')[0]!.href).toBe('/models');
     expect(filterItems(items, 'local models')[0]!.href).toBe('/models');
     expect(filterItems(items, 'gguf')[0]!.href).toBe('/models');
@@ -88,9 +88,24 @@ describe('command palette items', () => {
     // the agent CLIs, found by their old page's name too
     expect(filterItems(items, 'connections')[0]!.href).toBe('/agents');
     expect(filterItems(items, 'claude code')[0]!.href).toBe('/agents');
-    expect(items.find((i) => i.label === 'Agents')!.scope).toBe(undefined);
-    expect(items.find((i) => i.label === 'Integrations')!.scope).toBe(undefined);
+    expect(items.find((i) => i.label === 'Agent CLIs')!.scope).toBe('>');
+    expect(items.find((i) => i.label === 'Integrations')!.scope).toBe('>');
     expect(items.some((i) => i.label === 'Connections' || i.label === 'Providers')).toBe(false);
+  });
+
+  it('reaches every page that left the sidebar (decision P140): the Settings sections, the Agents tabs, All crews, Running, My tasks, the Guide', () => {
+    const items = buildItems(rooms, tasks, agents);
+    const hrefs = items.map((i) => i.href);
+    for (const href of [
+      '/agents', '/models', '/routing', '/integrations', '/github', '/security-scan', '/backups', '/data', '/settings', '/settings/shortcuts',
+      '/settings/about', '/support', '/license', '/guide', '/library', '/library/starters', '/library/skills', '/crew', '/needs-you?tab=running', '/my-tasks',
+    ]) {
+      expect([href, hrefs.includes(href)]).toEqual([href, true]);
+    }
+    expect(filterItems(items, 'security scan').map((i) => i.href)).toContain('/security-scan');
+    expect(filterItems(items, 'models')[0]!.href).toBe('/models');
+    expect(filterItems(items, 'all crews')[0]!.href).toBe('/crew');
+    expect(filterItems(items, 'shortcuts')[0]!.href).toBe('/settings/shortcuts');
   });
 
   it('matches letters in order as a last resort and drops non-matches', () => {
@@ -205,6 +220,19 @@ describe('the options about the task in context', () => {
     expect(labels).toEqual(['Assign to Builder', 'Assign to Local helper']);
   });
 
+  it('puts a change waiting to be merged first, found by "merge", opening the decision rather than merging (critique 2026-11-08)', () => {
+    const items = buildItems(rooms, tasks, team, [], { projectKey: 'GOC', context: ctx({ awaitsMerge: true }) });
+    const groups = arrange(filterItems(items, ''), '');
+    expect(groups[0]!.group).toBe('Decide');
+    const merge = groups[0]!.items[0]!;
+    expect(merge.label).toBe('Review and merge GOC-44');
+    expect(merge.op).toBe(undefined);
+    expect(merge.href).toBe('/task/t44');
+    expect(filterItems(items, 'merge')[0]!.id).toBe('merge');
+    // nothing waits: no such option
+    expect(contextItems(team, ctx(), 'GOC').some((i) => i.id === 'merge')).toBe(false);
+  });
+
   it('lists only the options about the task with nothing typed, grouped Assign, Actions, Go to', () => {
     const items = buildItems(rooms, tasks, team, [], { projectKey: 'GOC', context: ctx() });
     const shown = filterItems(items, '');
@@ -287,5 +315,96 @@ describe('what an assignment does', () => {
     const me = previewSteps({ ...base, person: true, agent: undefined });
     expect(me[0]!.text).toBe('No agent works on it: it is yours on the board');
     expect(previewWait({ ...base, person: true })).toBe('');
+  });
+});
+
+describe('Recent (G10)', () => {
+  const items = buildItems(rooms, tasks, agents);
+
+  it('keeps what was run newest first, once, at most RECENT_MAX', () => {
+    let list = pushRecent([], 'a', 1);
+    list = pushRecent(list, 'b', 2);
+    list = pushRecent(list, 'a', 3);
+    expect(list).toEqual([
+      { id: 'a', at: 3 },
+      { id: 'b', at: 2 },
+    ]);
+    for (let i = 0; i < 20; i++) list = pushRecent(list, `x${i}`, 10 + i);
+    expect(list.length).toBe(RECENT_MAX);
+    expect(list[0]!.id).toBe('x19');
+  });
+
+  it('lists what was run first with nothing typed, drops an id no longer offered, and leaves it out of its own group', () => {
+    const shown = filterItems(items, '', 60, ['task:t1', 'gone:x', 'act:theme-dark']);
+    const groups = arrange(shown, '');
+    expect(groups[0]!.group).toBe('Recent');
+    expect(groups[0]!.items.map((i) => [i.id, i.from])).toEqual([
+      ['task:t1', 'Tasks'],
+      ['act:theme-dark', 'Actions'],
+    ]);
+    expect(shown.filter((i) => i.id === 'task:t1').length).toBe(1);
+    expect(groups.find((g) => g.group === 'Actions')!.items.some((i) => i.id === 'act:theme-dark')).toBe(false);
+    // nothing run yet: no Recent group
+    expect(arrange(filterItems(items, ''), '')[0]!.group).toBe('Navigate');
+  });
+
+  it('ranks a recent option above an equal match while typing, not above a better one', () => {
+    expect(filterItems(items, 'theme:')[0]!.id).toBe('act:theme-dark');
+    expect(filterItems(items, 'theme:', 60, ['act:theme-system'])[0]!.id).toBe('act:theme-system');
+    expect(score(items.find((i) => i.id === 'act:theme-light')!, 'zzz', new Set(['act:theme-light']))).toBe(0);
+    // an exact name still wins over a recent partial match
+    expect(filterItems(items, 'crew', 60, ['screen:/crew'])[0]!.label).toBe('Crew');
+  });
+
+  it('keeps runs of the options about a task out of Recent, but not a Go to over a task', () => {
+    const team = [
+      { id: 'b1', name: 'Builder', role: 'backend' },
+      { id: 'lead1', name: 'Tess', role: 'lead' },
+    ] as never[];
+    const ctx: TaskContext = {
+      task: { id: 't44', seq: 44, title: 'Support hex input', description: '', projectId: 'p1' },
+      projectName: 'gocalc',
+      hasRepo: true,
+      human: 'human:kyle',
+      localIds: new Set(),
+      runtime: () => 'Claude Code',
+      askCli: 'Claude Code',
+    };
+    const over = buildItems(rooms, tasks, team, [], { context: ctx });
+    const ops = over.filter((i) => i.op);
+    expect(ops.map((i) => i.id)).toEqual(['assign:b1', 'split', 'assign:me', 'scan', 'ask']);
+    expect(ops.some(keepsRecent)).toBe(false);
+    const goTo = over.filter((i) => i.group === 'Go to');
+    expect(goTo.length > 0 && goTo.every(keepsRecent)).toBe(true);
+    // every Go to is offered without a task too, so Recent can list it on the board
+    const board = new Set(buildItems(rooms, tasks, team).map((i) => i.id));
+    expect(goTo.every((i) => board.has(i.id))).toBe(true);
+    expect(items.filter((i) => !i.op).every(keepsRecent)).toBe(true);
+  });
+
+  it('remembers runs in the browser, and reads nothing from what does not parse', () => {
+    const store = new Map<string, string>();
+    const g = globalThis as { localStorage?: Storage };
+    const before = g.localStorage;
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) } as Storage;
+    try {
+      recordRecent('task:t1', 5);
+      recordRecent('act:dock', 6);
+      expect(readRecent()).toEqual([
+        { id: 'act:dock', at: 6 },
+        { id: 'task:t1', at: 5 },
+      ]);
+      store.set(RECENT_KEY, '{not json');
+      expect(readRecent()).toEqual([]);
+    } finally {
+      g.localStorage = before;
+    }
+  });
+});
+
+describe('the dock\'s options (G6)', () => {
+  it('leave out Open a terminal on a page without the dock', () => {
+    expect(buildItems(rooms, tasks, agents).some((i) => i.id === 'act:terminal')).toBe(true);
+    expect(buildItems(rooms, tasks, agents, [], { dock: false }).some((i) => i.id === 'act:terminal')).toBe(false);
   });
 });

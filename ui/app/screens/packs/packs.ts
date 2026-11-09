@@ -79,3 +79,33 @@ export function fileSize(n: number): string {
   if (n < 1 << 20) return `${Math.round(n / 1024)} KB`;
   return `${(n / (1 << 20)).toFixed(1)} MB`;
 }
+
+/** How a pack is refreshed, in words: a scheduled pack refreshes by itself while Drydock is open (packs/schedule.go); a manual
+ *  one only when Refresh now is clicked; a live pack is asked live and never refreshed (packs.ErrNotIndexed). `when` formats the
+ *  last successful refresh. */
+export function refreshLine(p: Pick<Pack, 'kind' | 'lastSuccessAt' | 'manifest'>, when: (iso: string) => string): string {
+  if (p.kind === 'live') return 'Asked live, never stored';
+  const last = zeroTime(p.lastSuccessAt) ? 'never' : when(p.lastSuccessAt!);
+  return p.manifest?.refresh?.mode === 'scheduled' && p.kind !== 'live' ? `Refreshes by itself · last ${last}` : `When you refresh it · last ${last}`;
+}
+
+/** The ready manifests not installed yet. */
+export const templatesToInstall = <T extends { id: string }>(templates: readonly T[], installed: readonly Pick<Pack, 'id'>[]): T[] =>
+  templates.filter((x) => !installed.some((p) => p.id === x.id));
+
+/** Who a pack can be attached to in this project: every role (''), each crew role, each agent. */
+export function attachChoices(agents: readonly { id: string; name: string; role: string }[]): { value: string; label: string }[] {
+  const roles = [...new Set(agents.map((a) => a.role.trim().toLowerCase()).filter(Boolean))].sort();
+  return [
+    { value: '', label: 'All roles' },
+    ...roles.map((r) => ({ value: `role:${r}`, label: `Role: ${r}` })),
+    ...agents.map((a) => ({ value: `agent:${a.id}`, label: `Agent: ${a.name}` })),
+  ];
+}
+
+/** The pack.attach arguments of a choice from attachChoices. */
+export function attachTarget(choice: string): { agentId: string; role: string } {
+  if (choice.startsWith('agent:')) return { agentId: choice.slice(6), role: '' };
+  if (choice.startsWith('role:')) return { agentId: '', role: choice.slice(5) };
+  return { agentId: '', role: '' };
+}

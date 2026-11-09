@@ -52,7 +52,9 @@ func (c *Core) NeedsYou(ctx context.Context, projectID string) ([]room.NeedsYouI
 		return nil, err
 	}
 	c.addNeedsContext(ctx, out)
-	out = append(out, c.stateItems(ctx, projectID)...) // agents that failed or need attention, agent CLIs that are not ready (P130)
+	out = append(out, c.stateItems(ctx, projectID)...)                        // agents that failed or need attention, agent CLIs that are not ready (P130)
+	out = append(out, c.problemItems(ctx)...)                                 // background problems with their fix: services, providers, sign-ins, drift, installs, crashes (B6)
+	out = append(out, c.ackedOut(ctx, c.scanFindingItems(ctx, projectID))...) // new high findings of a rule's scan (B7, H5)
 	svc := c.Chats()
 	if svc == nil {
 		room.SortNeedsYou(out)
@@ -94,8 +96,12 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		ClaudeSources:  c.claudeSources,
 		ProjectFor:     c.chatProjectFor,
 		DrydockSession: c.drydockSession,
-		Licensed:       func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
-		Logf:           c.logf,
+		HoldFolders: func() func() {
+			c.folderSync.RLock()
+			return c.folderSync.RUnlock
+		},
+		Licensed: func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
+		Logf:     c.logf,
 	}, chats.Options{AskTTL: chatAskTTL})
 	if err := svc.Start(ctx); err != nil {
 		return nil, nil, err
@@ -187,17 +193,53 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		"chat.import":       bind(func(ctx context.Context, p chats.ImportReq) (any, error) { return svc.ImportClaudeCode(ctx, p) }),
 		"chat.allowTool":    bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.AllowTool(ctx, p.ID, p.Tool) }),
 		"chat.disallowTool": bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.DisallowTool(ctx, p.ID, p.Tool) }),
+		// the read cursor (D8): the UI moves it while the person sees the chat's newest message; chat.unread counts what they
+		// have not seen, for the Chats link
+		"chat.markRead": bind(func(ctx context.Context, p struct {
+			ID  string `json:"id"`
+			Seq int64  `json:"seq"`
+		}) (any, error) {
+			return svc.MarkRead(ctx, p.ID, p.Seq)
+		}),
+		"chat.unread": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return svc.Unread(ctx, p.ProjectID)
+		}),
+		// what a new chat starts with (D2): the person's last choice of model, effort and mode for the scope and CLI
+		"chat.lastChoice": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			Adapter   string `json:"adapter"`
+		}) (any, error) {
+			return svc.LastChoice(ctx, p.ProjectID, p.Adapter)
+		}),
+		// allow rules for every new chat (D9), set by the person; chats that exist keep their own
+		"chat.defaultRules": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return map[string]any{"rules": svc.DefaultRules(ctx)}, nil
+		}),
+		"chat.setDefaultRule": bind(func(ctx context.Context, p struct {
+			Tool  string `json:"tool"`
+			Allow bool   `json:"allow"`
+		}) (any, error) {
+			rules, err := svc.SetDefaultRule(ctx, p.Tool, p.Allow)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"rules": rules}, nil
+		}),
 	}
 	return m, closeFn, nil
 }
 
 // checkAdapterGates refuses an adapter whose Connection has a gate the human has not acknowledged (as CreateAgent does).
 func (c *Core) checkAdapterGates(ctx context.Context, adapter string) error {
-	conn, err := c.Connections.Check(ctx, adapter)
+	// only the gates: the CLI is not started here (a full Check probes its version and sign-in, seconds on Windows, and up to
+	// its timeouts for a CLI that hangs; P139)
+	gs, err := c.Connections.Gates(adapter)
 	if err != nil {
 		return nil // an adapter without a manifest (a test agent) has no gates
 	}
-	for _, g := range conn.Gates {
+	for _, g := range gs {
 		if !g.Acked {
 			return fmt.Errorf("%s needs your acknowledgement first (%s): %s", adapter, g.ID, g.Text)
 		}

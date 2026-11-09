@@ -270,7 +270,7 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	safe.Go("core.startEconomics", func() { e.relayInconclusiveChecks(ctx) })
 
 	// --- opt-in startup probe (it spends a few synthetic requests, so it is the user's switch) ---
-	if v, _ := e.setting(ctx, "route.probe.startup"); v == "1" {
+	if v, _ := e.setting(ctx, settingProbeStartup); v == "1" {
 		safe.Go("core.startEconomics#2", func() { e.startupProbe(ctx) })
 	}
 
@@ -523,6 +523,12 @@ func (e *economics) methods() map[string]Method {
 			}
 			return r, err
 		}),
+		// what a rule can say, for the editor's pickers (F9): the scopes (the workspace and each project by name), the turn
+		// kinds a rule matches with run.kind, the roles of the workspace's agents (task.role), the tiers and efforts, and the
+		// action keys with the kind of value each takes
+		"route.rules.describe": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return c.routeRulesDescribe(ctx), nil
+		}),
 		"route.rules.delete": bind(func(ctx context.Context, p idParam) (any, error) {
 			err := e.rules.Delete(ctx, p.ID)
 			if err == nil {
@@ -612,7 +618,15 @@ func (e *economics) methods() map[string]Method {
 			if p.Enabled {
 				v = "1"
 			}
-			return map[string]any{"enabled": p.Enabled, "by": human()}, e.putSetting(ctx, "route.probe.startup", v)
+			if err := e.putSetting(ctx, settingProbeStartup, v); err != nil {
+				return nil, err
+			}
+			// who set it, so the Routing page can say so beside the switch
+			if err := e.putSetting(ctx, settingProbeStartupBy, human()); err != nil {
+				return nil, err
+			}
+			e.c.publish(ctx, "routing.settings_changed", "", map[string]any{"probeStartup": p.Enabled})
+			return map[string]any{"enabled": p.Enabled, "by": human()}, nil
 		}),
 
 		// verification checks beyond build/test/lint
@@ -631,7 +645,10 @@ func (e *economics) methods() map[string]Method {
 			if err := checks.SaveSettings(ctx, c.DB, p.ProjectID, p.Settings, human()); err != nil {
 				return nil, err
 			}
-			return checks.LoadSettings(ctx, c.DB, p.ProjectID), nil
+			saved := checks.LoadSettings(ctx, c.DB, p.ProjectID)
+			// every open panel with the checks re-reads: the Security scan rules turn the scan check on too (H5)
+			c.publish(ctx, "checks.settings_changed", p.ProjectID, map[string]any{"scan": saved.Scan, "by": human()})
+			return saved, nil
 		}),
 
 		// telemetry (decision D12)
@@ -945,4 +962,56 @@ func orLevel(l router.Level) router.Level {
 		return router.LevelBalanced
 	}
 	return l
+}
+
+// RuleScope is one scope a routing rule can have: "workspace" or "project:<id>", with its name.
+type RuleScope struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// RuleActionKey is one key of a rule's action and the kind of value it takes: tier, effort, bool, int, number or list.
+type RuleActionKey struct {
+	Key  string `json:"key"`
+	Kind string `json:"kind"`
+}
+
+// RuleTables is what route.rules.describe answers.
+type RuleTables struct {
+	Scopes   []RuleScope     `json:"scopes"`
+	RunKinds []string        `json:"runKinds"`
+	Roles    []string        `json:"roles"`
+	Tiers    []string        `json:"tiers"`
+	Efforts  []string        `json:"efforts"`
+	Actions  []RuleActionKey `json:"actions"`
+}
+
+// routeRuleRunKinds are the turn kinds a rule matches with run.kind: the agent turns first (P63), then the app's own calls.
+var routeRuleRunKinds = []router.RunKind{router.RunAgentTask, router.RunReview, router.RunRoomReply, router.RunSpec, router.RunTests, router.RunDesign,
+	router.RunSecurityReview, router.RunLead, router.RunRecommend, router.RunConsult, router.RunSummarize, router.RunClassify}
+
+func (c *Core) routeRulesDescribe(ctx context.Context) RuleTables {
+	t := RuleTables{Scopes: []RuleScope{{Value: "workspace", Label: "Workspace"}}, Roles: []string{},
+		Tiers:   []string{string(providers.TierPremium), string(providers.TierCheap), string(providers.TierFree)},
+		Efforts: []string{string(router.EffortLow), string(router.EffortMedium), string(router.EffortHigh), string(router.EffortMax)},
+		Actions: []RuleActionKey{{"prefer_tier", "tier"}, {"require_tier", "tier"}, {"escalate_to", "tier"}, {"set_effort", "effort"}, {"deny", "bool"},
+			{"handoff", "bool"}, {"set_team_size", "int"}, {"penalty", "number"}, {"require_capability", "list"}}}
+	for _, k := range routeRuleRunKinds {
+		t.RunKinds = append(t.RunKinds, string(k))
+	}
+	if ps, err := c.Projects(ctx); err == nil {
+		for _, p := range ps {
+			t.Scopes = append(t.Scopes, RuleScope{Value: "project:" + p.ID, Label: p.Name})
+		}
+	}
+	if rows, err := c.DB.Reader().QueryContext(ctx, `SELECT DISTINCT role FROM agents WHERE archived_at=0 AND role<>'' ORDER BY role`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var r string
+			if rows.Scan(&r) == nil {
+				t.Roles = append(t.Roles, r)
+			}
+		}
+	}
+	return t
 }

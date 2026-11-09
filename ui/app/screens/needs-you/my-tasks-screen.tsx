@@ -1,5 +1,6 @@
 // My tasks (graphite, decision P97): the tasks assigned to the person (app.info's human), in every project, newest first. The
-// open ones come first; each row opens the task in its own project.
+// open ones come first; each row opens the task in its own project. The list is the Inbox's Mine tab (decision P140, /my-tasks
+// opens it there); MyTasksScreen is the same list as a page of its own.
 
 import { css, on, type Handle } from 'remix/component';
 import { ListTodo } from 'lucide';
@@ -8,7 +9,7 @@ import { agoWords, statusLabel, statusTone } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
-import { query, services, watch } from '../../state/services.tsx';
+import { query, retryFor, services, watch } from '../../state/services.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
@@ -40,6 +41,61 @@ export function myTaskOrder(list: readonly Task[]): Task[] {
   return [...list.filter((x) => !isTerminal(x.status)), ...list.filter((x) => isTerminal(x.status))];
 }
 
+/** The person's tasks as a list (the Inbox's Mine tab): an empty state when there are none. */
+export function MyTasksList(handle: Handle) {
+  const s = services(handle);
+  watch(handle, s.workspace);
+  const human = () => s.workspace.info.data?.human ?? '';
+  const tasks = query(handle, {
+    load: () => s.client.taskList('', [], { assignee: human() }),
+    enabled: () => !!human(),
+    key: () => human(),
+    when: (e) => starts(e, 'task.'),
+  });
+  return () => {
+    const list = myTaskOrder(tasks.data ?? []);
+    return (
+      <div data-testid="my-tasks" data-open={tasks.data ? String(list.filter((x) => !isTerminal(x.status)).length) : undefined}>
+        <ErrorNote error={s.workspace.info.error ?? tasks.error} retry={retryFor(s.workspace.info, tasks)} what="Could not load your tasks" />
+        {(tasks.loading || s.workspace.info.loading) && !tasks.data ? <Loading /> : null}
+        {tasks.data && list.length === 0 ? (
+          <Empty title="No task is assigned to you" icon={ListTodo}>
+            <p>A task you take on yourself, or one an agent hands to you, appears here.</p>
+          </Empty>
+        ) : null}
+        {list.length ? (
+          <ul mix={listCss} aria-label="Your tasks">
+            {list.map((x) => {
+              const p = s.workspace.projectList.find((q) => q.id === x.projectId);
+              const key = taskKey(p?.key, x.seq);
+              const done = msOf(x.completed);
+              return (
+                <li key={x.id} data-testid="my-task" data-status={x.status}>
+                  <a
+                    href={routes.task.href({ id: x.id })}
+                    mix={[rowCss, on('click', () => {
+                      if (x.projectId && x.projectId !== s.workspace.projectId) s.workspace.selectProject(x.projectId);
+                    })]}
+                  >
+                    <span mix={dotCss} aria-hidden="true" style={{ background: tone[statusTone(x.status)].fg }} />
+                    <span class="text">
+                      <span class="title">
+                        {key ? <span class="key">{key}</span> : null}
+                        {visible(x.title)}
+                      </span>
+                      <span class="sub">{[p?.name, statusLabel(x.status), done ? `done ${agoWords(done)}` : ''].filter(Boolean).join(' · ')}</span>
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </div>
+    );
+  };
+}
+
 export function MyTasksScreen(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
@@ -55,7 +111,7 @@ export function MyTasksScreen(handle: Handle) {
     const open = list.filter((x) => !isTerminal(x.status)).length;
     return (
       <Page title="My tasks" icon={ListTodo} subtitle={tasks.data ? `${open} open · every project's tasks that are yours` : undefined}>
-        <ErrorNote error={s.workspace.info.error ?? tasks.error} what="Could not load your tasks" />
+        <ErrorNote error={s.workspace.info.error ?? tasks.error} retry={retryFor(s.workspace.info, tasks)} what="Could not load your tasks" />
         {(tasks.loading || s.workspace.info.loading) && !tasks.data ? <Loading /> : null}
         {tasks.data && list.length === 0 ? (
           <Empty title="No task is assigned to you" icon={ListTodo}>

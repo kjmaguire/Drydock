@@ -1,5 +1,6 @@
-// Project memory: decisions, conventions and known issues agents read. Agents (and the human) propose entries; only an entry
-// the human accepts reaches agents. Entry text is outside text and is rendered inert.
+// Project memory: decisions, conventions and known issues agents read. Agents propose entries; only an entry the person accepts
+// reaches agents (P92). The person's own entry is their decision already: Add to memory stores it accepted (E10). "Accept all N"
+// accepts every proposal at once, with Undo. Entry text is outside text and is rendered inert.
 //
 // An entry's text is shown whole, as it was written, in a box of a most height that scrolls and can be reached by keyboard, with its
 // length beside it (audit 2026-10-16, M26). It is not drawn as Markdown: the Markdown view shows the end of a long paragraph behind
@@ -9,17 +10,17 @@ import { css, on, type Handle } from 'remix/component';
 import { Brain, Check, Search, Trash2, X } from 'lucide';
 import type { MemoryEntry } from '../../api/extTypes.ts';
 import { agentName, formatDateTime } from '../../lib/format.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
-import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer, listBox } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { visible } from '../../lib/visible.ts';
-import { bodyNote, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memorySource, memoryTone } from './memory.ts';
+import { bodyNote, inGroups, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memorySource, memoryTone, proposalsText } from './memory.ts';
 
 const entryCss = css({
   display: 'grid',
@@ -216,11 +217,56 @@ export function MemoryScreen(handle: Handle) {
     key: () => [pid(), status],
     enabled: () => !!pid(),
   });
+  // every open proposal, whatever the filter shows: "Accept all N" accepts these
+  const open = query(handle, {
+    load: async () => (await s.client.memoryList(pid()!, 'proposed')).filter((e) => e.status === 'proposed'),
+    when: (e) => e.type.startsWith('memory.'),
+    key: () => pid(),
+    enabled: () => !!pid(),
+  });
+  // what the last Accept all accepted, for its Undo; and what this page last said
+  let lastAccepted: string[] = [];
+  let said = '';
+  const reloadAll = () => {
+    q.reload();
+    open.reload();
+    found = undefined;
+  };
+  const acceptAll = async () => {
+    const ids = (open.data ?? []).map((e) => e.id);
+    if (!ids.length) return;
+    // the core takes at most MEMORY_MANY_LIMIT ids a call: a longer list goes in groups, and what was accepted before a group
+    // failed stays accepted and can be undone
+    const done: string[] = [];
+    for (const group of inGroups(ids)) {
+      const part = await act.run('acceptAll', () => s.client.memoryAcceptMany(group));
+      if (!part) break;
+      done.push(...part);
+    }
+    if (!done.length) return;
+    lastAccepted = done;
+    said = `${done.length} ${done.length === 1 ? 'entry' : 'entries'} accepted: agents see ${done.length === 1 ? 'it' : 'them'} from their next session.`;
+    reloadAll();
+    void handle.update();
+  };
+  const undoAll = async () => {
+    const ids = lastAccepted;
+    const back: string[] = [];
+    for (const group of inGroups(ids)) {
+      const part = await act.run('undo', () => s.client.memoryUnacceptMany(group));
+      if (!part) break;
+      back.push(...part);
+    }
+    if (!back.length) return;
+    lastAccepted = lastAccepted.filter((id) => !back.includes(id));
+    said = `${back.length} ${back.length === 1 ? 'entry is a proposal' : 'entries are proposals'} again.`;
+    reloadAll();
+    void handle.update();
+  };
 
   const decide = (fn: (id: string) => Promise<unknown>, id: string) => async () => {
     await act.run(id, () => fn(id));
-    q.reload();
-    found = undefined;
+    reloadAll();
     void handle.update();
   };
   const runSearch = async () => {
@@ -239,6 +285,8 @@ export function MemoryScreen(handle: Handle) {
     if (r) {
       title = '';
       body = '';
+      lastAccepted = [];
+      said = r.status === 'accepted' ? `"${r.title}" is in the project's memory: agents see it from their next session.` : `"${r.title}" was proposed.`;
       q.reload();
       void handle.update();
     }
@@ -302,7 +350,28 @@ export function MemoryScreen(handle: Handle) {
             ) : null}
           </form>
         </div>
-        <ErrorNote error={q.error ?? act.error} what="Memory" />
+        {(open.data?.length ?? 0) > 0 ? (
+          <div mix={toolbar} data-testid="memory-proposals">
+            <span>{proposalsText(open.data!.length)} waiting for you.</span>
+            <Button variant="primary" size="sm" icon={Check} disabled={act.busy !== ''} mix={on('click', () => void acceptAll())}>
+              {act.busy === 'acceptAll' ? 'Accepting...' : `Accept all ${open.data!.length}`}
+            </Button>
+          </div>
+        ) : null}
+        {said ? (
+          <Notice tone="ok" role="status" testId="memory-said">
+            {said}
+            {lastAccepted.length ? (
+              <>
+                {' '}
+                <Button variant="ghost" size="sm" disabled={act.busy !== ''} mix={on('click', () => void undoAll())}>
+                  Undo
+                </Button>
+              </>
+            ) : null}
+          </Notice>
+        ) : null}
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Memory" />
         {q.loading && !q.data && !found ? <Loading /> : null}
         {(q.data || found) && list.length === 0 ? (
           <div mix={card}>
@@ -325,7 +394,7 @@ export function MemoryScreen(handle: Handle) {
             ))}
           </ul>
         ) : null}
-        <Section title="Propose an entry" description="An entry you write starts as a proposal too: accept it to make it visible to agents.">
+        <Section title="Add to memory" description="What you write here is your decision: agents see it from their next session. What agents propose waits for you above.">
           <form
             mix={[
               card,
@@ -351,7 +420,7 @@ export function MemoryScreen(handle: Handle) {
             </Field>
             <div mix={formActions}>
               <Button type="submit" variant="primary" disabled={act.busy !== '' || !title.trim() || !body.trim()}>
-                Propose
+                Add to memory
               </Button>
             </div>
           </form>

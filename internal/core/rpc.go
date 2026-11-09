@@ -41,6 +41,23 @@ type idParam struct {
 	ID string `json:"id"`
 }
 
+// eventsReplayParams select a page of the event log: the events after `after`, oldest first, or, with `before`, the newest ones
+// older than it (X53), narrowed in the core to a task, project (withWorkspace: and the workspace's own events), run or agent.
+type eventsReplayParams struct {
+	After         uint64   `json:"after"`
+	Before        uint64   `json:"before,omitempty"`
+	Types         []string `json:"types"`
+	Task          string   `json:"taskId"`
+	Project       string   `json:"projectId,omitempty"`
+	Run           string   `json:"runId,omitempty"`
+	Agent         string   `json:"agentId,omitempty"`
+	WithWorkspace bool     `json:"withWorkspace,omitempty"`
+	Limit         int      `json:"limit"`
+	// Cut cuts each payload as the run explanation does (explainEventData), for a list that shows many of them, such as the run
+	// page's earlier events; without it each event comes back whole, as stored.
+	Cut bool `json:"cut,omitempty"`
+}
+
 // taskFilterParams are the selection task.list and task.count share: a project (empty for every project), statuses, an assignee
 // (agent id), a label, and the tasks that ended at or after completedSince (ms since the epoch).
 type taskFilterParams struct {
@@ -76,7 +93,7 @@ func (c *Core) Methods() map[string]Method {
 		"app.info": bind(func(ctx context.Context, _ struct{}) (any, error) {
 			// the version and build the release set (-ldflags), shown in Settings > About (decision P129)
 			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir, "canRestart": c.cfg.Restart != nil,
-				"version": AppVersion, "build": AppBuild}, nil
+				"version": AppVersion, "build": AppBuild, "startReport": c.StartReport()}, nil
 		}),
 		"project.create": bind(func(ctx context.Context, p struct{ Name, RepoPath string }) (any, error) {
 			return c.CreateProject(ctx, p.Name, p.RepoPath)
@@ -88,6 +105,8 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.AttachRepository(ctx, p.ID, p.RepoPath)
 		}),
+		// project.cloneState is the clone a project made before its clone lands waits for, or why it was not attached (B12)
+		"project.cloneState": bind(func(_ context.Context, p idParam) (any, error) { return c.CloneState(p.ID), nil }),
 		"project.setBrief": bind(func(ctx context.Context, p struct {
 			ID    string `json:"id"`
 			Brief string `json:"brief"`
@@ -125,20 +144,33 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.DeleteProject(ctx, p.ID, p.ConfirmName)
 		}),
-		"github.status": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubAccountStatus(ctx), nil }),
-		"github.owners": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubOwners(ctx) }),
-		"github.repos": bind(func(ctx context.Context, p struct {
-			Owner string `json:"owner"`
-			Query string `json:"query"`
+		// github.status: whether gh is installed and signed in; an answer is kept a few seconds (F4) unless refresh asks gh again
+		"github.status": bind(func(ctx context.Context, p struct {
+			Refresh bool `json:"refresh"`
 		}) (any, error) {
-			return c.GitHubRepos(ctx, p.Owner, p.Query)
+			return c.CachedGitHubStatus(ctx, p.Refresh), nil
 		}),
-		"github.cloneDir": bind(func(ctx context.Context, _ struct{}) (any, error) { return DefaultCloneDir(), nil }),
+		"github.owners": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubOwners(ctx) }),
+		"github.cloneDir": bind(func(ctx context.Context, p struct {
+			// Default asks for the usual code folder (a new project's folder: CodeDir), not the folder last cloned into
+			Default bool `json:"default"`
+		}) (any, error) {
+			if p.Default {
+				return c.CodeDir(ctx), nil
+			}
+			return c.GitHubCloneDir(ctx), nil
+		}),
 		"github.clone": bind(func(ctx context.Context, p struct {
 			Repo string `json:"repo"`
 			Dir  string `json:"dir"`
 		}) (any, error) {
 			return c.GitHubClone(ctx, p.Repo, p.Dir)
+		}),
+		// github.cloneCancel ends the running clone of a repository (B12): the clone answers that it was cancelled and keeps nothing
+		"github.cloneCancel": bind(func(ctx context.Context, p struct {
+			Repo string `json:"repo"`
+		}) (any, error) {
+			return map[string]bool{"cancelled": c.CancelClone(p.Repo)}, nil
 		}),
 		"github.issues": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
@@ -146,11 +178,9 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.GitHubIssues(ctx, p.ProjectID, p.Labels)
 		}),
-		"github.importIssue": bind(func(ctx context.Context, p struct {
-			ProjectID string `json:"projectId"`
-			Number    int    `json:"number"`
-		}) (any, error) {
-			return c.ImportIssue(ctx, p.ProjectID, p.Number)
+		// with assignee (and reviewer) the imported task is assigned, with start it starts too (Import and start, C11)
+		"github.importIssue": bind(func(ctx context.Context, p ImportIssueReq) (any, error) {
+			return c.ImportIssueWith(ctx, p)
 		}),
 		"github.pullRequest": bind(func(ctx context.Context, p struct {
 			TaskID string `json:"taskId"`
@@ -158,7 +188,14 @@ func (c *Core) Methods() map[string]Method {
 			return c.PullRequest(ctx, p.TaskID)
 		}),
 
-		"connection.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
+		"connection.list": bind(func(ctx context.Context, p struct {
+			// Cached answers at once with the last check of each Connection (Drydock's own background check, a page's list, a
+			// check again), each with when it was made, and starts no CLI (A2); without it every CLI and distro is probed afresh.
+			Cached bool `json:"cached"`
+		}) (any, error) {
+			if p.Cached {
+				return c.Connections.LastList(), nil
+			}
 			c.recheckCustom(ctx, "") // a person's CLI whose manifest file changed asks for the acknowledgement again (P117)
 			return c.Connections.DetectAll(ctx), nil
 		}),
@@ -201,7 +238,8 @@ func (c *Core) Methods() map[string]Method {
 			return c.Agents(ctx, p.ProjectID)
 		}),
 
-		"task.create": bind(func(ctx context.Context, p tasks.CreateReq) (any, error) { return c.CreateTask(ctx, p) }),
+		// task.create makes a task; with assignee (and reviewer) it is assigned, with start it starts too (Create and start)
+		"task.create": bind(func(ctx context.Context, p CreateTaskReq) (any, error) { return c.CreateTaskWith(ctx, p) }),
 		"task.list": bind(func(ctx context.Context, p struct {
 			taskFilterParams
 			// Limit is how many of the newest tasks to return (default and ceiling: see TaskListDefault and TaskListMax).
@@ -321,7 +359,13 @@ func (c *Core) Methods() map[string]Method {
 
 		"provider.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Providers.List(ctx) }),
 		"provider.create": bind(func(ctx context.Context, p providers.NewProvider) (any, error) {
-			return c.Providers.Create(ctx, p)
+			created, err := c.Providers.Create(ctx, p)
+			if err == nil {
+				// read it once right after saving (its listing, catalog and prices: no prompt, nothing spent), so the detail
+				// does not sit at "Not checked" until Check now (decision D4); the health loop watches it from then on
+				c.Health.Refresh(created.ID)
+			}
+			return created, err
 		}),
 		"provider.delete": bind(func(ctx context.Context, p idParam) (any, error) { return nil, c.Providers.Delete(ctx, p.ID) }),
 		"provider.setEnabled": bind(func(ctx context.Context, p struct {
@@ -330,16 +374,25 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return nil, c.Providers.SetEnabled(ctx, p.ID, p.Enabled)
 		}),
-		"provider.test":   bind(func(ctx context.Context, p idParam) (any, error) { return c.Prober.Probe(ctx, p.ID) }),
+		// through the health loop, so the router's view and the saved status (pages, Inbox) agree after Check now / Check again
+		"provider.test":   bind(func(ctx context.Context, p idParam) (any, error) { return c.Health.Test(ctx, p.ID) }),
 		"provider.models": bind(func(ctx context.Context, p idParam) (any, error) { return c.Providers.Models(ctx, p.ID) }),
 
-		"events.replay": bind(func(ctx context.Context, p struct {
-			After uint64   `json:"after"`
-			Types []string `json:"types"`
-			Task  string   `json:"taskId"`
-			Limit int      `json:"limit"`
-		}) (any, error) {
-			return c.Replay(ctx, p.After, events.Filter{Types: p.Types, TaskID: p.Task}, p.Limit)
+		"events.replay": bind(func(ctx context.Context, p eventsReplayParams) (any, error) {
+			f := events.Filter{Types: p.Types, TaskID: p.Task, ProjectID: p.Project, RunID: p.Run, AgentID: p.Agent, WithWorkspace: p.WithWorkspace}
+			var evs []events.Event
+			var err error
+			if p.Before > 0 {
+				evs, err = c.ReplayBefore(ctx, p.Before, f, p.Limit)
+			} else {
+				evs, err = c.Replay(ctx, p.After, f, p.Limit)
+			}
+			if p.Cut {
+				for i := range evs {
+					evs[i] = events.ForTransport(evs[i], explainEventData)
+				}
+			}
+			return evs, err
 		}),
 	}
 	for k, v := range c.extMethods {

@@ -8,7 +8,7 @@ import { Avatar, Badge, muted } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
-import { EVIDENCE_LABEL, evidenceResult, RESULT_TEXT, type EvidenceResult } from './tasks.ts';
+import { evidenceLabel, evidenceResult, RESULT_TEXT, type EvidenceResult } from './tasks.ts';
 
 const listCss = css({
   display: 'grid',
@@ -41,6 +41,7 @@ export function EvidenceList(handle: Handle<{ evidence: readonly Evidence[] }>) 
   return () => {
     const evidence = handle.props.evidence;
     if (evidence.length === 0) return <p mix={muted}>No evidence yet. A task enters review only with evidence.</p>;
+    const runs = new Set(evidence.map((e) => e.attempt)).size;
     return (
       <ul mix={listCss} aria-label="Evidence">
         {evidence.map((e) => {
@@ -54,10 +55,9 @@ export function EvidenceList(handle: Handle<{ evidence: readonly Evidence[] }>) 
               </span>
               <div class="head">
                 <Badge tone={tn}>{RESULT_TEXT[res]}</Badge>
-                <strong>{EVIDENCE_LABEL[e.kind] ?? e.kind}</strong>
-                <span mix={muted}>
-                  {e.kind} attempt {e.attempt}
-                </span>
+                <strong>{evidenceLabel(e.kind)}</strong>
+                {/* which run recorded it, once there is more than one (the core counts from 0; the pill says run 1 for the first) */}
+                {runs > 1 ? <span mix={muted}>run {e.attempt + 1}</span> : null}
               </div>
               <div class="body">
                 <div>{e.summary}</div>
@@ -86,11 +86,12 @@ const reviewsCss = css({
   '& .text': { gridColumn: '2', minWidth: '0', padding: `${t.s2} ${t.s3}`, borderRadius: t.rMd, background: t.bgSurface, border: `1px solid ${t.border}` },
 });
 
-/** The reviewer agents' verdicts (SHIP or REVISE) with their feedback, attempt by attempt. */
+/** The reviewer agents' verdicts (approved or asked for changes) with their feedback, run by run. */
 export function ReviewList(handle: Handle<{ reviews: readonly ReviewRecord[]; agents: readonly Agent[] }>) {
   return () => {
     const { reviews, agents } = handle.props;
     if (reviews.length === 0) return <p mix={muted}>No reviewer verdict yet.</p>;
+    const runs = new Set(reviews.map((r) => r.attempt)).size;
     return (
       <ul mix={reviewsCss} aria-label="Reviews">
         {reviews.map((r) => {
@@ -99,11 +100,12 @@ export function ReviewList(handle: Handle<{ reviews: readonly ReviewRecord[]; ag
             <li key={r.id} data-testid="review" data-verdict={r.verdict}>
               <Avatar id={r.reviewer} name={name} size={24} kind="agent" />
               <div class="head">
-                <Badge tone={r.verdict === 'SHIP' ? 'ok' : 'warn'}>{r.verdict}</Badge>
+                {/* the verdict in words, never the core's SHIP or REVISE (the decision card and the Inbox say it the same way) */}
+                <Badge tone={r.verdict === 'SHIP' ? 'ok' : 'warn'}>{r.verdict === 'SHIP' ? 'Approved' : r.verdict === 'REVISE' ? 'Asked for changes' : r.verdict.toLowerCase().replaceAll('_', ' ')}</Badge>
                 <span>
                   by <strong>{name}</strong>
                 </span>
-                <span mix={muted}>attempt {r.attempt}</span>
+                {runs > 1 ? <span mix={muted}>run {r.attempt + 1}</span> : null}
               </div>
               {r.feedback ? (
                 <div class="text">

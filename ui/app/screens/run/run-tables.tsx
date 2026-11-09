@@ -1,14 +1,26 @@
-// The checkpoints, MCP calls and events of a run, as tables. Read-only.
+// The checkpoints, MCP calls and events of a run, as tables. Read-only. A cut event list reads earlier events of the run from the
+// core on demand (events.replay before the oldest listed, narrowed to the run there; X55 with X53).
 
 import { css, on, type Handle } from 'remix/component';
 import type { Agent } from '../../api/types.ts';
-import type { RunExplanation } from '../../api/runClient.ts';
+import type { EventView, RunExplanation } from '../../api/runClient.ts';
+import type { DrydockEvent } from '../../api/types.ts';
+import { services } from '../../state/services.tsx';
+import { ErrorNote } from '../../ui/feedback.tsx';
 import { agentName, formatTime } from '../../lib/format.ts';
 import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { tableCard } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { routes } from '../../routes.ts';
 import { compact } from './run-model.ts';
+
+/** The Activity page narrowed to one run (X55): Activity takes ?run= and ?task= and remembers them as its scope. */
+export const activityOfRun = (runId: string, taskId?: string): string => {
+  const q = new URLSearchParams({ run: runId });
+  if (taskId) q.set('task', taskId);
+  return `${routes.activity.href()}?${q.toString()}`;
+};
 
 const rowSel = css({ '& tr[aria-current="true"] td': { background: t.accentSoft } });
 const wrapCode = css({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm });
@@ -129,8 +141,57 @@ const payloadCss = css({
  * The run's events as an inspector (P91): filtered by any words of the type, the agent or the payload, each row opening to its
  * payload as stored (redacted by the core, cut past 16 KB), with a Copy of the event as JSON.
  */
-export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agent[] }>) {
+/** Earlier events of a run are read from the core this many at a time. */
+export const EARLIER_PAGE = 300;
+
+/** An event as events.replay returns it, in the shape the run's own list has. */
+const viewOf = (e: DrydockEvent): EventView => {
+  const v: EventView = { seq: e.seq, ts: Date.parse(e.time) || 0, type: e.type };
+  if (e.agentId) v.agentId = e.agentId;
+  if (e.data !== undefined) v.data = e.data;
+  return v;
+};
+
+export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agent[]; taskId?: string }>) {
+  const s = services(handle);
   let filter = '';
+  /** Events older than the explanation's, read for the run `earlierFor` (newest first, as the list is). */
+  let earlierFor = '';
+  let earlier: EventView[] = [];
+  let earlierMore = true;
+  let earlierBusy = false;
+  let earlierError: Error | undefined;
+  /**
+   * Once earlier events were read, every event the explanation listed for the run (by seq): on a running run its refresh keeps
+   * only the newest, and the ones that roll off stay listed here, so no hole opens between them and the earlier ones (X55 review).
+   */
+  const seen = new Map<number, EventView>();
+  const keep = (evs: readonly EventView[]) => {
+    for (const e of evs) seen.set(e.seq, e);
+  };
+  const loadEarlier = async () => {
+    const runId = handle.props.x.run?.id;
+    if (!runId || earlierBusy) return;
+    keep(handle.props.x.events);
+    const listed = [...seen.values(), ...earlier];
+    const before = listed.reduce((m, e) => Math.min(m, e.seq), Number.MAX_SAFE_INTEGER);
+    earlierBusy = true;
+    earlierError = undefined;
+    void handle.update();
+    try {
+      // cut as the explanation cuts its payloads (M22): a long run's earlier events are its largest
+      const evs = await s.client.eventsReplay(0, { runId, before, limit: EARLIER_PAGE, cut: true });
+      if (handle.signal.aborted || earlierFor !== runId) return;
+      const have = new Set([...seen.keys(), ...earlier.map((e) => e.seq)]);
+      earlier = [...earlier, ...evs.filter((e) => typeof e.seq === 'number' && !have.has(e.seq)).map(viewOf).sort((a, b) => b.seq - a.seq)];
+      if (evs.length < EARLIER_PAGE) earlierMore = false;
+    } catch (e) {
+      if (handle.signal.aborted) return;
+      earlierError = e instanceof Error ? e : new Error(String(e));
+    }
+    earlierBusy = false;
+    void handle.update();
+  };
   const open = new Set<number>();
   let copied = -1;
   const toggle = (seq: number) => {
@@ -149,10 +210,45 @@ export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agen
   };
   return () => {
     const { x, agents } = handle.props;
-    const shown = x.events.filter((e) => eventMatches(e, e.agentId ? agentName(e.agentId, agents) : '', filter));
+    const runId = x.run?.id ?? '';
+    if (runId !== earlierFor) {
+      earlierFor = runId;
+      earlier = [];
+      earlierMore = true;
+      earlierError = undefined;
+      seen.clear();
+    }
+    let all: readonly EventView[] = x.events;
+    if (seen.size > 0) {
+      keep(x.events);
+      const listed = new Set(x.events.map((e) => e.seq));
+      // the explanation's events as they are now, then the ones that rolled off it, then the earlier ones read below them all
+      all = [...x.events, ...[...seen.values()].filter((e) => !listed.has(e.seq)).sort((a, b) => b.seq - a.seq), ...earlier.filter((e) => !seen.has(e.seq))];
+    }
+    const shown = all.filter((e) => eventMatches(e, e.agentId ? agentName(e.agentId, agents) : '', filter));
     return (
       <div style={{ display: 'grid', gap: '8px' }}>
-        {x.eventsTruncated ? <p mix={muted}>Only the latest {x.events.length} events are listed; the Activity page has all of them.</p> : null}
+        {x.eventsTruncated && earlierMore ? (
+          <p mix={muted} data-testid="run-events-truncated">
+            Only the latest {all.length} events are listed.{' '}
+            {x.run ? (
+              <>
+                <Button size="sm" variant="secondary" disabled={earlierBusy} mix={on('click', () => void loadEarlier())}>
+                  {earlierBusy ? 'Loading...' : 'Load earlier events'}
+                </Button>{' '}
+                <a href={activityOfRun(x.run.id, handle.props.taskId)}>Show this run's events on the Activity page</a>
+              </>
+            ) : (
+              'The Activity page has the rest.'
+            )}
+          </p>
+        ) : null}
+        {x.eventsTruncated && !earlierMore ? (
+          <p mix={muted} data-testid="run-events-all">
+            All {all.length} events of this run are listed.
+          </p>
+        ) : null}
+        <ErrorNote error={earlierError} what="Could not load earlier events" />
         <input
           type="search"
           aria-label="Filter events"
@@ -166,7 +262,7 @@ export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agen
         />
         {filter ? (
           <p mix={muted} data-testid="run-events-count">
-            {shown.length} of {x.events.length} events
+            {shown.length} of {all.length} events
           </p>
         ) : null}
         <div mix={tableCard}>

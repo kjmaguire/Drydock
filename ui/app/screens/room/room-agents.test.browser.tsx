@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { RoomTurn } from '../../api/extTypes.ts';
 import type { JoinRule } from '../../api/roomClient.ts';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
-import { byLabel, byText, cleanup, errorOf, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ROUNDS_ERROR, RoomAgentsPanel, RoomTab } from './room-agents.tsx';
 
 afterEach(cleanup);
@@ -54,29 +54,49 @@ describe('RoomAgentsPanel', () => {
     expect(r2.container.querySelector('[data-testid="room-agents"]')).toBeNull();
   });
 
-  it('explains each mode in plain language and saves it with the right parameters', async () => {
+  it('choosing a mode applies it; the default order and the round limit show in words; the moderator starts as the lead or you (X14)', async () => {
     const calls: unknown[] = [];
-    const s = testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [], roomInvite: async () => [], roomReply: async () => ({}) });
+    const s = testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [], roomInvite: async () => [], roomReply: async () => ({ trigger: '', turns: [], bounded: false }) });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} lastHumanMessageId="msg_1" />, s);
     const text = () => r.container.querySelector('[data-testid="mode-text"]')!.textContent;
     expect(text()).toContain('No model chooses the speaker');
+    expect(r.container.textContent).not.toContain('Save mode');
+    expect(r.container.querySelector('[data-testid="round-limit"]')!.textContent).toContain('Round limit 3');
+    // no lead in the room: you are the moderator, and the mode is saved on the choice
     await r.act(() => type(byLabel<HTMLElement>(r.container, 'Mode'), 'moderator'));
     expect(text()).toContain('names who speaks next');
+    await waitFor(() => expect(calls).toEqual([{ roomId: 'room_1', mode: 'moderator', order: [], moderator: 'human:kyle', maxRounds: 3 }]), r);
+    expect(valueOf(byLabel<HTMLElement>(r.container, 'Moderator'))).toBe('human:kyle');
     await r.act(() => type(byLabel<HTMLElement>(r.container, 'Moderator'), 'a1'));
-    await r.act(() => button(r, 'Save mode').click());
-    await waitFor(() => expect(calls).toEqual([{ roomId: 'room_1', mode: 'moderator', order: [], moderator: 'a1', maxRounds: 3 }]), r);
+    await waitFor(() => expect(calls[1]).toEqual({ roomId: 'room_1', mode: 'moderator', order: [], moderator: 'a1', maxRounds: 3 }), r);
+    // sequential: the order the core uses is said in words; Change sets another
     await r.act(() => type(byLabel<HTMLElement>(r.container, 'Mode'), 'sequential'));
+    await waitFor(() => expect(calls[2]).toEqual({ roomId: 'room_1', mode: 'sequential', order: [], moderator: '', maxRounds: 3 }), r);
     expect(text()).toContain('one turn each per round');
-    await r.act(() => button(r, 'Add Dana').click());
+    expect(r.container.querySelector('[data-testid="speaking-order"]')!.textContent).toContain('Order: Dana (the order they joined)');
+    await r.act(() => button(r, 'Change order').click());
     await r.act(() => button(r, 'Add kyle').click());
-    expect(r.container.textContent).toContain('Speaking order: Dana > kyle');
+    await r.act(() => button(r, 'Add Dana').click());
+    expect(r.container.querySelector('[data-testid="speaking-order"]')!.textContent).toContain('Order: kyle, then Dana');
     expect(button(r, 'Add Dana').disabled).toBe(true);
+    await r.act(() => button(r, 'Save order').click());
+    await waitFor(() => expect(calls[3]).toEqual({ roomId: 'room_1', mode: 'sequential', order: ['human:kyle', 'a1'], moderator: '', maxRounds: 3 }), r);
+    await r.act(() => button(r, 'Change round limit').click());
     await r.act(() => type(byLabel<HTMLInputElement>(r.container, 'Round limit'), '5'));
-    await r.act(() => button(r, 'Save mode').click());
-    await waitFor(() => expect(calls[1]).toEqual({ roomId: 'room_1', mode: 'sequential', order: ['a1', 'human:kyle'], moderator: '', maxRounds: 5 }), r);
+    await r.act(() => button(r, 'Save round limit').click());
+    await waitFor(() => expect(calls[4]).toEqual({ roomId: 'room_1', mode: 'sequential', order: ['human:kyle', 'a1'], moderator: '', maxRounds: 5 }), r);
   });
 
-  it('shows the core refusal', async () => {
+  it('a moderator room starts with the team lead when it is in the room (X14)', async () => {
+    const calls: unknown[] = [];
+    const lead = agent('l1', 'Lee', 'team lead');
+    const withLead = [...members, { roomId: 'room_1', member: { kind: 'agent', id: 'l1' }, role: 'team lead', state: 'active', addedAt: '', lastReadSeq: 0 } as RoomMember];
+    const r = mount(<RoomAgentsPanel room={room} agents={[...agents, lead]} members={withLead} />, testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [] }));
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Mode'), 'moderator'));
+    await waitFor(() => expect(calls).toEqual([{ roomId: 'room_1', mode: 'moderator', order: [], moderator: 'l1', maxRounds: 3 }]), r);
+  });
+
+  it('shows the core refusal and goes back to the room\'s mode', async () => {
     const s = testServices({
       roomSetMode: async () => {
         throw new Error('moderator mode needs a moderator');
@@ -84,18 +104,20 @@ describe('RoomAgentsPanel', () => {
       roomTurns: async () => [],
     });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
-    await r.act(() => button(r, 'Save mode').click());
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Mode'), 'sequential'));
     await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('moderator mode needs a moderator'), r);
+    await waitFor(() => expect(valueOf(byLabel<HTMLElement>(r.container, 'Mode'))).toBe('auto'), r);
   });
 
   it('a round limit that is not a whole number is told under the field and nothing is sent; an empty one is the default (M25)', async () => {
     const calls: unknown[] = [];
     const s = testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [] });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
+    await r.act(() => button(r, 'Change round limit').click());
     const limit = () => byLabel<HTMLInputElement>(r.container, 'Round limit');
     for (const bad of ['three', '3.5', '1e3', '0', '-2', '5 rounds']) {
       await r.act(() => type(limit(), bad));
-      await r.act(() => button(r, 'Save mode').click());
+      await r.act(() => button(r, 'Save round limit').click());
       await waitFor(() => expect(errorOf(limit())).toBe(ROUNDS_ERROR), r);
       // the keyboard goes to the field that needs fixing, and the page is not left saying it saved
       await waitFor(() => expect(document.activeElement).toBe(limit()), r);
@@ -104,16 +126,16 @@ describe('RoomAgentsPanel', () => {
     // typing again takes the old error away; a whole number saves
     await r.act(() => type(limit(), '4'));
     expect(errorOf(limit())).toBe(null);
-    await r.act(() => button(r, 'Save mode').click());
+    await r.act(() => button(r, 'Save round limit').click());
     await waitFor(() => expect(calls).toEqual([{ roomId: 'room_1', mode: 'auto', order: [], moderator: '', maxRounds: 4 }]), r);
     // an empty field still means "the core's default" (0)
+    await r.act(() => button(r, 'Change round limit').click());
     await r.act(() => type(limit(), ''));
-    await r.act(() => button(r, 'Save mode').click());
+    await r.act(() => button(r, 'Save round limit').click());
     await waitFor(() => expect(calls[1]).toEqual({ roomId: 'room_1', mode: 'auto', order: [], moderator: '', maxRounds: 0 }), r);
-    expect(errorOf(limit())).toBe(null);
   });
 
-  it('invites an agent, removes one, asks for a reply and lists turns with cost not reported when zero', async () => {
+  it('invites an agent in one click, removes one, asks for a reply and lists turns with cost not reported when zero (X15)', async () => {
     const invites: unknown[][] = [];
     const removes: unknown[][] = [];
     const replies: string[] = [];
@@ -121,27 +143,63 @@ describe('RoomAgentsPanel', () => {
     const s = testServices({
       roomInvite: async (...a: unknown[]) => (invites.push(a), []),
       roomRemoveMember: async (...a: unknown[]) => (removes.push(a), []),
-      roomReply: async (id: string) => (replies.push(id), {}),
+      roomReply: async (id: string) => (replies.push(id), { trigger: id, turns: [], bounded: false, why: 'nobody addressed' }),
       roomSetMode: async () => room,
       roomTurns: async () => [turn],
     });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} lastHumanMessageId="msg_1" />, s);
-    const invite = byLabel<HTMLElement>(r.container, 'Invite an agent');
-    expect(optionsOf(invite).map((o) => o.label)).toEqual(['Invite an agent...', 'Rex (reviewer)']);
-    expect(button(r, 'Invite').disabled).toBe(true);
-    await r.act(() => type(invite, 'a2'));
-    await r.act(() => button(r, 'Invite').click());
+    const invite = r.container.querySelector<HTMLElement>('[data-testid="room-invite"]')!;
+    expect(Array.from(invite.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Invite Rex']);
+    await r.act(() => button(r, 'Invite Rex').click());
     await waitFor(() => expect(invites).toEqual([['room_1', 'a2']]), r);
-    await waitFor(() => expect(valueOf(invite)).toBe(''), r);
     await r.act(() => button(r, 'Remove').click());
     await r.act(() => button(r, 'Yes, remove Dana from this room').click());
     await waitFor(() => expect(removes).toEqual([['room_1', 'a1']]), r);
     await r.act(() => button(r, 'Ask agents to reply to my last message').click());
     await waitFor(() => expect(replies).toEqual(['msg_1']), r);
+    // the responder's outcome is said, not dropped (X12)
+    await waitFor(() => expect(r.$('[data-testid="room-reply-note"]')?.textContent).toBe('No agent answered: nobody was mentioned.'), r);
     const row = await waitFor(() => r.container.querySelector('[data-testid="room-turn"]')!, r);
     expect(row.textContent).toContain('not reported');
     expect(row.textContent).toContain('mention');
     expect(row.textContent).toContain('100/20 tokens');
+  });
+
+  it('offers Ask again on a turn that gave no answer, once, and asks that agent on that message (X12)', async () => {
+    const asked: unknown[][] = [];
+    const base: RoomTurn = { turnId: 'tr1', roomId: 'room_1', triggerId: 'msg_1', agentId: 'a1', round: 1, reason: 'mention', mode: 'auto', status: 'failed', contextMessages: 0, contextTokens: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, startedAt: 1, endedAt: 2, askable: true };
+    const s = testServices({
+      roomReply: async (...a: unknown[]) => (asked.push(a), { trigger: 'msg_1', turns: [{ turnId: 'tr3', agentId: 'a1', status: 'done', reason: 'asked' }], bounded: false }),
+      roomSetMode: async () => room,
+      // tr4 failed in a chain: its trigger is another agent's reply, which an agent is never asked to answer, so no Ask again
+      roomTurns: async () => [{ ...base, turnId: 'tr4', triggerId: 'msg_agent', status: 'failed', startedAt: 4, askable: false }, { ...base, turnId: 'tr2', triggerId: 'msg_2', status: 'done', startedAt: 3 }, base],
+    });
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
+    await waitFor(() => expect(r.$$('[data-testid="room-turn"]')).toHaveLength(3), r);
+    const again = r.$$('[data-testid="room-turn-ask-again"]');
+    expect(again).toHaveLength(1);
+    await r.act(() => (again[0] as HTMLElement).click());
+    await waitFor(() => expect(asked).toEqual([['msg_1', 'a1']]), r);
+  });
+
+  it('has no Invite at all when the whole crew is already in the room (X15)', () => {
+    const r = mount(<RoomAgentsPanel room={room} agents={agents.slice(0, 1)} members={members} />, testServices({ roomTurns: async () => [] }));
+    expect(r.container.querySelector('[data-testid="room-invite"]')).toBeNull();
+    expect(r.container.textContent).not.toContain('Invite');
+  });
+
+  it('a direct message shows only its agent, with Inspect and Edit, and the turns: no turn-taking, Remove or Invite (X16)', async () => {
+    const dm: Room = { ...room, kind: 'dm', name: 'dm:human:kyle+a1', agentId: 'a1' };
+    const s = testServices({ roomTurns: async () => [], roomJoinRules: async () => [] });
+    const r = mount(<RoomAgentsPanel room={dm} agents={agents} members={members} lastHumanMessageId="msg_1" />, s);
+    const panel = r.container.querySelector<HTMLElement>('[data-testid="room-agents"]')!;
+    expect(Array.from(panel.querySelectorAll('section')).map((x) => x.getAttribute('aria-label'))).toEqual(['Agents']);
+    expect(panel.textContent).not.toContain('Remove');
+    expect(panel.textContent).not.toContain('Invite');
+    expect(panel.querySelector('[data-testid="room-turns"]')).not.toBeNull();
+    expect(byLabel<HTMLAnchorElement>(panel, 'Edit Dana').getAttribute('href')).toBe('/team?edit=a1');
+    await r.act(() => byLabel<HTMLButtonElement>(panel, 'Inspect Dana').click());
+    expect(s.ui.inspectId).toBe('a1');
   });
 
   // audit 2026-10-16, L40: a removed member loses its place in the room, so the removal asks first
@@ -199,37 +257,26 @@ describe('RoomAgentsPanel', () => {
   });
 });
 
-describe('JoinRules (P130)', () => {
-  it('lists the project\'s rules in words, adds one with its folder and state, and removes one', async () => {
-    const added: unknown[] = [];
-    const removed: string[] = [];
-    let rules: JoinRule[] = [{ id: 'jr1', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'auth/', state: 'observer', createdBy: 'human:kyle', createdAt: 1 }];
-    const s = testServices({
-      roomTurns: async () => [],
-      roomJoinRules: async () => rules,
-      roomJoinRuleAdd: async (rule) => {
-        added.push(rule);
-        const r = { id: 'jr2', projectId: rule.projectId, agentId: rule.agentId, pathPrefix: rule.pathPrefix, state: rule.state ?? 'observer', createdBy: 'human:kyle', createdAt: 2 };
-        rules = [...rules, r];
-        return r;
-      },
-      roomJoinRuleRemove: async (id) => {
-        removed.push(id);
-        rules = rules.filter((r) => r.id !== id);
-      },
-    });
-    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
-    await waitFor(() => expect(r.container.querySelectorAll('[data-testid="join-rule"]').length).toBe(1), r);
-    expect(r.container.querySelector('[data-testid="join-rule"]')!.textContent).toContain('Rex joins as an observer: tasks naming a file under auth/');
-    await r.act(() => type(byLabel(r.container, 'Agent for the rule'), 'a1'));
-    await r.act(() => type(byLabel(r.container, 'Folder (optional)'), ' web/ '));
-    await r.act(() => type(byLabel(r.container, 'Joins as'), 'active'));
-    await r.act(() => button(r, 'Add rule').click());
-    await waitFor(() => expect(added).toEqual([{ projectId: 'prj_1', agentId: 'a1', pathPrefix: 'web/', state: 'active' }]), r);
+describe('JoinRules (P130, X17)', () => {
+  it("says each agent's rule in words with Change to its editor; the rules are set there, not here", async () => {
+    const rules: JoinRule[] = [
+      { id: 'jr1', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'auth/', state: 'observer', createdBy: 'human:kyle', createdAt: 1 },
+      { id: 'jr2', projectId: 'prj_1', agentId: 'a1', pathPrefix: '', state: 'active', createdBy: 'human:kyle', createdAt: 2 },
+      // a second folder rule of Rex is named too, not hidden behind the first
+      { id: 'jr3', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'api/', state: 'observer', createdBy: 'human:kyle', createdAt: 3 },
+    ];
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [], roomJoinRules: async () => rules }));
     await waitFor(() => expect(r.container.querySelectorAll('[data-testid="join-rule"]').length).toBe(2), r);
-    expect(r.container.querySelectorAll('[data-testid="join-rule"]')[1]!.textContent).toContain('Dana joins as an active member: tasks naming a file under web/');
-    await r.act(() => byLabel<HTMLButtonElement>(r.container, 'Remove the rule for Rex').click());
-    await waitFor(() => expect(removed).toEqual(['jr1']), r);
+    const lines = Array.from(r.container.querySelectorAll('[data-testid="join-rule"]')).map((li) => li.querySelector('.what')!.textContent);
+    expect(lines).toEqual(['Rex joins the rooms of tasks that touch auth/ or api/ as an observer', 'Dana joins every task room as an active member']);
+    expect(byLabel<HTMLAnchorElement>(r.container, 'Change the join rule of Rex').getAttribute('href')).toBe('/team?edit=a2');
+    expect(r.container.querySelector('[data-testid="join-rules"] input')).toBe(null);
+    expect(r.container.textContent).not.toContain('Add rule');
+  });
+
+  it('says where to set one when none is set', async () => {
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [], roomJoinRules: async () => [] }));
+    await waitFor(() => expect(r.container.querySelector('[data-testid="join-rules-none"]')!.textContent).toBe("No agent joins task rooms by rule. Set it on an agent's editor, under More settings."), r);
   });
 
   it('is not shown in a direct message', () => {

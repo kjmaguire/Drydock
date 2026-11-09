@@ -328,6 +328,17 @@ Controls:
 
 Every release states which phase is active. The UI shows the isolation level in the Agent Inspector.
 
+**What the app writes outside its data folder (G1, 2026-11-03).** Besides the installer's own entries (HKCU only, the Apps &
+features entry and the Start menu shortcut), the running app's Windows notifications (Wails's notifications service,
+`app/notify_windows.go`) register, per user and without administrator rights, `HKCU\Software\Classes\AppUserModelId\Drydock`
+(DisplayName, IconUri, CustomActivator) and `HKCU\Software\Classes\CLSID\{GUID}\LocalServer32` (drydock.exe, so a click on a
+notification can start it), and write the icon to `%TEMP%\Drydock{GUID}.png`. go-toast v2.0.3, which the service uses, also
+writes drydock.exe to `HKCU\Software\Classes\CLSID\{0F82E845-CB89-4039-BDBF-67CA33254C76}\LocalServer32`, its built-in
+activation class (the path is made before Wails gives it its own GUID), unless a value is there already; that class is shared by
+every go-toast app. Nothing under HKLM. The uninstaller removes them (`packaging/windows/drydock.nsi`); go-toast's built-in class
+only while it still names this install's drydock.exe, so another app's registration there is left alone. A notification carries only the Inbox item's kind, project and task key, never a request's
+text, code, a prompt or a secret; the route a click opens comes back from Windows and is checked (the Inbox or one task's page).
+
 ## 15. Tests that prove it (written with each slice, run on the Windows runner)
 
 Approval consume/mismatch/expiry/lineage-cancel; descriptor canonical JSON golden vectors; path guard fixture suite (junction, symlink, UNC, `\\?\`, ADS, 8.3 names, reserved names, trailing dot, case, long paths, TOCTOU swap); analyzer golden corpus per flavor (POSIX, PowerShell phase A, cmd) including obfuscations that must come out `Opaque`; secrets redaction across every scan point; data_class refusal in router, Context Engine, LLMClient, config writer; environment dump shows no production/Cloudflare/GitHub tokens; agent-edited instruction file never reaches memory without a human accept; hook/config drift detection; consent gate blocks Antigravity start without a current acknowledgement; audit chain verification detects a modified row.

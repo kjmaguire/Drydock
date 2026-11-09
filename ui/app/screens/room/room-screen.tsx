@@ -8,22 +8,23 @@ import type { Message, Room } from '../../api/types.ts';
 import { authorName, roomLabel } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
-import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
 import { Page, actionsEnd } from '../../ui/layout.tsx';
-import { MoreMenu } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
+import { askableAgents, askAgainOf, newestHumanMessage, outcomeWords } from './asks.ts';
 import { Composer } from './composer.tsx';
 import { MessageFeed } from './feed.ts';
 import { CheckGroup, MessageItem } from './message-item.tsx';
 import { buildRows, replyCounts, type Row } from './messages.ts';
 import { RoomExports } from './room-exports.tsx';
 import { RoomMembers } from './room-members.tsx';
+import { modeWords } from './turn-taking.ts';
 
 export function RoomScreen(handle: Handle<{ id: string }>) {
   const s = services(handle);
@@ -51,7 +52,7 @@ export function RoomScreen(handle: Handle<{ id: string }>) {
       <Page title="Channel" icon={MessageSquare}>
         <Empty title="Channel not found" icon={MessagesSquare}>
           <p>It may belong to another project, or it was never created.</p>
-          <ErrorNote error={fetched.error} />
+          <ErrorNote error={fetched.error} retry={fetched.reload} />
         </Empty>
       </Page>
     );
@@ -153,12 +154,20 @@ const jumpCss = css({
   '&:hover': { background: t.accentHover },
 });
 const notesCss = css({ padding: `0 ${t.s5}` });
+// the ask row (X12): why nobody answered, then one button per agent that can be asked
+const askRowCss = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: t.s2,
+  margin: '0',
+  padding: `${t.s2} ${t.s6} 0 ${t.s5}`,
+  '& .why': { color: t.textMuted, fontSize: t.textSm },
+});
 const olderCss = css({ display: 'flex', justifyContent: 'center', padding: `${t.s2} 0` });
 
-/** The person is looking at this window: it is visible and has focus. Messages are marked read only then. */
-export function windowAttended(doc: Document = document): boolean {
-  return doc.visibilityState === 'visible' && doc.hasFocus();
-}
+import { windowAttended } from '../../lib/attended.ts';
+export { windowAttended };
 
 
 /** The conversation of one room. Keyed by room id: a new room is a new feed. */
@@ -178,7 +187,38 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     key: () => handle.props.room.id,
     enabled: () => !handle.props.room.archived,
   });
+  // the project's own "agents answer" switch (not Enabled, which also covers the license): while it is off the room says so
+  // with Turn on, and nothing promises an answer to a mention (X13)
+  const dev = query(handle, {
+    load: () => s.client.projectdevGet(handle.props.room.projectId),
+    when: (e) => e.type === 'project.dev_settings' && e.projectId === handle.props.room.projectId,
+    key: () => handle.props.room.projectId,
+    enabled: () => !handle.props.room.archived,
+  });
+  // what the newest chain of the room did (X12): why nobody answered the person's message, with Ask under it
+  const outcome = query(handle, {
+    load: () => s.client.roomReplyOutcome(handle.props.room.id),
+    when: (e) => e.type === 'room.reply_outcome' && (e.data as { room?: string } | undefined)?.room === handle.props.room.id,
+    key: () => handle.props.room.id,
+    enabled: () => !handle.props.room.archived,
+  });
   const act = action(handle);
+  /** The person's message the ask row is open for from its hover action; undefined: only after a message nobody answered. */
+  let askFor: string | undefined;
+  /** What the last Ask said, when it gave no answer (X12): the outcome in words. */
+  let askNote = '';
+  const ask = (messageId: string, agentId: string) =>
+    void act.run('ask', async () => {
+      askFor = undefined;
+      const o = await s.client.roomReply(messageId, agentId);
+      askNote = (o?.turns ?? []).length ? '' : outcomeWords(o);
+      await Promise.all([turns.reload(), outcome.reload()]);
+    });
+  const turnOn = () =>
+    void act.run('replies', async () => {
+      const cur = dev.data ?? (await s.client.projectdevGet(handle.props.room.projectId));
+      dev.set(await s.client.projectdevSet(handle.props.room.projectId, { ...cur, respond: true }));
+    });
   const stop = () =>
     void act.run('stop', async () => {
       await s.client.roomStop(handle.props.room.id);
@@ -233,9 +273,10 @@ export function Conversation(handle: Handle<{ room: Room }>) {
   });
 
   // the rows are rebuilt only when the messages or the "new" line change, not on every scroll that moves the window
-  let built: { msgs: readonly Message[]; newAfter: number | undefined; rows: Row[]; replies: Map<string, number> } | undefined;
+  let built: { msgs: readonly Message[]; newAfter: number | undefined; rows: Row[]; replies: Map<string, number>; byId: Map<string, Message> } | undefined;
   const rowsOf = (msgs: readonly Message[]) => {
-    if (built?.msgs !== msgs || built.newAfter !== newAfter) built = { msgs, newAfter, rows: buildRows(msgs, { newAfterSeq: newAfter }), replies: replyCounts(msgs) };
+    if (built?.msgs !== msgs || built.newAfter !== newAfter)
+      built = { msgs, newAfter, rows: buildRows(msgs, { newAfterSeq: newAfter }), replies: replyCounts(msgs), byId: new Map(msgs.map((m) => [m.id, m])) };
     return built;
   };
 
@@ -249,14 +290,23 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     const { room } = handle.props;
     const agents = s.project.agentList;
     const msgs = feed.messages;
-    const { rows, replies } = rowsOf(msgs);
+    const { rows, replies, byId } = rowsOf(msgs);
     const label = roomLabel(room, agents);
     const mem = members.data ?? [];
     const muted = !!s.project.unread.data?.find((u) => u.roomId === room.id)?.muted;
+    const repliesOff = !room.archived && dev.data?.respond === false;
     const answering = (turns.data ?? [])
       .filter((x) => x.status === 'running')
       .map((x) => agents.find((a) => a.id === x.agentId)?.name || x.agentId)
       .join(' and ');
+    const askable = room.archived || repliesOff ? [] : askableAgents(mem);
+    const nameOf = (id: string) => agents.find((a) => a.id === id)?.name || id;
+    // the ask row (X12): under a message of the person nobody answered (the responder's outcome says why), or for the message
+    // whose hover action was clicked; never while an agent answers it
+    const newest = newestHumanMessage(msgs);
+    const o = outcome.data;
+    const unanswered = !!o && o.trigger === newest && !(o.turns ?? []).length && !answering ? outcomeWords(o) : '';
+    const askTarget = askFor ?? (unanswered ? newest : undefined);
     const stick = list.stick;
     if (stick) seenSeq = feed.lastSeq;
     // the messages are in seq order: count back from the newest (older pages above are never "new")
@@ -286,9 +336,23 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             replies={replies.get(r.m.id) ?? 0}
             onReply={() => s.ui.openThread(room.id, r.m.id)}
             onOpenRoot={r.m.thread_root_id ? () => s.ui.openThread(room.id, r.m.thread_root_id!) : undefined}
+            onAsk={
+              askable.length && r.m.author.kind === 'human' && r.m.type === 'CHAT'
+                ? () => {
+                    askFor = r.m.id;
+                    void handle.update();
+                  }
+                : undefined
+            }
+            {...askAgainProps(r.m)}
           />
         ),
     );
+    function askAgainProps(m: Message) {
+      const again = askAgainOf(m, (id) => byId.get(id));
+      if (!again || !askable.includes(again.agentId)) return {};
+      return { onAskAgain: () => ask(again.messageId, again.agentId), askAgainName: nameOf(again.agentId) };
+    }
     handle.queueTask(() => list.settle());
     return (
       <section mix={screenCss} class="conversation" aria-label={`Conversation ${room.name}`}>
@@ -306,17 +370,25 @@ export function Conversation(handle: Handle<{ room: Room }>) {
               ) : null}
             </div>
             <div mix={topicCss} title={room.topic || undefined}>
-              {room.topic || (room.kind === 'dm' ? 'A direct conversation' : room.kind === 'task' ? "The task's own room: reports, check results and reviews" : 'The whole crew and you; agents answer when you mention them')}
+              {room.topic ||
+                (room.kind === 'dm'
+                  ? 'A direct conversation'
+                  : room.kind === 'task'
+                    ? "The task's own room: reports, check results and reviews"
+                    : repliesOff
+                      ? 'The whole crew and you'
+                      : 'The whole crew and you; agents answer when you mention them')}
             </div>
           </div>
           <div mix={actionsCss}>
-            {room.archived ? (
+            {/* a direct message has one agent: no turn-taking, so no mode chip (X16) */}
+            {room.kind === 'dm' ? null : room.archived ? (
               <span mix={modeCss} title="How agents took turns in this room">
-                {room.mode} mode
+                {modeWords(room, agents)}
               </span>
             ) : (
-              <button type="button" mix={[modeCss, modeBtn, on('click', () => s.ui.openRoomPanel())]} data-testid="room-mode" title="Who answers in this room and how: opens the Room tab on the right">
-                {room.mode} mode
+              <button type="button" mix={[modeCss, modeBtn, on('click', () => s.ui.openRoomPanel())]} data-testid="room-mode" title={`${room.mode} mode: who answers in this room and how. Opens the Room tab on the right`}>
+                {repliesOff ? 'Agents do not answer' : modeWords(room, agents)}
               </button>
             )}
             {room.kind === 'task' && room.taskId ? (
@@ -328,15 +400,13 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             <RoomMembers members={mem} agents={agents} />
             <RoomExports room={room} />
             {room.archived ? null : (
-              <MoreMenu
-                label="Room actions"
-                testId="room-menu"
-                items={[
-                  muted
-                    ? { name: 'unmute', label: 'Unmute room', icon: Bell }
-                    : { name: 'mute', label: 'Mute room', icon: BellOff },
-                ]}
-                onSelect={(name) => setMuted(name === 'mute')}
+              <IconButton
+                icon={muted ? BellOff : Bell}
+                label={muted ? 'Unmute room' : 'Mute room'}
+                title={muted ? 'Muted: only messages that name you count. Click to unmute' : 'Mute room: only messages that name you will count'}
+                data-testid="room-mute"
+                disabled={act.busy === 'mute'}
+                mix={[on('click', () => setMuted(!muted))]}
               />
             )}
           </div>
@@ -346,9 +416,19 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             <ErrorNote error={act.error} what="Not done" />
           </div>
         ) : null}
+        {repliesOff ? (
+          <div mix={notesCss} style={{ paddingTop: '12px' }}>
+            <Notice tone="warn" testId="replies-off">
+              Agents do not answer in this project's rooms ·{' '}
+              <Button variant="link" size="sm" disabled={act.busy === 'replies'} mix={[on('click', turnOn)]}>
+                {act.busy === 'replies' ? 'Turning on...' : 'Turn on'}
+              </Button>
+            </Notice>
+          </div>
+        ) : null}
         {feed.error ? (
           <div mix={notesCss} style={{ paddingTop: '12px' }}>
-            <ErrorNote error={feed.error} what="Could not load messages" />
+            <ErrorNote error={feed.error} retry={retryFor(feed)} what="Could not load messages" />
           </div>
         ) : null}
         <div mix={logWrap}>
@@ -418,6 +498,27 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             </button>
           ) : null}
         </div>
+        {askTarget && askable.length ? (
+          <div mix={askRowCss} role="group" aria-label="Ask an agent to answer" data-testid="room-ask">
+            <span class="why" data-testid="room-ask-why">
+              {askFor ? 'Ask an agent to answer this message:' : unanswered}
+            </span>
+            {askable.map((id) => (
+              <Button key={id} size="sm" disabled={!!act.busy} data-testid="room-ask-agent" mix={[on('click', () => ask(askTarget, id))]}>
+                Ask {nameOf(id)}
+              </Button>
+            ))}
+            {askFor ? (
+              <Button size="sm" variant="ghost" mix={[on('click', () => ((askFor = undefined), void handle.update()))]}>
+                Cancel
+              </Button>
+            ) : null}
+          </div>
+        ) : askNote ? (
+          <p mix={askRowCss} role="status" data-testid="room-ask-note">
+            <span class="why">{askNote}</span>
+          </p>
+        ) : null}
         <Composer
           room={room}
           agents={agents}
@@ -425,6 +526,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
           rooms={s.project.roomList}
           disabled={room.archived}
           answering={answering}
+          repliesOff={repliesOff}
           stopping={act.busy === 'stop'}
           onStop={stop}
           onSent={() => {

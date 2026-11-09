@@ -2,6 +2,9 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { PendingRequest, TaskSummary } from '../../api/types.ts';
 import {
+  BOARD_PREFS_MAX,
+  boardPrefsOf,
+  withBoardPrefs,
   newestDiffStat,
   ago,
   APPROVE,
@@ -20,6 +23,7 @@ import {
   editedCriteria,
   elapsed,
   EVIDENCE_LABEL,
+  evidenceLabel,
   evidenceResult,
   failingLine,
   finishedWhen,
@@ -30,7 +34,6 @@ import {
   matchesFilter,
   mergeRequestOf,
   needsMe,
-  newestDiffId,
   ordinal,
   parseAcceptance,
   parseLabels,
@@ -348,14 +351,32 @@ describe('diff lines', () => {
   it('a trailing newline is not an extra line', () => {
     expect(diffLines('+a\n-b\n')).toEqual(['+a', '-b']);
   });
+});
 
-  it('the patch a card is about is the newest evidence of kind diff (L36)', () => {
-    const e = (id: number, kind: string) => ({ id, kind });
-    expect(newestDiffId([])).toBeUndefined();
-    expect(newestDiffId([e(1, 'test'), e(2, 'review')])).toBeUndefined();
-    expect(newestDiffId([e(1, 'test'), e(2, 'diff'), e(3, 'test')])).toBe(2);
-    expect(newestDiffId([e(2, 'diff'), e(5, 'test'), e(9, 'diff'), e(11, 'test')])).toBe(9);
-    // whatever order the core lists them in
-    expect(newestDiffId([e(9, 'diff'), e(2, 'diff'), e(5, 'diff')])).toBe(9);
+describe("a project's board as the person left it (drydock.tasks.board)", () => {
+  it('reads only well-formed filters and a known range; anything else is the plain board', () => {
+    expect(boardPrefsOf({ p1: { filter: { agent: 'a1', label: 'docs', needsMe: true }, range: 'week' } }, 'p1')).toEqual({ filter: { agent: 'a1', label: 'docs', needsMe: true }, range: 'week' });
+    expect(boardPrefsOf({ p1: { filter: { agent: 7, label: '', needsMe: 'yes' }, range: 'year' } }, 'p1')).toEqual({ filter: {}, range: 'today' });
+    for (const raw of [undefined, null, 'x', [], { p2: {} }]) expect(boardPrefsOf(raw, 'p1')).toEqual({ filter: {}, range: 'today' });
+  });
+
+  it("keeps the other projects' boards and at most BOARD_PREFS_MAX of them, the oldest let go first", () => {
+    let raw: unknown = { bad: 'x' };
+    for (let i = 0; i < BOARD_PREFS_MAX + 5; i++) raw = withBoardPrefs(raw, `p${i}`, { filter: { needsMe: true }, range: 'week' });
+    const kept = Object.keys(raw as object);
+    expect(kept.length).toBe(BOARD_PREFS_MAX);
+    expect(kept.includes('p0')).toBe(false);
+    expect(boardPrefsOf(raw, `p${BOARD_PREFS_MAX + 4}`)).toEqual({ filter: { needsMe: true }, range: 'week' });
+    expect(boardPrefsOf(withBoardPrefs(raw, 'p6', { filter: {}, range: 'today' }), 'p7')).toEqual({ filter: { needsMe: true }, range: 'week' });
+  });
+});
+
+describe('evidence kinds in words (critique 2026-11-08)', () => {
+  it('has words for the kinds the core writes, and makes words of any other', () => {
+    expect(evidenceLabel('review_requested')).toBe('Sent to you for review');
+    expect(evidenceLabel('merge-conflicts')).toBe('Merge conflicts');
+    expect(evidenceLabel('typecheck')).toBe('Type check');
+    expect(evidenceLabel('some_new-kind')).toBe('Some new kind');
+    expect(evidenceLabel('')).toBe('');
   });
 });

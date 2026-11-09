@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Pack, PackConsult, PackSearchResult } from '../../api/extTypes.ts';
-import { byLabel, byText, cleanup, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, mount, optionsOf, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
 import { ConsultView, PacksScreen, SearchResultView } from './packs-screen.tsx';
 
 afterEach(cleanup);
@@ -28,9 +28,16 @@ function servicesWith(client: Partial<Client>) {
     projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never],
     packList: async () => [pack()],
     packAttachments: async () => [],
+    agentList: async () => [{ id: 'agt_1', projectId: 'prj_1', name: 'Ada', adapter: 'claude', role: 'Backend', model: '', effort: '', providerId: '', permissionMode: '', status: '' }],
+    roomList: async () => [],
+    roomUnread: async () => [],
+    presenceList: async () => [],
+    needsYouList: async () => [],
+    taskList: async () => [],
     ...client,
   });
   s.workspace.start();
+  s.project.start();
   return s;
 }
 
@@ -88,6 +95,8 @@ describe('PacksScreen', () => {
       }),
     );
     await waitFor(() => need(r.$('[data-testid="pack"][data-pack="godocs"]')), r);
+    // the pasted manifest is behind "Paste a manifest...", folded
+    expect((r.$('[data-testid="pack-paste"]') as HTMLDetailsElement).open).toBe(false);
     type(byLabel<HTMLTextAreaElement>(r.container, 'Pack manifest (YAML)'), 'schema: 1\nid: x');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Install pack').click());
@@ -105,6 +114,71 @@ describe('PacksScreen', () => {
     expect(r.container.querySelector('script')).toBe(null);
     expect(Array.from(r.container.querySelectorAll('a')).every((a) => !/^javascript/i.test(a.getAttribute('href') ?? ''))).toBe(true);
     expect(r.container.textContent).toContain('dropped because they looked like instructions');
+  });
+
+  it('installs a ready pack with one click: installed, attached to the roles it names, refreshed; the card says it refreshes by itself', async () => {
+    const calls: string[] = [];
+    let list: Pack[] = [];
+    const tpl = { id: 'cloudflare', manifest: { title: 'Cloudflare Developer Docs', kind: 'hybrid', visibility: 'public', attach: { roles: ['Backend', 'DevOps'] } }, yaml: 'schema: 1\nid: cloudflare' };
+    const r = mount(
+      <PacksScreen />,
+      servicesWith({
+        packList: async () => list,
+        packTemplates: async () => [tpl, { ...tpl, id: 'msdocs', manifest: { ...tpl.manifest, title: 'Microsoft Learn', attach: { roles: [] } } }],
+        packInstall: async (y) => (calls.push(`install ${y.split('\n')[1]}`), pack({ id: 'cloudflare' })),
+        packAttachDefaults: async (p, id) => void calls.push(`attach ${p} ${id}`),
+        packRefresh: async (id, force) => {
+          calls.push(`refresh ${id} ${force}`);
+          list = [pack({ id: 'cloudflare', title: 'Cloudflare Developer Docs', lastSuccessAt: '2026-11-01T10:00:00Z', manifest: { refresh: { mode: 'scheduled' } } })];
+          return { pages: 3, chunks: 9 } as never;
+        },
+      }),
+    );
+    const rows = await waitFor(() => {
+      const xs = Array.from(r.$$('[data-testid="pack-template"]'));
+      if (xs.length !== 2) throw new Error('not yet');
+      return xs as HTMLElement[];
+    }, r);
+    expect(rows[0]!.textContent).toContain('Cloudflare Developer Docs');
+    expect(rows[0]!.textContent).toContain('for Backend, DevOps');
+    expect(rows[1]!.textContent).toContain('for every role');
+    await r.act(() => (rows[0]!.querySelector('[data-testid="pack-template-install"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual(['install id: cloudflare', 'attach prj_1 cloudflare', 'refresh cloudflare true']), r);
+    // installed: it leaves the ready list, and its card says it refreshes by itself
+    await waitFor(() => expect(r.$$('[data-testid="pack-template"]').length).toBe(1), r);
+    const line = await waitFor(() => need(r.$('[data-testid="pack"][data-pack="cloudflare"] [data-testid="pack-refresh-line"]')), r);
+    expect(line.textContent).toContain('Refreshes by itself · last');
+  });
+
+  it('installs a live ready pack without refreshing it (the core refuses that), shows no error, and its card offers no refresh', async () => {
+    const calls: string[] = [];
+    let list: Pack[] = [];
+    const tpl = { id: 'msdocs', manifest: { title: 'Microsoft Learn', kind: 'live', visibility: 'public', attach: { roles: [] } }, yaml: 'schema: 1\nid: msdocs' };
+    const r = mount(
+      <PacksScreen />,
+      servicesWith({
+        packList: async () => list,
+        packTemplates: async () => [tpl],
+        packInstall: async (y) => {
+          calls.push(`install ${y.split('\n')[1]}`);
+          list = [pack({ id: 'msdocs', title: 'Microsoft Learn', kind: 'live', manifest: { refresh: { mode: 'manual' } } })];
+          return list[0]!;
+        },
+        packAttachDefaults: async (p, id) => void calls.push(`attach ${p} ${id}`),
+        packRefresh: async (id) => {
+          calls.push(`refresh ${id}`);
+          throw new Error('packs: a live pack has nothing to refresh');
+        },
+      }),
+    );
+    const row = await waitFor(() => need(r.$('[data-testid="pack-template"]')), r);
+    await r.act(() => (row.querySelector('[data-testid="pack-template-install"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual(['install id: msdocs', 'attach prj_1 msdocs']), r);
+    const card = await waitFor(() => need(r.$('[data-testid="pack"][data-pack="msdocs"]')), r);
+    expect(card.querySelector('[data-testid="pack-refresh-line"]')!.textContent).toBe('Asked live, never stored');
+    expect(Array.from(card.querySelectorAll('button')).some((b) => b.textContent === 'Refresh now')).toBe(false);
+    expect(r.container.textContent).not.toContain('nothing to refresh');
+    await waitFor(() => expect(r.$$('[data-testid="pack-template"]').length).toBe(0), r);
   });
 
   it('quarantined passages are released only by the button, and attach goes to this project', async () => {
@@ -127,7 +201,10 @@ describe('PacksScreen', () => {
       }),
     );
     const card = await waitFor(() => need(r.$('[data-testid="pack"]')), r);
-    type(byLabel(card, 'Role for godocs'), 'backend');
+    // who it is for is chosen from the crew's roles and agents, not typed
+    const who = byLabel<HTMLElement>(card, 'Attach godocs for');
+    await waitFor(() => expect(optionsOf(who).map((o) => o.value)).toEqual(['', 'role:backend', 'agent:agt_1']), r);
+    choose(who, 'role:backend');
     r.root.flush();
     await r.act(() => byText(card, 'button', 'Attach to this project').click());
     await waitFor(() => expect(attached).toEqual([['prj_1', 'godocs', '', 'backend']]), r);

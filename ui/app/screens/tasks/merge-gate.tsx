@@ -3,7 +3,13 @@
 //   or checks were still running at the deadline. Check again (answered), merge without CI this time (approved with
 //   {waive_ci: true}; only a person can, and it never covers a failed check), or stop (rejected).
 // - the merge gate (payload gate "merge"): GitHub would not merge the pull request now (branch protection, behind its base,
-//   conflicts, a draft, not worked out yet). Check again or stop. Drydock never bypasses branch protection.
+//   conflicts, a draft, not worked out yet). Check again or stop. Drydock never bypasses branch protection. A pull request
+//   behind its base or conflicting with it (payload sync) is brought up to date from here (C8: answered with {sync: true}):
+//   the base is merged into the branch, then the checks, the review, CI and the approval run again.
+// - a GitHub failure of a pull-request step (payload gate "github", C4): GitHub or the network failed (a transient failure was
+//   tried again three times first), gh is signed out, or the branch changed after the review. Try again (answered: the same step
+//   runs again, nothing paid is redone), or stop (rejected), with the fix the core worked out (sign in, wait for the network,
+//   review the new commits).
 // Check names come from GitHub and are shown as plain text.
 //
 // And the question a blocking gate asks when none of its checks could judge (payload gate "verdict", audit 2026-10-16, M28):
@@ -13,11 +19,12 @@
 // (rejected, after a second click).
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { ExternalLink, Octagon, RefreshCw, ShieldOff } from 'lucide';
+import { ExternalLink, GitMerge, Octagon, RefreshCw, ShieldOff } from 'lucide';
 import { isRecord } from '../../api/guards.ts';
 import type { PendingRequest } from '../../api/types.ts';
 import { visible } from '../../lib/visible.ts';
-import { Button } from '../../ui/button.tsx';
+import { routes } from '../../routes.ts';
+import { Button, buttonStyle } from '../../ui/button.tsx';
 import { formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
@@ -34,6 +41,14 @@ export interface CIGatePayload {
   running?: string[] | null;
   /** What Drydock could not see or did not accept (an agent's waiver, unreadable branch protection). */
   notes?: string[] | null;
+  /** How long "Keep waiting" waits again, in minutes (the project's CI wait for this reason, C7); absent from older cores. */
+  waitMinutes?: number;
+}
+
+/** The CI gate's primary answer: wait the project's window again (C7), in words. */
+export function keepWaitingLabel(p: Pick<CIGatePayload, 'waitMinutes'>): string {
+  const n = p.waitMinutes ?? 0;
+  return n > 0 ? `Keep waiting another ${n} ${n === 1 ? 'minute' : 'minutes'}` : 'Check CI again';
 }
 
 /** The merge step's payload when GitHub would not merge (pipeline.MergePR). */
@@ -43,7 +58,34 @@ export interface MergeGatePayload {
   url?: string;
   state: string;
   reason: string;
+  /** Behind its base or conflicting with it: the branch can be brought up to date from here (C8); absent from older cores. */
+  sync?: boolean;
 }
+
+/** pipeline.githubTrouble's payload (gate "github"): the step that failed, GitHub's error, and what fixes it. */
+export interface GitHubTroublePayload {
+  gate: 'github';
+  step: string;
+  error: string;
+  /** gh_signin, network, review_again, or '' when nothing in particular is known. */
+  fix: string;
+  pr?: number;
+}
+
+export function githubTroublePayload(p: PendingRequest): GitHubTroublePayload | undefined {
+  const v = p.spec.payload;
+  if (p.spec.kind !== 'question' || !isRecord(v) || v.gate !== 'github') return undefined;
+  const text = (x: unknown) => (typeof x === 'string' ? x : '');
+  return { gate: 'github', step: text(v.step), error: text(v.error), fix: text(v.fix), pr: typeof v.pr === 'number' ? v.pr : undefined };
+}
+
+/** What fixes a GitHub failure, in words, by the core's fix. */
+export const GITHUB_FIX: Record<string, string> = {
+  gh_signin: 'GitHub refused the sign-in. Run gh auth login in a terminal (the GitHub page checks it), then try again.',
+  network: 'GitHub or the network did not answer. Try again in a while.',
+  review_again:
+    'The branch changed after the review, so it is not merged. Stop, then run the task again so the new commits are reviewed. Try again only helps once the branch is back at the reviewed commit.',
+};
 
 /** One check that gave no verdict, as the core lists it (pipeline.unjudged). */
 export interface UnjudgedCheck {
@@ -115,6 +157,9 @@ const CI_REASON: Record<string, string> = {
   running: 'CI started but did not finish in time.',
 };
 
+const CI_NONE_QUESTION =
+  "Merge this commit without CI and set this project to no CI? Later pull requests then merge after the review alone, without this question. Checks that do report must still pass. It is recorded with your name, and you can change it in the project's Development flow settings.";
+
 const MERGE_HINT: Record<string, string> = {
   blocked: 'A required review or check is missing or has not passed. The pull request on GitHub shows which.',
   behind: 'The base branch moved on and its protection wants the branch up to date first. A commit added to the branch on GitHub was not reviewed, so Drydock will not merge it unseen.',
@@ -147,8 +192,19 @@ function GitHubLink(handle: Handle<{ url?: string; pr: number }>) {
   };
 }
 
-/** The CI gate: check again, merge without CI this time, or stop. */
+/**
+ * The CI gate: check again, merge without CI this time, or stop. When no CI ran at all, a fourth answer: "this repository has
+ * no CI, remember it" (H13), asked a second time in words that say what changes; yes merges this commit without CI and sets
+ * the project's "CI before merge" to none with the person's name ({waive_ci: true, ci_none: true}).
+ */
 export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
+  let remembering = false;
+  let rememberBtn: HTMLElement | undefined;
+  const setRemembering = async (v: boolean) => {
+    remembering = v;
+    await handle.update();
+    if (!v) rememberBtn?.focus();
+  };
   return () => {
     const { payload: p, busy, readOnly, onRespond } = handle.props;
     const missing = p.missing ?? [];
@@ -182,10 +238,72 @@ export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boole
         <p>Merging without CI applies to this commit only and is recorded with your name; a check that fails is still sent back to the worker.</p>
         <div mix={formActions}>
           <Button variant="primary" icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
-            Check CI again
+            {keepWaitingLabel(p)}
           </Button>
           <Button icon={ShieldOff} disabled={busy || readOnly} mix={on('click', () => void onRespond('approved', { waive_ci: true }))}>
             Merge without CI this time
+          </Button>
+          {p.reason === 'none' ? (
+            <Button
+              icon={ShieldOff}
+              disabled={busy || readOnly || remembering}
+              data-testid="ci-gate-remember"
+              mix={[ref((n) => (rememberBtn = n as HTMLElement)), on('click', () => void setRemembering(true))]}
+            >
+              No CI in this repository, remember it
+            </Button>
+          ) : null}
+          <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
+            Stop
+          </Button>
+        </div>
+        {remembering && p.reason === 'none' ? (
+          <div mix={confirmCss} role="group" aria-label={CI_NONE_QUESTION} data-testid="ci-gate-remember-confirm">
+            <p>{CI_NONE_QUESTION}</p>
+            <div mix={formActions}>
+              <Button variant="danger" disabled={busy || readOnly} mix={on('click', () => void onRespond('approved', { waive_ci: true, ci_none: true }))}>
+                Yes, this repository has no CI
+              </Button>
+              <Button mix={[ref((n) => (n as HTMLElement).focus()), on('click', () => void setRemembering(false))]}>Go back</Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+}
+
+/** What the merge gate says when the branch can be brought up to date (C8), by GitHub's state. */
+const SYNC_HINT: Record<string, string> = {
+  behind: 'The base branch moved on and its protection wants the branch up to date first.',
+  dirty: 'The branch conflicts with the base branch.',
+};
+
+/** The merge gate: GitHub would not merge now. Bring the branch up to date (behind or conflicting), check again, or stop. */
+export function MergeGatePanel(handle: Handle<{ payload: MergeGatePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
+  return () => {
+    const { payload: p, busy, readOnly, onRespond } = handle.props;
+    const sync = p.sync === true;
+    return (
+      <div mix={gateCss} data-testid="merge-gate" data-state={p.state}>
+        <p class="what">{(sync ? SYNC_HINT[p.state] : undefined) ?? MERGE_HINT[p.state] ?? visible(p.reason)}</p>
+        <GitHubLink url={p.url} pr={p.pr} />
+        {sync ? (
+          <p data-testid="merge-gate-sync-note">
+            Drydock merges the base branch into this branch. The checks, the review, CI and your approval then run again; a conflict goes to the worker first. Drydock never asks GitHub to bypass
+            branch protection.
+          </p>
+        ) : (
+          <p>Drydock never asks GitHub to bypass branch protection. Fix the cause on GitHub, then check again.</p>
+        )}
+        <div mix={formActions}>
+          {sync ? (
+            <Button variant="primary" icon={GitMerge} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', { sync: true }))}>
+              Bring the branch up to date and check again
+            </Button>
+          ) : null}
+          <Button variant={sync ? 'secondary' : 'primary'} icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
+            Check again
           </Button>
           <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
             Stop
@@ -196,20 +314,28 @@ export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boole
   };
 }
 
-/** The merge gate: GitHub would not merge now. Check again or stop. */
-export function MergeGatePanel(handle: Handle<{ payload: MergeGatePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
+/** A GitHub failure of a pull-request step: what failed, the fix, then Try again or Stop. */
+export function GitHubTroublePanel(handle: Handle<{ payload: GitHubTroublePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
   return () => {
     const { payload: p, busy, readOnly, onRespond } = handle.props;
+    const again = p.fix === 'review_again';
     return (
-      <div mix={gateCss} data-testid="merge-gate" data-state={p.state}>
-        <p class="what">{MERGE_HINT[p.state] ?? visible(p.reason)}</p>
-        <GitHubLink url={p.url} pr={p.pr} />
-        <p>Drydock never asks GitHub to bypass branch protection. Fix the cause on GitHub, then check again.</p>
+      <div mix={gateCss} data-testid="github-trouble" data-fix={p.fix}>
+        <p class="what">
+          Could not {visible(p.step || 'reach GitHub')}: {visible(p.error)}
+        </p>
+        <p data-testid="github-trouble-fix">{GITHUB_FIX[p.fix] ?? 'Fix the cause, then try again: only this step runs again.'}</p>
         <div mix={formActions}>
-          <Button variant="primary" icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
-            Check again
+          {/* a changed branch is not fixed by trying again (the new commits need a review): Stop leads there */}
+          <Button variant={again ? 'secondary' : 'primary'} icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
+            Try again
           </Button>
-          <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
+          {p.fix === 'gh_signin' ? (
+            <a href={routes.github.href()} mix={buttonStyle('secondary')} data-testid="github-trouble-signin">
+              Open GitHub settings
+            </a>
+          ) : null}
+          <Button variant={again ? 'primary' : 'danger'} icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
             Stop
           </Button>
         </div>

@@ -23,7 +23,8 @@ export function ModelField(
     emptyLabel?: string;
     placeholder?: string;
     disabled?: boolean;
-    onChange: (v: string) => void;
+    /** `picked` is true for a choice from the list (an alias or the default), false for the typed field and its way back. */
+    onChange: (v: string, picked: boolean) => void;
   }>,
 ) {
   let typing = false; // "Another model..." was chosen
@@ -47,7 +48,7 @@ export function ModelField(
           spellcheck={false}
           autocomplete="off"
           placeholder={placeholder}
-          mix={on('input', (e) => onChange(e.currentTarget.value))}
+          mix={on('input', (e) => onChange(e.currentTarget.value, false))}
         />
       );
     }
@@ -63,7 +64,12 @@ export function ModelField(
             autocomplete="off"
             placeholder="the model's full name"
             data-testid="model-typed"
-            mix={[ref((n) => (input = n as HTMLInputElement)), on('input', (e) => onChange(e.currentTarget.value))]}
+            mix={[
+              ref((n) => (input = n as HTMLInputElement)),
+              // once typed in, the field stays a field (cleared, or spelling an alias on the way to a longer name) until
+              // "Choose from the list instead"
+              on('input', (e) => ((typing = true), onChange(e.currentTarget.value, false))),
+            ]}
           />
           <Button
             variant="link"
@@ -71,7 +77,7 @@ export function ModelField(
             disabled={disabled}
             mix={on('click', () => {
               typing = false;
-              if (value !== '' && !models.includes(value)) onChange('');
+              if (value !== '' && !models.includes(value)) onChange('', false);
               else void handle.update();
             })}
           >
@@ -94,7 +100,7 @@ export function ModelField(
         disabled={disabled}
         placeholder={placeholder}
         onChange={(v) => {
-          if (v !== OTHER_MODEL) return onChange(v);
+          if (v !== OTHER_MODEL) return onChange(v, true);
           typing = true;
           void handle.update();
           handle.queueTask(() => input?.focus());

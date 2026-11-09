@@ -41,7 +41,7 @@ Imported by Drydock itself:
 | github.com/tree-sitter/tree-sitter-python | v0.25.0 | MIT | Copyright (c) 2016 Max Brunsfeld | Python grammar of the repo map, with its queries/tags.scm. |
 | github.com/tree-sitter/tree-sitter-rust | v0.24.2 | MIT | Copyright (c) 2017 Maxim Sokolov | Rust grammar of the repo map, with its queries/tags.scm. |
 | github.com/tree-sitter/tree-sitter-typescript | v0.23.2 | MIT | Copyright (c) 2017 Max Brunsfeld | TypeScript and TSX grammars of the repo map, with their queries/tags.scm (combined with JavaScript's, as the grammar does) and Drydock's own extra queries. |
-| github.com/wailsapp/wails/v3 | v3.0.0-beta.34 | MIT | Copyright (c) 2018-Present Lea Anthony | The Windows desktop shell: the window and the WebView2 that shows the UI. |
+| github.com/wailsapp/wails/v3 | v3.1.0 | MIT | Copyright (c) 2018-Present Lea Anthony | The Windows desktop shell: the window and the WebView2 that shows the UI. |
 | github.com/zalando/go-keyring | v0.2.8 | MIT | Copyright (c) 2016 Zalando SE | Stores secrets in the Windows Credential Manager. |
 | github.com/zricethezav/gitleaks/v8 | v8.30.1 | MIT | Copyright (c) 2019 Zachary Rice | Scans diffs and outputs for secrets before they are kept or sent. |
 | golang.org/x/oauth2 | v0.37.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry... |
@@ -56,13 +56,13 @@ Pulled in by those, and compiled in:
 |---|---|---|---|---|
 | cel.dev/expr | v0.25.3 | Apache-2.0 | - | - |
 | dario.cat/mergo | v1.0.2 | BSD-3-Clause | Copyright (c) 2013 Dario Castañé. All rights reserved. | - |
+| git.sr.ht/~jackmordaunt/go-toast/v2 | v2.0.3 | Unlicense OR MIT (the author's choice; LICENSE holds both) | Copyright (c) 2023 Jack Mordaunt | Windows toast notifications for Wails's notifications service: the WinRT toast call, the per-user AppUserModelId registry entry and the COM activation class tha... |
 | github.com/BobuSumisu/aho-corasick | v1.0.3 | MIT | Copyright (c) 2019 Øyvind Ingvaldsen | - |
 | github.com/Masterminds/goutils | v1.1.1 | Apache-2.0 | - | - |
 | github.com/Masterminds/semver/v3 | v3.5.0 | MIT | Copyright (C) 2014-2019, Matt Butcher and Matt Farina | - |
 | github.com/Masterminds/sprig/v3 | v3.3.0 | MIT | Copyright (C) 2013-2020 Masterminds | - |
 | github.com/STARRY-S/zip | v0.2.3 | BSD-3-Clause | Copyright (c) 2023, Starry | - |
-| github.com/adrg/xdg | v0.5.3 | MIT | - | - |
-| github.com/andybalholm/brotli | v1.2.6 | MIT | Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors. | - |
+| github.com/andybalholm/brotli | v1.2.8 | MIT | Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors. | - |
 | github.com/antlr4-go/antlr/v4 | v4.13.1 | BSD-3-Clause | Copyright (c) 2012-2023 The ANTLR Project. All rights reserved. | - |
 | github.com/aymanbagabas/go-osc52/v2 | v2.0.1 | MIT | Copyright (c) 2022 Ayman Bagabas | - |
 | github.com/bahlo/generic-list-go | v0.2.0 | BSD-3-Clause | Copyright (c) 2009 The Go Authors. All rights reserved. | - |
@@ -87,7 +87,7 @@ Pulled in by those, and compiled in:
 | github.com/gitleaks/go-gitdiff | v0.9.1 | MIT | Copyright (c) 2019 Billy Keyes | - |
 | github.com/go-logr/logr | v1.4.4 | Apache-2.0 | - | - |
 | github.com/go-logr/stdr | v1.2.2 | Apache-2.0 | - | - |
-| github.com/go-ole/go-ole | v1.3.0 | MIT | - | - |
+| github.com/go-ole/go-ole | v1.3.0 | MIT | - | COM calls on Windows, for Wails's WebView2 shell and go-toast's notification activation class (G1). |
 | github.com/go-viper/mapstructure/v2 | v2.5.0 | MIT | Copyright (c) 2013 Mitchell Hashimoto | - |
 | github.com/google/uuid | v1.6.0 | BSD-3-Clause | Copyright (c) 2009,2014 Google Inc. All rights reserved. | - |
 | github.com/h2non/filetype | v1.1.3 | MIT | Copyright (c) Tomas Aparicio | - |

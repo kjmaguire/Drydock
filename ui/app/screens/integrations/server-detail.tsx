@@ -3,10 +3,11 @@
 // sign-in, its state and the projects that have it; its tools, where you tick the ones that only read, with Find tools (or Test and
 // refresh tools) and the note that says which program that starts; Edit in a dialog, and Remove after a confirmation. A server
 // connected from a vendor's card opens here too (its card links "Tools and settings"), so which of its tools only read is set the
-// same way. Nothing of a project: a server is added to a project, and granted to its agents, on that project's Integrations page.
+// same way. Add to a project (F12) puts it into a project from here; which of that project's agents may use it is chosen on that
+// project's Integrations page (Choose its agents goes there).
 
-import { css, on, type Handle } from 'remix/component';
-import { Globe, KeyRound, Pencil, Plug, RefreshCw, Search, Trash2 } from 'lucide';
+import { css, navigate, on, type Handle } from 'remix/component';
+import { FolderPlus, Globe, KeyRound, Pencil, Plug, RefreshCw, Search, Trash2 } from 'lucide';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { plural } from '../../lib/format.ts';
 import { action, services, watch } from '../../state/services.tsx';
@@ -18,6 +19,8 @@ import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { DetailHeader, SettingRow, SettingsGroup } from '../../ui/master-detail.tsx';
 import { t } from '../../ui/tokens.ts';
+import { routes } from '../../routes.ts';
+import { Select } from '../../ui/select.tsx';
 import { ReachNote } from '../mcp/command-line.tsx';
 import { serverLogo } from '../mcp/mcp-screen.tsx';
 import { OAuthPanel } from '../mcp/oauth-panel.tsx';
@@ -27,6 +30,7 @@ import { ownServerState } from './integrations.ts';
 
 const detailCss = css({ display: 'grid', gap: t.s5, minWidth: '0', '& p': { margin: '0' } });
 const whereCss = css({ display: 'block', overflowWrap: 'anywhere' });
+const addCss = css({ display: 'inline-flex', alignItems: 'center', gap: t.s2 });
 const toolsTable = css({
   width: '100%',
   borderCollapse: 'collapse',
@@ -58,6 +62,10 @@ export function ServerDetail(handle: Handle<{ s: McpLibraryServer; onChanged: ()
   const act = action(handle);
   let editing = false;
   let confirm = false;
+  // Add to a project (F12): the project chosen, and the one it was just added to (its agents are chosen there)
+  let addTo = '';
+  let picking = false;
+  let added: { id: string; name: string } | undefined;
   // the note beside the button says which program Find tools starts (M24): the button is described by it
   const reachId = `reach-${handle.id}`;
   const set = (f: () => void) => {
@@ -86,6 +94,7 @@ export function ServerDetail(handle: Handle<{ s: McpLibraryServer; onChanged: ()
     const n = s.projects.length;
     const st = ownServerState(s);
     const find = s.tools.length > 0 ? 'Test and refresh tools' : 'Find tools';
+    const addable = svc.workspace.projectList.filter((p) => !s.projects.includes(p.id));
     return (
       <article mix={detailCss} data-testid="server-detail" data-server={s.id} aria-label={s.display}>
         <DetailHeader
@@ -174,11 +183,71 @@ export function ServerDetail(handle: Handle<{ s: McpLibraryServer; onChanged: ()
               </span>
             ) : null}
           </SettingRow>
-          <SettingRow label="Projects">
+          <SettingRow
+            label="Projects"
+            control={
+              addable.length === 0 ? undefined : picking ? (
+                <span mix={addCss}>
+                  <Select
+                    size="sm"
+                    label="Add to a project"
+                    placeholder="Choose a project..."
+                    value={addTo}
+                    options={addable.map((p) => ({ value: p.id, label: p.name }))}
+                    testId="server-add-project"
+                    onChange={(v) => set(() => (addTo = v))}
+                  />
+                  <Button
+                    size="sm"
+                    icon={FolderPlus}
+                    disabled={!addTo || act.busy !== '' || ro.readOnly}
+                    title={ro.readOnly ? ro.reason : undefined}
+                    mix={[
+                      on('click', async () => {
+                        const pid = addTo;
+                        const name = addable.find((p) => p.id === pid)?.name ?? pid;
+                        if (await act.run('add', () => svc.client.mcpServerAdd(pid, s.id))) {
+                          added = { id: pid, name };
+                          addTo = '';
+                          picking = false;
+                          onChanged();
+                        }
+                        void handle.update();
+                      }),
+                    ]}
+                  >
+                    {act.busy === 'add' ? 'Adding...' : 'Add'}
+                  </Button>
+                  <Button size="sm" variant="ghost" mix={[on('click', () => set(() => ((picking = false), (addTo = ''))))]}>
+                    Cancel
+                  </Button>
+                </span>
+              ) : (
+                // the projects are listed only once the person asks: the detail itself names no project
+                <Button size="sm" variant="ghost" icon={FolderPlus} data-testid="server-add-to-project" mix={[on('click', () => set(() => (picking = true)))]}>
+                  Add to a project...
+                </Button>
+              )
+            }
+          >
             <span mix={muted} data-testid="server-projects">
-              {n === 0 ? 'Not in any project yet.' : `In ${n} project${n === 1 ? '' : 's'}.`} Add it to a project, and choose which of its agents may use it, on that project's Integrations
-              page.
+              {n === 0 ? 'Not in any project yet.' : `In ${n} project${n === 1 ? '' : 's'}.`} No agent uses it until you choose which may, on the project's Integrations page.
             </span>
+            {added ? (
+              <span style={{ display: 'block' }} data-testid="server-added">
+                Added to {added.name}.{' '}
+                <a
+                  href={routes.projectIntegrations.href()}
+                  mix={on('click', (e) => {
+                    e.preventDefault();
+                    svc.workspace.selectProject(added!.id);
+                    void navigate(routes.projectIntegrations.href());
+                  })}
+                >
+                  Choose its agents
+                </a>
+              </span>
+            ) : null}
           </SettingRow>
         </SettingsGroup>
         <SettingsGroup

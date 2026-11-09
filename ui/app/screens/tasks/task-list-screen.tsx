@@ -1,4 +1,4 @@
-// The project board (graphite, decision P97): the project's colour square and name, the views Board / List / Timeline, the
+// The project board (graphite, decision P97; titled Tasks under the project's tab bar, P144): the views Board / List / Timeline, the
 // filters Agent, Label and Needs me, what the crew is doing ("2 agents working · 1 waiting on you") and New task (C). The board
 // has five columns read off each task's step (task.summaries): Spec, Building, Checks, Review and Merged, with the tasks that
 // failed or were cancelled in a quiet Stopped list under Merged. A card is a link to its task: its key, a tag (waiting on you,
@@ -19,7 +19,7 @@ import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle, IconButton } from '../../ui/button.tsx';
-import { Avatar, hueFor, OriginBadge } from '../../ui/data.tsx';
+import { Avatar, OriginBadge } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, formActions } from '../../ui/form.tsx';
@@ -57,6 +57,8 @@ import {
   verdictLine,
   type BoardColumn,
   type BoardFilter,
+  boardPrefsOf,
+  withBoardPrefs,
   type TimelineRange,
 } from './tasks.ts';
 
@@ -85,6 +87,26 @@ function writeView(v: View): void {
   }
 }
 
+// each project's board as the person left it: its filters and the timeline's range (a convenience: unreadable storage is the plain board)
+const BOARD_KEY = 'drydock.tasks.board';
+
+function readBoardStore(): unknown {
+  try {
+    const text = localStorage.getItem(BOARD_KEY);
+    return text ? JSON.parse(text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeBoard(projectId: string, filter: BoardFilter, range: TimelineRange): void {
+  try {
+    localStorage.setItem(BOARD_KEY, JSON.stringify(withBoardPrefs(readBoardStore(), projectId, { filter, range })));
+  } catch {
+    /* a convenience only */
+  }
+}
+
 const WEEK = 7 * 86_400_000;
 
 /** The events after which a card may say something else: its task, its run, its requests, its agent's presence, Needs you. */
@@ -100,7 +122,6 @@ function isShortcut(e: KeyboardEvent, key: string): boolean {
 
 // --- the bar ---
 
-const squareCss = css({ display: 'inline-block', flex: 'none', width: '10px', height: '10px', borderRadius: '3px' });
 
 const chipsCss = css({ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' });
 
@@ -754,6 +775,16 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   let view: View = readView();
   let filter: BoardFilter = {};
   let range: TimelineRange = 'today';
+  // the project whose remembered filters and range are applied (each project's board comes back as it was left)
+  let prefsFor: string | undefined;
+  const loadPrefs = () => {
+    if (prefsFor === pid()) return;
+    prefsFor = pid();
+    ({ filter, range } = prefsFor ? boardPrefsOf(readBoardStore(), prefsFor) : { filter: {}, range: 'today' as TimelineRange });
+  };
+  const keepPrefs = () => {
+    if (pid()) writeBoard(pid(), filter, range);
+  };
   const merging = new Set<string>(); // the cards whose merge is on its way: each card merges by itself
   let labelsFor: TaskSummary | undefined;
   const mergeAct = action(handle);
@@ -801,6 +832,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
 
   const setFilter = (f: Partial<BoardFilter>) => {
     filter = { ...filter, ...f };
+    keepPrefs();
     void handle.update();
   };
 
@@ -819,8 +851,10 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   };
 
   return () => {
-    const project = s.workspace.project;
+    loadPrefs();
     const agents = s.project.agentList;
+    // a remembered agent that left the project filters nothing out (its chip could not say who it is)
+    if (filter.agent && agents.length && !agents.some((a) => a.id === filter.agent)) filter = { ...filter, agent: undefined };
     const presence = s.project.presence.data;
     const data = summaries.data;
     const all = data?.summaries ?? [];
@@ -914,15 +948,16 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
 
     return (
       <Page
-        title={project?.name ?? 'Tasks'}
-        mark={<span mix={squareCss} aria-hidden="true" style={{ background: `hsl(${hueFor(project?.id ?? pid())} 62% 62%)` }} />}
+        // "Tasks": the project's name and colour are the tab bar's, right above (decision P144: it was said twice)
+        title="Tasks"
+        icon={ClipboardList}
         bar={bar}
         actions={actions}
         wide
         testId="tasks"
       >
         <div mix={pageInnerCss}>
-          <ErrorNote error={summaries.error} what="Could not load tasks" />
+          <ErrorNote error={summaries.error} retry={summaries.reload} what="Could not load tasks" />
           <ErrorNote error={mergeAct.error} what="Could not merge" />
           {coverage ? <TaskTotalNotice coverage={coverage}>Older tasks are not on this board, and the filters and counts work on these only.</TaskTotalNotice> : null}
           {summaries.loading && !data ? <Loading label="Loading tasks..." /> : null}
@@ -984,6 +1019,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
               range={range}
               onRange={(r) => {
                 range = r;
+                keepPrefs();
                 void handle.update();
               }}
             />

@@ -1,23 +1,48 @@
-// Plan with PlanTeam: describe a goal, an agent with the pm or architect role proposes a graph of tasks, and nothing is
+// Plan with PlanTeam: describe a goal, a planner on the crew (its pm or planner, else its architect, else its lead, else anyone: X45) proposes a graph of tasks, and nothing is
 // created until the human accepts a dependency-closed selection of them (edited if they like). The planner's text is
 // outside text: it is rendered inert through the Markdown component and decides nothing.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleCheck, CircleX, GitBranch, ListChecks, Pencil, Sparkles, Target, X } from 'lucide';
-import type { Plan, ProposedTask } from '../../api/extTypes.ts';
+import { Check, CircleCheck, CircleX, Flag, GitBranch, ListChecks, Pencil, Play, Sparkles, Target, UserX, X } from 'lucide';
+import type { DevSettings, Milestone, Plan, ProposedTask, TickResult } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
-import { action, query, services, watch } from '../../state/services.tsx';
+import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
-import { Empty, ErrorNote } from '../../ui/feedback.tsx';
-import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Empty, ErrorNote, Notice } from '../../ui/feedback.tsx';
+import { Field, Switch, formActions, formGrid } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, row } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
-import { editsFor, lines, newestFirst, planTone, stageText, STEPS, stepStates, toggle, type StepState } from './plan.ts';
+import { plural } from '../../lib/format.ts';
+import { newAgentHref } from '../work/edit-agent.ts';
+import {
+  acceptLabel,
+  andList,
+  assignable,
+  autoPlanner,
+  dependencyWaits,
+  editsFor,
+  lines,
+  milestoneTitle,
+  newestFirst,
+  nobodyCount,
+  PLANNER_DESCRIPTION,
+  plansByRole,
+  planTone,
+  rememberedPlanner,
+  rememberPlanner,
+  stageText,
+  startedText,
+  STEPS,
+  unlinkedText,
+  stepStates,
+  toggle,
+  type StepState,
+} from './plan.ts';
 
 // --- stepper ---
 
@@ -139,6 +164,8 @@ function Stepper(handle: Handle<{ plan: Plan | undefined }>) {
 function TaskEditor(
   handle: Handle<{
     task: ProposedTask;
+    /** The plan roles the crew has an agent for (from the core); without them the role is typed. */
+    crewRoles?: string[] | null;
     onSave: (t: ProposedTask) => void;
     onCancel: () => void;
   }>,
@@ -154,7 +181,15 @@ function TaskEditor(
     <div mix={editorCss} data-testid="plan-task-editor">
       <div mix={formGrid}>
         <Field label="Title">{(id) => <input id={id} value={title} mix={input((v) => (title = v))} />}</Field>
-        <Field label="Role">{(id) => <input id={id} value={role} mix={input((v) => (role = v))} />}</Field>
+        <Field label="Role">
+          {(id) => {
+            const roles = handle.props.crewRoles;
+            if (!roles) return <input id={id} value={role} mix={input((v) => (role = v))} />;
+            const options: { value: string; label: string; hint?: string }[] = roles.map((r) => ({ value: r, label: r }));
+            if (!roles.includes(t0.role)) options.push({ value: t0.role, label: t0.role, hint: 'nobody on the crew' });
+            return <Select id={id} label="Role" value={role} options={options} onChange={(v) => ((role = v), void handle.update())} />;
+          }}
+        </Field>
       </div>
       <Field label="Description">{(id) => <textarea id={id} rows={3} value={desc} mix={input((v) => (desc = v))} />}</Field>
       <Field label="Acceptance criteria (one per line)">{(id) => <textarea id={id} rows={3} value={acc} mix={input((v) => (acc = v))} />}</Field>
@@ -260,6 +295,7 @@ const taskCss = css({
     fontSize: t.textSm,
   },
   '& .meta': { display: 'flex', alignItems: 'center', gap: t.s2 },
+  '& .nobody': { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: t.warning, fontSize: t.textSm, margin: '0' },
   '& .body': { display: 'grid', gap: t.s2, minWidth: '0' },
 });
 const criteriaCss = css({
@@ -293,7 +329,7 @@ const createdLink = css({
 });
 
 /** A proposed plan: the task graph, a dependency-closed selection, edits, and Accept / Reject. All text is the planner's (untrusted). */
-export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
+export function PlanReview(handle: Handle<{ plan: Plan; onDone: (answer?: Plan) => void; started?: TickResult; startError?: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -301,11 +337,12 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
   let edits: Record<string, ProposedTask> = {};
   let editing: string | undefined;
 
-  const decide = async (what: 'accept' | 'reject') => {
+  const decide = async (what: 'accept' | 'start' | 'reject') => {
     const { plan, onDone } = handle.props;
-    if (what === 'accept') await act.run('accept', () => s.client.planAccept(plan.id, [...selected], editsFor(selected, edits)));
-    else await act.run('reject', () => s.client.planReject(plan.id));
-    if (!act.error) onDone();
+    let answer: Plan | undefined;
+    if (what === 'reject') await act.run('reject', () => s.client.planReject(plan.id));
+    else answer = await act.run(what, () => s.client.planAccept(plan.id, [...selected], editsFor(selected, edits), what === 'start'));
+    if (!act.error) onDone(answer);
   };
 
   return () => {
@@ -315,6 +352,7 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
     const proposed = plan.status === 'PROPOSED';
     const created = plan.createdTasks ?? {};
     const editedCount = Object.keys(editsFor(selected, edits)).length;
+    const nobody = nobodyCount(plan, selected, edits);
     return (
       <article mix={planCard} data-testid="plan" data-status={plan.status} aria-label={`Plan: ${plan.goal}`}>
         <header mix={planHead}>
@@ -331,7 +369,12 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
           <Badge tone={planTone(plan.status)}>{plan.status.toLowerCase()}</Badge>
         </header>
         <div mix={planBody}>
-          {plan.error ? <ErrorNote error={plan.error} what="The planner failed" /> : null}
+          {plan.plannedBy ? (
+            <p mix={muted} style={{ fontSize: 'var(--text-sm)' }} data-testid="plan-by">
+              Planned by {plan.plannedBy}
+            </p>
+          ) : null}
+          {plan.error ? <ErrorNote error={plan.error} retry={retryFor(plan)} what="The planner failed" /> : null}
           {plan.proposal?.notes ? (
             <div mix={notesCss}>
               <Markdown source={plan.proposal.notes} />
@@ -400,6 +443,27 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
                         <span>Depends on none</span>
                       )}
                     </div>
+                    {proposed && assignable(plan, tk) === false ? (
+                      <p class="nobody" data-testid="plan-task-nobody">
+                        <Icon icon={UserX} size={13} />
+                        <span>No {tk.role} agent on the crew</span> ·{' '}
+                        <a href={newAgentHref()} data-testid="plan-add-agent">
+                          Add one
+                        </a>{' '}
+                        ·{' '}
+                        <Button
+                          variant="link"
+                          size="sm"
+                          aria-label={`Change the role of ${tk.title}`}
+                          mix={on('click', () => {
+                            editing = tk.key;
+                            void handle.update();
+                          })}
+                        >
+                          Change role
+                        </Button>
+                      </p>
+                    ) : null}
                     {proposed && editing !== tk.key ? (
                       <div>
                         <Button
@@ -419,6 +483,7 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
                       <TaskEditor
                         key={`edit-${tk.key}`}
                         task={tk}
+                        crewRoles={plan.crewRoles}
                         onSave={(x) => {
                           edits = { ...edits, [tk.key]: x };
                           editing = undefined;
@@ -467,7 +532,15 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
                 title={ro.readOnly ? ro.reason : undefined}
                 mix={on('click', () => void decide('accept'))}
               >
-                Accept {selected.size} task{selected.size === 1 ? '' : 's'}
+                {acceptLabel(selected.size, nobody)}
+              </Button>
+              <Button
+                icon={Play}
+                disabled={act.busy !== '' || ro.readOnly || selected.size === 0}
+                title={ro.readOnly ? ro.reason : 'Create the tasks, then start the ready ones within the project limit'}
+                mix={on('click', () => void decide('start'))}
+              >
+                {act.busy === 'start' ? 'Starting...' : 'Accept and start'}
               </Button>
               <Button disabled={act.busy !== ''} mix={on('click', () => void decide('reject'))}>
                 Reject plan
@@ -475,9 +548,128 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
             </div>
           </div>
         ) : null}
+        {plan.status === 'ACCEPTED' && Object.keys(created).length > 0 ? <AfterAccept plan={plan} started={handle.props.started} startError={handle.props.startError} /> : null}
       </article>
     );
   };
+}
+
+// --- after an accept: start the work, follow it in a milestone ---
+
+const afterCss = css({
+  display: 'grid',
+  gap: t.s3,
+  padding: t.s4,
+  background: t.bgApp,
+  borderTop: `1px solid ${t.border}`,
+  '& .tick': { display: 'grid', gap: t.s1, fontSize: t.textSm },
+  '& .tick ul': { margin: '0', paddingLeft: '18px' },
+});
+
+/**
+ * The accepted card's next steps: start the ready tasks now (one scheduler pass, the person's click), let the scheduler start the
+ * rest as each one finishes (the project's own automatic scheduling switch, shown as it is and changed only here by the person),
+ * and gather the plan's tasks in a milestone.
+ */
+export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult; startError?: string }>) {
+  const s = services(handle);
+  watch(handle, s.workspace);
+  const act = action(handle);
+  const dev = query(handle, { load: () => s.client.projectdevGet(handle.props.plan.projectId), key: () => handle.props.plan.projectId });
+  let tick: TickResult | undefined = handle.props.started;
+  // an Accept and start whose scheduler pass failed: the tasks exist, only starting them did not happen
+  let startError: string | undefined = handle.props.startError;
+  let milestone: Milestone | undefined;
+
+  const start = async () => {
+    const r = await act.run('tick', () => s.client.schedulerTick(handle.props.plan.projectId));
+    if (r) (tick = r), (startError = undefined), void handle.update();
+  };
+  const setAuto = async (cur: DevSettings, on_: boolean) => {
+    const r = await act.run('auto', () => s.client.projectdevSet(handle.props.plan.projectId, { ...cur, autoSchedule: on_ }));
+    if (r) dev.set(r);
+  };
+  const toMilestone = async () => {
+    const { plan } = handle.props;
+    const r = await act.run('milestone', () => s.client.milestoneCreate(plan.projectId, milestoneTitle(plan.goal), undefined, undefined, Object.values(plan.createdTasks ?? {})));
+    if (r) (milestone = r), void handle.update();
+  };
+
+  return () => {
+    const ro = s.workspace.license;
+    const d = dev.data;
+    const busy = act.busy !== '';
+    const max = d?.maxParallel ?? 0;
+    const waits = tick ? dependencyWaits(handle.props.plan, tick) : [];
+    const unlinked = unlinkedText(handle.props.plan);
+    return (
+      <div mix={afterCss} data-testid="plan-after">
+        <ErrorNote error={act.error ?? dev.error} retry={retryFor(act, dev)} />
+        {unlinked ? (
+          <p mix={muted} role="status" data-testid="plan-unlinked">
+            {unlinked} <a href={routes.requirements.href()}>Link them on Requirements</a>
+          </p>
+        ) : null}
+        <div mix={row}>
+          <Button
+            variant="primary"
+            icon={Play}
+            disabled={busy || ro.readOnly}
+            title={ro.readOnly ? ro.reason : undefined}
+            mix={on('click', () => void start())}
+          >
+            {max > 0 ? `Start now (up to ${max} at once)` : 'Start now'}
+          </Button>
+          <Button icon={Flag} disabled={busy || ro.readOnly || !!milestone} mix={on('click', () => void toMilestone())}>
+            Create a milestone from this plan
+          </Button>
+        </div>
+        {d ? (
+          <Switch
+            label="Start the rest as each one finishes"
+            checked={d.autoSchedule}
+            disabled={busy || ro.readOnly}
+            onChange={(v) => void setAuto(d, v)}
+          />
+        ) : null}
+        {startError && !tick ? (
+          <Notice tone="warn" role="status" testId="plan-start-failed">
+            The tasks were created; starting them failed: {startError}
+          </Notice>
+        ) : null}
+        {tick ? (
+          <div class="tick" role="status" data-testid="plan-started">
+            <p>{startedText(tick, waits.length)}</p>
+            {(tick.skipped ?? []).length + waits.length > 0 ? (
+              <ul>
+                {(tick.skipped ?? []).map((sk) => (
+                  <li key={sk.taskId}>
+                    <a href={routes.task.href({ id: sk.taskId })}>{taskName(handle.props.plan, sk.taskId)}</a> <span mix={muted}>{sk.reason}</span>
+                  </li>
+                ))}
+                {waits.map((w) => (
+                  <li key={w.taskId} data-testid="plan-waits-for">
+                    <a href={routes.task.href({ id: w.taskId })}>{w.title}</a> <span mix={muted}>waits for {andList(w.after)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        {milestone ? (
+          <p role="status" data-testid="plan-milestone">
+            Milestone &quot;{milestone.title}&quot; created with {plural((milestone.taskIds ?? []).length, 'task')}. <a href={routes.milestones.href()}>Open milestones</a>
+          </p>
+        ) : null}
+      </div>
+    );
+  };
+}
+
+/** The planned task's title for a created task id, else the id. */
+function taskName(plan: Plan, id: string): string {
+  const key = Object.entries(plan.createdTasks ?? {}).find(([, v]) => v === id)?.[0];
+  return (plan.proposal?.tasks ?? []).find((x) => x.key === key)?.title ?? id;
 }
 
 // --- the screen ---
@@ -508,6 +700,29 @@ const newPlanCss = css({
   '& > summary:hover': { color: t.text },
 });
 const planSelect = css({ width: '280px', maxWidth: '40vw' });
+const reqStack = css({ display: 'grid', gap: t.s2, alignContent: 'start', minWidth: '0', '& > p': { margin: '0', fontSize: t.textSm } });
+// the project's requirement documents as toggles: a pressed one is planned from (X48)
+const chipRow = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '6px',
+  fontSize: t.textSm,
+  '& .chip': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    minHeight: '28px',
+    padding: '0 10px',
+    borderRadius: t.rSm,
+    border: `1px solid ${t.border}`,
+    background: 'transparent',
+    color: t.textMuted,
+    fontSize: t.textSm,
+    cursor: 'pointer',
+  },
+  '& .chip[aria-pressed="true"]': { borderColor: t.accent, color: t.text, background: t.bgActive },
+});
 
 export function PlanScreen(handle: Handle) {
   const s = services(handle);
@@ -524,24 +739,161 @@ export function PlanScreen(handle: Handle) {
   });
   let goal = '';
   let reqs = '';
-  let planner = '';
+  // the planner the person chose here; undefined: the one remembered for the project, else the core's pick (X45)
+  let planner: string | undefined;
+  let plannerFor = '';
+  // the project's requirement documents to plan from (X48)
+  let reqIds = new Set<string>();
+  const docs = query(handle, {
+    load: () => s.client.requirementList(pid()!),
+    when: (e) => e.type.startsWith('requirement.'),
+    key: pid,
+    enabled: () => !!pid(),
+  });
   let sel: string | undefined;
+  // the scheduler pass of the last "Accept and start", shown on that plan's accepted card
+  let started: { planId: string; tick?: TickResult; error?: string } | undefined;
+  const onDone = (answer?: Plan) => {
+    if (answer?.start || answer?.startError) started = { planId: answer.id, tick: answer.start ?? undefined, error: answer.startError };
+    q.reload();
+  };
 
   const propose = async () => {
     const projectId = pid();
     if (!projectId) return;
-    const r = await act.run('propose', () => s.client.planPropose(projectId, goal.trim(), reqs, planner));
+    const chosen = plannerValue();
+    const ids = (docs.data ?? []).filter((d) => reqIds.has(d.id)).map((d) => d.id);
+    const r = await act.run('propose', () => s.client.planPropose(projectId, goal.trim(), reqs, chosen, ids));
     if (r) {
       goal = '';
       reqs = '';
+      reqIds = new Set();
       sel = r.planId;
       q.reload();
     }
   };
 
-  return () => {
+  // the chosen planner: this page's choice, else the one remembered for the project (while it is on the crew), else automatic
+  const plannerValue = (): string => {
+    const projectId = pid() ?? '';
+    if (plannerFor !== projectId) (plannerFor = projectId), (planner = undefined);
+    const agents = s.project.agentList;
+    if (planner !== undefined) return agents.some((a) => a.id === planner) ? planner : '';
+    return rememberedPlanner(projectId, agents);
+  };
+
+  // the goal, the requirements (typed, and the project's documents as chips), who plans, and Propose
+  const composeForm = () => {
     const ro = s.workspace.license;
     const agents = s.project.agentList;
+    const auto = autoPlanner(agents);
+    const byRole = agents.some((a) => plansByRole(a.role));
+    const chosen = plannerValue();
+    const documents = (docs.data ?? []).filter((d) => !d.archived);
+    return (
+      <form
+        mix={[
+          card,
+          composeCss,
+          on('submit', (e) => {
+            e.preventDefault();
+            if (!act.busy && !ro.readOnly && goal.trim() && agents.length > 0) void propose();
+          }),
+        ]}
+      >
+        <Field label="Goal">
+          {(id) => (
+            <textarea
+              id={id}
+              rows={3}
+              value={goal}
+              placeholder="Add arithmetic helpers to the calculator"
+              mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
+            />
+          )}
+        </Field>
+        <div mix={reqGrid}>
+          <div mix={reqStack}>
+            <Field label="Requirements or constraints (optional)">
+              {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
+            </Field>
+            {documents.length > 0 ? (
+              <div mix={chipRow} role="group" aria-label="Plan from the project's requirements" data-testid="plan-req-chips">
+                <span mix={muted}>From the requirements:</span>
+                {documents.map((d) => {
+                  const on_ = reqIds.has(d.id);
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      class="chip"
+                      aria-pressed={on_ ? 'true' : 'false'}
+                      data-testid="plan-req-chip"
+                      mix={on('click', () => {
+                        reqIds = new Set(reqIds);
+                        if (on_) reqIds.delete(d.id);
+                        else reqIds.add(d.id);
+                        void handle.update();
+                      })}
+                    >
+                      {on_ ? <Icon icon={Check} size={12} /> : null}
+                      {d.title}
+                    </button>
+                  );
+                })}
+                {reqIds.size > 0 ? <span mix={muted} data-testid="plan-req-note">Accepted tasks are linked to {reqIds.size === 1 ? 'it' : 'them'} in the trace.</span> : null}
+              </div>
+            ) : null}
+          </div>
+          <div mix={reqStack}>
+            {agents.length > 1 ? (
+              <Field label="Planner agent">
+                {(id) => (
+                  <Select
+                    id={id}
+                    label="Planner agent"
+                    value={chosen}
+                    options={[{ value: '', label: auto.agent ? `Automatic: ${auto.agent.name}` : 'Automatic' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
+                    onChange={(v) => {
+                      planner = v;
+                      rememberPlanner(pid() ?? '', v);
+                      void handle.update();
+                    }}
+                  />
+                )}
+              </Field>
+            ) : agents.length === 1 ? (
+              <p mix={muted} data-testid="plan-planner">
+                {agents[0]?.name} plans.
+              </p>
+            ) : null}
+            {!byRole ? (
+              <p mix={muted} data-testid="plan-no-planner">
+                No planner on the crew ·{' '}
+                <a href={newAgentHref(PLANNER_DESCRIPTION)} data-testid="plan-add-planner">
+                  Add a planner
+                </a>
+                {agents.length === 0 ? '. A plan needs one agent on the crew.' : ''}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div mix={formActions}>
+          <Button
+            type="submit"
+            variant="primary"
+            icon={Sparkles}
+            disabled={act.busy !== '' || ro.readOnly || !goal.trim() || agents.length === 0}
+            title={ro.readOnly ? ro.reason : undefined}
+          >
+            {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
+          </Button>
+        </div>
+      </form>
+    );
+  };
+
+  return () => {
     const plans = newestFirst(q.data ?? []);
     const current = plans.find((p) => p.id === sel) ?? plans[0];
     // while a plan is drafted or waits for review it leads, and the form for a new goal folds under it (UI review P1-9)
@@ -550,7 +902,7 @@ export function PlanScreen(handle: Handle) {
       <Page
         title="Plan"
         icon={Sparkles}
-        subtitle="A pm or architect agent proposes tasks; nothing is created until you accept" guide="tasks"
+        subtitle="A planner on the crew proposes tasks; nothing is created until you accept" guide="tasks"
         actions={
           plans.length > 1 ? (
             <Select
@@ -566,7 +918,7 @@ export function PlanScreen(handle: Handle) {
           ) : undefined
         }
       >
-        <ErrorNote error={q.error ?? act.error} what="Plan" />
+        <ErrorNote error={q.error ?? act.error} retry={retryFor(q, act)} what="Plan" />
         <Stepper plan={current} />
         {lead ? (
           <>
@@ -578,7 +930,7 @@ export function PlanScreen(handle: Handle) {
                     <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
                   </div>
                 ) : (
-                  <PlanReview key={current.id + current.status} plan={current} onDone={() => q.reload()} />
+                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} startError={started?.planId === current.id ? started.error : undefined} />
                 )
               ) : q.data ? (
                 <div mix={card}>
@@ -590,109 +942,13 @@ export function PlanScreen(handle: Handle) {
             </Section>
             <details mix={newPlanCss} data-testid="plan-new">
               <summary>Plan something else</summary>
-              <form
-                mix={[
-                  card,
-                  composeCss,
-                  on('submit', (e) => {
-                    e.preventDefault();
-                    if (!act.busy && !ro.readOnly && goal.trim()) void propose();
-                  }),
-                ]}
-              >
-                <Field label="Goal">
-                  {(id) => (
-                    <textarea
-                      id={id}
-                      rows={3}
-                      value={goal}
-                      placeholder="Add arithmetic helpers to the calculator"
-                      mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
-                    />
-                  )}
-                </Field>
-                <div mix={reqGrid}>
-                  <Field label="Requirements or constraints (optional)">
-                    {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
-                  </Field>
-                  <Field label="Planner agent">
-                    {(id) => (
-                      <Select
-                        id={id}
-                        label="Planner agent"
-                        value={planner}
-                        options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
-                        onChange={(v) => ((planner = v), void handle.update())}
-                      />
-                    )}
-                  </Field>
-                </div>
-                <div mix={formActions}>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    icon={Sparkles}
-                    disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
-                    title={ro.readOnly ? ro.reason : undefined}
-                  >
-                    {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
-                  </Button>
-                </div>
-              </form>
+              {composeForm()}
             </details>
           </>
         ) : (
           <>
             <Section title="What should the team achieve?" description="The planner breaks it into tasks with acceptance criteria and dependencies.">
-              <form
-                mix={[
-                  card,
-                  composeCss,
-                  on('submit', (e) => {
-                    e.preventDefault();
-                    if (!act.busy && !ro.readOnly && goal.trim()) void propose();
-                  }),
-                ]}
-              >
-                <Field label="Goal">
-                  {(id) => (
-                    <textarea
-                      id={id}
-                      rows={3}
-                      value={goal}
-                      placeholder="Add arithmetic helpers to the calculator"
-                      mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
-                    />
-                  )}
-                </Field>
-                <div mix={reqGrid}>
-                  <Field label="Requirements or constraints (optional)">
-                    {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
-                  </Field>
-                  <Field label="Planner agent">
-                    {(id) => (
-                      <Select
-                        id={id}
-                        label="Planner agent"
-                        value={planner}
-                        options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
-                        onChange={(v) => ((planner = v), void handle.update())}
-                      />
-                    )}
-                  </Field>
-                </div>
-                <div mix={formActions}>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    icon={Sparkles}
-                    disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
-                    title={ro.readOnly ? ro.reason : undefined}
-                  >
-                    {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
-                  </Button>
-                </div>
-              </form>
+              {composeForm()}
             </Section>
             <Section title="Proposal">
               {current ? (
@@ -702,7 +958,7 @@ export function PlanScreen(handle: Handle) {
                     <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
                   </div>
                 ) : (
-                  <PlanReview key={current.id + current.status} plan={current} onDone={() => q.reload()} />
+                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} startError={started?.planId === current.id ? started.error : undefined} />
                 )
               ) : q.data ? (
                 <div mix={card}>

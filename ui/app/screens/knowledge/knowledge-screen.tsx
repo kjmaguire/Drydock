@@ -8,6 +8,7 @@ import { css, navigate, on, type Handle } from 'remix/component';
 import { ArrowUp, BookOpen, Brain, FileText, Flag, Layers, Sparkles, type IconNode } from 'lucide';
 import { projectHasRepo } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
+import { requirementHref } from '../../lib/route.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
@@ -280,7 +281,7 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
             <h2 mix={panelTitle} id="knowledge-requirements-title">
               Requirements <a href={routes.requirements.href()}>All requirements</a>
             </h2>
-            <ErrorNote error={coverage.error} what="Could not read the requirements" />
+            <ErrorNote error={coverage.error} retry={coverage.reload} what="Could not read the requirements" />
             {coverage.data && traces.length === 0 ? (
               <p mix={quietCss}>
                 No requirements yet. <a href={routes.requirements.href()}>Add one</a> and link it to the tasks that cover it.
@@ -296,7 +297,7 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
                       <span class="id" aria-hidden="true">
                         R-{i + 1}
                       </span>
-                      <a class="title" href={routes.requirements.href()} title={tr.requirement.title}>
+                      <a class="title" href={requirementHref(tr.requirement.id)} title={tr.requirement.title}>
                         {tr.requirement.title}
                       </a>
                       {c.taskId ? (
@@ -304,9 +305,16 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
                           {chip}
                         </a>
                       ) : (
-                        <span mix={chipCss} style={{ color: col.fg, background: col.bg }} data-testid="knowledge-coverage">
+                        // no task yet: the chip opens the requirement with its Link criteria panel ready (X414)
+                        <a
+                          href={requirementHref(tr.requirement.id, 'link')}
+                          mix={chipCss}
+                          style={{ color: col.fg, background: col.bg }}
+                          data-testid="knowledge-coverage"
+                          aria-label={`${chip}: link "${tr.requirement.title}" to a task`}
+                        >
                           {chip}
-                        </span>
+                        </a>
                       )}
                     </li>
                   );
@@ -319,7 +327,7 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
             <h2 mix={panelTitle} id="knowledge-learned-title">
               Recently learned <a href={routes.memory.href()}>memory</a>
             </h2>
-            <ErrorNote error={memory.error} what="Could not read the memory" />
+            <ErrorNote error={memory.error} retry={memory.reload} what="Could not read the memory" />
             {memory.data && notes.length === 0 ? (
               <p mix={quietCss}>Nothing yet. Notes the crew proposes land here; agents read the ones you accept.</p>
             ) : (

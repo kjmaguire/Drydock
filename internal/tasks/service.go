@@ -246,7 +246,7 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (Task, error) {
 		return Task{}, err
 	}
 	files, _ := json.Marshal(nz(req.Files))
-	acc, _ := json.Marshal(nz(req.Acceptance))
+	acc, _ := json.Marshal(nz(NumberCriteria(req.Acceptance)))
 	lbl, _ := json.Marshal(labels)
 	err = s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		var seq int
@@ -502,7 +502,7 @@ func (s *Service) Patch(ctx context.Context, id string, u Update) (Task, error) 
 		add("files", string(b))
 	}
 	if u.Acceptance != nil {
-		b, _ := json.Marshal(nz(*u.Acceptance))
+		b, _ := json.Marshal(nz(NumberCriteria(*u.Acceptance)))
 		add("acceptance", string(b))
 	}
 	if u.AddCost != 0 {

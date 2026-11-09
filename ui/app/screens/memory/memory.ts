@@ -34,6 +34,16 @@ export function bodyNote(body: string): { count: number; over: boolean; text: st
   };
 }
 
+/** The most entries one memory.acceptMany or memory.unacceptMany takes, as the core checks it (core.MaxMemoryMany). */
+export const MEMORY_MANY_LIMIT = 200;
+
+/** ids in groups of at most n, in order: Accept all and its Undo send a long list as several calls. */
+export function inGroups<T>(ids: readonly T[], n = MEMORY_MANY_LIMIT): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < ids.length; i += n) out.push(ids.slice(i, i + n));
+  return out;
+}
+
 export const MEMORY_KINDS = ['decision', 'convention', 'api_contract', 'rejected', 'known_issue', 'preference'];
 
 /** The status filter: '' is everything. The words are what the legacy "Show" select offered. */
@@ -68,4 +78,13 @@ export function memorySource(source: string | undefined, nameOf: (agentId: strin
 /** The line under an entry's title: who proposed it, when it changed, and whether agents can see it. */
 export function memoryMeta(e: { source?: string; status: string }, updated: string, who = e.source ?? ''): string {
   return `${who ? `Proposed by ${who}. ` : ''}Updated ${updated}.${e.status === 'proposed' ? ' Agents do not see it until you accept it.' : ''}`;
+}
+
+/** How many proposals wait, in words: "1 memory proposal", "3 memory proposals" (E10). */
+export const proposalsText = (n: number): string => `${n} memory ${n === 1 ? 'proposal' : 'proposals'}`;
+
+/** The open proposals one agent made (its source is "agent:<id>", with or without the task). */
+export function proposalsOf<E extends { status: string; source?: string }>(entries: readonly E[], agentId: string): E[] {
+  const mine = (src: string) => src === `agent:${agentId}` || src.startsWith(`agent:${agentId} `);
+  return entries.filter((e) => e.status === 'proposed' && mine((e.source ?? '').trim()));
 }

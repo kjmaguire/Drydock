@@ -17,7 +17,7 @@ import { Blocks, Globe, Plug, Plus, SearchX, Webhook } from 'lucide';
 import type { IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard, McpLibraryServer } from '../../api/mcpClient.ts';
 import { routes } from '../../routes.ts';
-import { query, services } from '../../state/services.tsx';
+import { query, retryFor, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { faint } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
@@ -318,7 +318,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           onFilter={(f) => set(() => (filter = f))}
           listFooter={
             <>
-              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error ?? providers.error} what="Integrations" />
+              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error ?? providers.error} retry={retryFor(q, kinds, gallery, lib, providers)} what="Integrations" />
               {!loaded && !q.error && !gallery.error ? <Loading /> : null}
               {loaded && filter !== 'all' && groups.every((g) => g.items.length === 0) ? (
                 <p mix={[faint, listNote]} data-testid="list-empty">
@@ -352,7 +352,13 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
               onSaved={(saved) => {
                 set(() => {
                   adding = false;
-                  note = `${saved.display} is connected. Press Find tools, then add it to a project on that project's Integrations page.`;
+                  // a web server's tools are listed as it is saved (F12); a program's wait for Find tools (M24)
+                  note =
+                    saved.tools.length > 0
+                      ? `${saved.display} is connected and its ${saved.tools.length} tools are listed. Tick the ones that only read, then add it to a project from its Projects row.`
+                      : saved.lastError
+                        ? `${saved.display} is saved, but its tools could not be listed: ${saved.lastError}`
+                        : `${saved.display} is connected. Press Find tools, then add it to a project from its Projects row.`;
                   selected = serverKey(saved.id); // the new server's detail: Find tools is the next step
                 });
                 go(routes.integrations.href({ key: serverKey(saved.id) }));

@@ -3,6 +3,10 @@ import { describe, it } from 'remix/test';
 import type { Provider } from '../../api/types.ts';
 import {
   actionChips,
+  pickersOf,
+  staleVersion,
+  whenOf,
+  withAction,
   ceilingWords,
   cheapProviders,
   LEVELS,
@@ -114,5 +118,26 @@ describe('routing levels (P118)', () => {
     expect(taskLevelSentence({ effective: 'quality', source: 'template', template: 'Security' })).toBe("This task's agent turns run at Quality, the level the Security template declares.");
     expect(taskLevelSentence({ effective: 'cheapest', source: 'project' })).toBe("This task's agent turns run at Cheapest, the project's level.");
     expect(taskLevelSentence({ effective: 'balanced', source: 'workspace' })).toBe("This task's agent turns run at Balanced, the workspace's level.");
+  });
+});
+
+describe('the rule editor pickers (F9)', () => {
+  it('reads a condition the pickers make and writes it back; anything else is null', () => {
+    expect(pickersOf('true')).toEqual({ kind: '', role: '' });
+    expect(pickersOf("run.kind == 'review'")).toEqual({ kind: 'review', role: '' });
+    expect(pickersOf("run.kind == 'review' && task.role == 'reviewer'")).toEqual({ kind: 'review', role: 'reviewer' });
+    expect(pickersOf("candidate.tier == 'free' && run.kind != 'consult'")).toBe(null);
+    expect(pickersOf("run.kind == 'a' && run.kind == 'b'")).toBe(null);
+    expect(whenOf('', '')).toBe('true');
+    expect(whenOf('review', 'reviewer')).toBe("run.kind == 'review' && task.role == 'reviewer'");
+    expect(pickersOf(whenOf('room_reply', 'backend'))).toEqual({ kind: 'room_reply', role: 'backend' });
+  });
+
+  it('sets and clears one action key, and knows a stale-version refusal', () => {
+    expect(withAction({ prefer_tier: 'cheap' }, 'require_tier', 'premium')).toEqual({ prefer_tier: 'cheap', require_tier: 'premium' });
+    expect(withAction({ prefer_tier: 'cheap', deny: true }, 'deny', false)).toEqual({ prefer_tier: 'cheap' });
+    expect(withAction({ prefer_tier: 'cheap' }, 'prefer_tier', '')).toEqual({});
+    expect(staleVersion(new Error('rule r1 changed since you read it (version 3 is stale): reload and retry'))).toBe(true);
+    expect(staleVersion(new Error('tier must be premium, cheap or free'))).toBe(false);
   });
 });

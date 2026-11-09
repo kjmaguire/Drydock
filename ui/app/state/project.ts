@@ -9,9 +9,18 @@ import { Live, starts } from './live.ts';
 import { Model } from './services.tsx';
 import type { Workspace } from './workspace.ts';
 
-/** The events after which Needs you may have changed: every list or count of it reloads on these, so all of them agree. */
+/**
+ * The events after which Needs you may have changed: every list or count of it reloads on these, so all of them agree. Its agent-CLI
+ * items come from the CLIs' last check, so Drydock's own check (connection.checked, A2) and a sign-in's end count too.
+ */
 export const needsChanged = (e: DrydockEvent): boolean =>
-  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived', 'chat.permission', 'needsyou.');
+  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.read_cursor', 'room.archived', 'room.join_requested', 'room.join_answered', 'chat.permission', 'needsyou.', 'connection.checked', 'connection.sign_in_finished') ||
+  // what went wrong in the background, and its fix (B6, F14 and H7): a service's sync and key, a provider's health, an MCP
+  // sign-in, an agent CLI's output, a scan tool's install, a crash (and its report deleted)
+  starts(e, 'integration.sync.failed', 'integration.sync.completed', 'integration.auth_expired', 'integration.schema_drift', 'integration.connected', 'integration.disconnected',
+    'provider.up', 'provider.down', 'provider.degraded', 'mcp.server_oauth', 'adapter.drift', 'security.settings', 'app.crashed', 'app.crash_deleted',
+    // a rule's scan with new high findings, and the findings dismissed or restored (B7, H5)
+    'security.scan.finished', 'security.finding.');
 
 /** The project's tasks as one read: the newest ones the core lists, and how many the project has in all (when the count answered). */
 export interface TaskPage {
@@ -65,9 +74,22 @@ export class ProjectData extends Model {
     return { tasks, total };
   }
 
-  start(signal?: AbortSignal): this {
+  /** `focusTarget` is where the window's focus is heard (the window; a test gives its own). */
+  start(signal?: AbortSignal, focusTarget: EventTarget | undefined = typeof window === 'undefined' ? undefined : window): this {
     for (const l of this.#all) l.start(signal);
     this.#sync();
+    // back in the window (a pull or an edit in another program): the core looks for new repository skills (E5); it scans at most
+    // every 30 seconds, and what it finds is offered, never applied. A failure is nothing to show.
+    if (focusTarget) {
+      focusTarget.addEventListener(
+        'focus',
+        () => {
+          const id = this.#id;
+          if (id) void Promise.resolve().then(() => this.#client.skillRefresh(id)).catch(() => undefined);
+        },
+        { signal },
+      );
+    }
     return this;
   }
 

@@ -110,7 +110,7 @@ export const CONCEPTS: readonly Topic[] = [
       {
         ul: [
           'CI must have passed on **the commit that was reviewed**, including the checks the branch protection requires. A later push is not merged.',
-          'When no CI reports within 2 minutes you are asked to check again, merge without CI this time, or stop.',
+          'When no CI reports within 5 minutes, or checks still run after 60 minutes, you are asked to keep waiting, merge without CI this time, or stop. A project sets both waits in **Project settings > Development flow**.',
           'GitHub’s branch protection is never bypassed and auto-merge is never enabled. Drydock merges through GitHub with the project’s merge method and deletes the task branch.',
           'A repository that really has **no CI** can be declared so in Project settings. A pull request nothing reports on is then merged after the review and your approval; checks that do report still have to pass. Your name and the time are recorded.',
         ],

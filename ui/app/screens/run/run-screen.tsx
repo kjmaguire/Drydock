@@ -42,8 +42,27 @@ import {
 import { Checkpoints, Events, McpCalls } from './run-tables.tsx';
 import { Turns } from './turns.tsx';
 import { WorkflowGraph } from './workflow-graph.tsx';
+import { supportFor } from '../support/support.ts';
 
 type Tab = 'turns' | 'checkpoints' | 'mcp' | 'events';
+
+/** The run page's tab is remembered (X55): a person who reads the events of one run reads them of the next. A convenience only. */
+const TAB_KEY = 'drydock.run.tab';
+function readTab(): Tab {
+  try {
+    const v = localStorage.getItem(TAB_KEY);
+    return v === 'checkpoints' || v === 'mcp' || v === 'events' ? v : 'turns';
+  } catch {
+    return 'turns';
+  }
+}
+function writeTab(v: Tab): void {
+  try {
+    localStorage.setItem(TAB_KEY, v);
+  } catch {
+    /* a convenience only */
+  }
+}
 
 const statsCss = css({
   display: 'grid',
@@ -152,7 +171,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
     debounceMs: 400,
   });
 
-  let tab: Tab = 'turns';
+  let tab: Tab = readTab();
   let asOf: string | undefined;
   /** The node shown in the side panel; undefined: the node the run is at (UI review P1-7), null: none (the person closed it). */
   let selected: string | null | undefined;
@@ -261,6 +280,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
   const update = () => void handle.update();
   const showTab = (name: Tab, scrollTo?: string) => {
     tab = name;
+    writeTab(name);
     update();
     handle.queueTask(() => {
       const target = scrollTo ? tabsEl?.querySelector(`[data-key="${CSS.escape(scrollTo)}"]`) : tabsEl;
@@ -332,7 +352,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
           </>
         }
       >
-        <ErrorNote error={q.error} what="Could not explain the run" />
+        <ErrorNote error={q.error} retry={q.reload} what="Could not explain the run" />
         {!x ? (
           q.loading || !q.error ? <Loading /> : null
         ) : !r ? (
@@ -438,6 +458,11 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
                     Run again as a new task
                   </Button>
                 ) : null}
+                {r.status === 'FAILED' || r.status === 'PAUSED' ? (
+                  <a href={supportFor(r.id)} mix={buttonStyle('secondary', 'sm')} data-testid="run-report">
+                    Report this run
+                  </a>
+                ) : null}
                 {acts.timeTravel && x.graph ? <span mix={muted}>To time travel, choose a checkpoint under the graph.</span> : null}
                 {whys.length ? <p data-testid="run-actions-why">{whys.join(' ')}</p> : null}
               </div>
@@ -497,6 +522,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
                 active={tab}
                 onChange={(name) => {
                   tab = name as Tab;
+                  writeTab(tab);
                   update();
                 }}
                 items={[
@@ -533,7 +559,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
                   ) : name === 'mcp' ? (
                     <McpCalls x={x} agents={agents} />
                   ) : (
-                    <Events x={x} agents={agents} />
+                    <Events x={x} agents={agents} taskId={taskId} />
                   )
                 }
               </Tabs>

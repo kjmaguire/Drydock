@@ -984,6 +984,16 @@ type StandupResult struct {
 // Standup runs one read-only lead turn over the project's active tasks and posts its short status summary (on track / at
 // risk / blocked, one line each) in the project's general channel.
 func (l *Lead) Standup(ctx context.Context, projectID string) (StandupResult, error) {
+	return l.standup(ctx, projectID, false)
+}
+
+// ScheduledStandup is Standup started by the project's stand-up schedule (a schedule the person set): the same turn, and the
+// posted message says it was posted by schedule.
+func (l *Lead) ScheduledStandup(ctx context.Context, projectID string) (StandupResult, error) {
+	return l.standup(ctx, projectID, true)
+}
+
+func (l *Lead) standup(ctx context.Context, projectID string, scheduled bool) (StandupResult, error) {
 	team, err := l.d.Team(ctx, projectID)
 	if err != nil {
 		return StandupResult{}, err
@@ -1041,6 +1051,9 @@ func (l *Lead) Standup(ctx context.Context, projectID string) (StandupResult, er
 		return StandupResult{}, errors.New("the team lead's stand-up was empty")
 	}
 	body := "Stand-up from the team lead:\n" + text
+	if scheduled {
+		body = "Stand-up from the team lead (posted by schedule):\n" + text
+	}
 	msgID := ""
 	if l.d.Post != nil {
 		if msgID, err = l.d.Post(ctx, projectID, "", lead.ID, body); err != nil {
@@ -1048,7 +1061,7 @@ func (l *Lead) Standup(ctx context.Context, projectID string) (StandupResult, er
 		}
 	}
 	if l.d.Bus != nil {
-		data, _ := json.Marshal(map[string]any{"projectId": projectID, "messageId": msgID, "tasks": len(active)})
+		data, _ := json.Marshal(map[string]any{"projectId": projectID, "messageId": msgID, "tasks": len(active), "scheduled": scheduled})
 		_, _ = l.d.Bus.Publish(ctx, events.Event{Type: "lead.standup", ProjectID: projectID, AgentID: lead.ID, Data: data})
 	}
 	return StandupResult{MessageID: msgID, Text: text, Tasks: len(active)}, nil

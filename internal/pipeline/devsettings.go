@@ -45,6 +45,11 @@ type DevSettings struct {
 	// sets them from its caller's identity, never from the settings it is given; empty while CIMode is CIRequired.
 	CINoneBy string `json:"ciNoneBy,omitempty"`
 	CINoneAt int64  `json:"ciNoneAt,omitempty"`
+	// CIGraceMinutes is how long a pushed commit may show no CI result before the CI gate asks the person, and CIMaxWaitMinutes
+	// how long its checks may run before it asks (C7). 0 means the defaults, DefaultCIGraceMinutes and DefaultCIMaxWaitMinutes;
+	// the wait is capped at MaxCIWaitMinutes. Neither lets anything pass untested: they only say when the person is asked.
+	CIGraceMinutes   int `json:"ciGraceMinutes,omitempty"`
+	CIMaxWaitMinutes int `json:"ciMaxWaitMinutes,omitempty"`
 	// SkillDelivery is how a Claude agent receives the project's skills: "all" puts every skill that reaches it into every
 	// turn; "relevant" puts in the repository's own skills (.aet/skills; one with globs unless the task names files and none
 	// matches) and the imported ones whose globs match the task's files, and lists the others in AGENTS.md for the agent
@@ -64,6 +69,29 @@ const (
 	CIRequired = "required"
 	CINone     = "none"
 )
+
+// The CI waits when a project sets none (DevSettings.CIGraceMinutes, CIMaxWaitMinutes), and the longest either may be.
+const (
+	DefaultCIGraceMinutes   = 5
+	DefaultCIMaxWaitMinutes = 60
+	MaxCIWaitMinutes        = 360
+)
+
+// CIGrace is how long a commit may show no CI result before the person is asked.
+func (s DevSettings) CIGrace() time.Duration {
+	if s.CIGraceMinutes <= 0 {
+		return DefaultCIGraceMinutes * time.Minute
+	}
+	return time.Duration(s.CIGraceMinutes) * time.Minute
+}
+
+// CIMaxWait is how long checks may run before the person is asked.
+func (s DevSettings) CIMaxWait() time.Duration {
+	if s.CIMaxWaitMinutes <= 0 {
+		return DefaultCIMaxWaitMinutes * time.Minute
+	}
+	return time.Duration(s.CIMaxWaitMinutes) * time.Minute
+}
 
 // DefaultLeadStallMinutes is the stall time when LeadStallMinutes is not set.
 const DefaultLeadStallMinutes = 15
@@ -130,6 +158,13 @@ func (s *DevSettings) Validate() error {
 	}
 	if s.LeadStallMinutes < 0 || s.LeadStallMinutes > 1440 {
 		return errors.New("devloop: leadStallMinutes must be 0 (default 15) to 1440")
+	}
+	if s.CIGraceMinutes < 0 || s.CIGraceMinutes > MaxCIWaitMinutes || s.CIMaxWaitMinutes < 0 || s.CIMaxWaitMinutes > MaxCIWaitMinutes {
+		return fmt.Errorf("devloop: the CI waits must be 0 (the defaults, %d and %d minutes) to %d minutes", DefaultCIGraceMinutes, DefaultCIMaxWaitMinutes, MaxCIWaitMinutes)
+	}
+	if s.CIGrace() > s.CIMaxWait() {
+		// host.WaitCI checks the longest wait before the grace: a longer grace would report "no CI" as "still running"
+		return fmt.Errorf("devloop: the wait for CI to start (%s) must not be longer than the wait for running checks (%s)", plainDuration(s.CIGrace()), plainDuration(s.CIMaxWait()))
 	}
 	switch s.CIMode {
 	case "":

@@ -5,7 +5,7 @@
 // action.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleCheck, CircleSlash, CircleX, Copy, CornerDownRight, Info, MessageSquareReply, ShieldAlert, Wrench } from 'lucide';
+import { Check, CircleCheck, CircleSlash, CircleX, Copy, CornerDownRight, Hand, Info, MessageSquareReply, RotateCcw, ShieldAlert, Wrench } from 'lucide';
 import type { Message } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -168,6 +168,12 @@ export interface MessageItemProps {
   onReply?: () => void;
   /** Open the thread this reply belongs to. */
   onOpenRoot?: () => void;
+  /** The person's own message: ask an agent of the room to answer it (X12); absent where nobody can be asked. */
+  onAsk?: () => void;
+  /** A line that says an agent's turn gave no answer: ask that agent again (X12). */
+  onAskAgain?: () => void;
+  /** The agent's name for Ask again. */
+  askAgainName?: string;
 }
 
 export function MessageItem(handle: Handle<MessageItemProps>) {
@@ -190,7 +196,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
   };
 
   return () => {
-    const { m, name, role, head, replies, onReply, onOpenRoot } = handle.props;
+    const { m, name, role, head, replies, onReply, onOpenRoot, onAsk, onAskAgain, askAgainName } = handle.props;
     const check = checkOf(m);
     const quiet = isQuiet(m);
     const markers = markersOf(m);
@@ -296,6 +302,12 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
               <Attachments m={m} />
             </>
           )}
+          {onAskAgain ? (
+            <button type="button" mix={[repliesBtn, on('click', () => onAskAgain())]} data-testid="msg-ask-again" title={askAgainName ? `Ask ${askAgainName} to answer again` : 'Ask again'}>
+              <Icon icon={RotateCcw} size={14} />
+              {askAgainName ? `Ask ${askAgainName} again` : 'Ask again'}
+            </button>
+          ) : null}
           {canReply && replies > 0 ? (
             <button type="button" mix={[repliesBtn, on('click', () => onReply!())]} aria-label={`${repliesText(replies)}, open thread`}>
               <Icon icon={MessageSquareReply} size={14} />
@@ -304,8 +316,13 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
             </button>
           ) : null}
         </div>
-        {canReply || m.body ? (
+        {canReply || m.body || onAsk ? (
           <div class="msg-tools" mix={toolsCss}>
+            {onAsk ? (
+              <button type="button" mix={[toolBtn, on('click', () => onAsk())]} aria-label="Ask an agent to answer" title="Ask an agent to answer" data-testid="msg-ask">
+                <Icon icon={Hand} size={15} />
+              </button>
+            ) : null}
             {canReply ? (
               <button type="button" mix={[toolBtn, on('click', () => onReply!())]} aria-label={`Open thread on message by ${name}`} title="Reply in thread">
                 <Icon icon={MessageSquareReply} size={15} />
