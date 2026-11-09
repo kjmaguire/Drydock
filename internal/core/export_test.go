@@ -201,3 +201,10 @@ func (c *Core) TestPublish(typ string, data []byte) {
 
 // ConnectionsInUse is the Connection keys CheckCLIs checks once agents or chats exist (connectionsInUse).
 func ConnectionsInUse(c *Core, ctx context.Context) []string { return c.connectionsInUse(ctx) }
+
+// SetRoomRedactHookForTests runs f before every secret scan of the room (a message, the minutes of an archived task room); the
+// returned func removes it.
+func SetRoomRedactHookForTests(f func()) func() {
+	roomRedactHook.Store(&f)
+	return func() { roomRedactHook.Store(nil) }
+}

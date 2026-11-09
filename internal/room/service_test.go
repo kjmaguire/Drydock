@@ -94,13 +94,60 @@ func TestWatchTasksArchivesOnTaskEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(e.ctx)
 	defer cancel()
 	r, _ := e.svc.CreateTaskChannel(e.ctx, TaskChannelSpec{ProjectID: e.project, TaskID: "task_w", Number: 1, Title: "x", CreatedBy: kyle})
-	if err := e.svc.WatchTasks(ctx); err != nil {
+	if _, err := e.svc.WatchTasks(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.bus.Publish(e.ctx, evTask("task.completed", "task_w")); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, 3*time.Second, func() bool { g, _ := e.svc.GetRoom(e.ctx, r.ID); return g.Archived })
+}
+
+// WatchTasks' done channel is closed only once the archive it was making has ended, so the database is not closed under it; an
+// archive cut short by the stop is not reported as a failure.
+func TestWatchTasksDoneWaitsForTheArchive(t *testing.T) {
+	e := newEnv(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	errs := make(chan error, 8)
+	svc := New(e.db, e.bus, Options{OnError: func(err error) { errs <- err }, Redact: func(s string) (string, error) {
+		close(entered) // the minutes of the one archive: held until released
+		<-release
+		return s, nil
+	}})
+	if _, err := svc.CreateTaskChannel(e.ctx, TaskChannelSpec{ProjectID: e.project, TaskID: "task_h", Number: 1, Title: "x", CreatedBy: kyle}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(e.ctx)
+	defer cancel()
+	done, err := svc.WatchTasks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.bus.Publish(e.ctx, evTask("task.cancelled", "task_h")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the room was not archived")
+	}
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("done was closed while the archive was still running")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("done was not closed after the archive ended")
+	}
+	select {
+	case err := <-errs:
+		t.Fatalf("an archive cut short by the stop was reported: %v", err)
+	default:
+	}
 }
 
 func TestDMAndGroup(t *testing.T) {

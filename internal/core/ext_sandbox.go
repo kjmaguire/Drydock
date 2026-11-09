@@ -17,7 +17,6 @@ import (
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/pipeline"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/sandbox"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -648,8 +647,8 @@ func (c *Core) testSandbox(ctx context.Context, projectID string) ([]SandboxTest
 
 func startSandbox(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	bg, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	safe.Go("core.startSandbox", func() { c.watchSandboxTasks(bg) })
-	safe.Go("core.startSandbox#2", func() { c.pruneSandboxes(bg) })
+	c.goBG("core.startSandbox", func() { c.watchSandboxTasks(bg) })
+	c.goBG("core.startSandbox#2", func() { c.pruneSandboxes(bg) })
 	m := map[string]Method{
 		"sandbox.status": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`

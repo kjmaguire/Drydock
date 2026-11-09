@@ -37,7 +37,6 @@ import (
 	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/runners"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -187,6 +186,7 @@ type Core struct {
 	fwdCache    forwardCache  // what sandbox.forward.list last asked the engine, for a few seconds
 	clones      cloneRuns     // the clones running now, for github.cloneCancel (B12)
 	landing     landingClones // the clones a made project waits for (project.setup with repo.later, B12)
+	work        bgWork        // the background work Close waits for (bgwork.go)
 	ghStatus    ghStatusCache // the last github.status answer, for a few seconds (F4)
 	written     writtenFiles  // the files this run wrote for the person, the only ones fs.reveal shows (A11)
 	sbStarts    sandboxStarts // how the last start of each task's sandbox went, step by step (X39)
@@ -350,7 +350,12 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// every message body is scanned before it is stored, so a secret pasted into the room never reaches the database, the
 	// event log or another agent's context (security.md s8)
 	c.Room = room.New(db, c.Bus, room.Options{
-		Redact:  func(body string) (string, error) { return c.Scanner.Redact(body), nil },
+		Redact: func(body string) (string, error) {
+			if h := roomRedactHook.Load(); h != nil {
+				(*h)() // tests hold a room write here (export_test.go)
+			}
+			return c.Scanner.Redact(body), nil
+		},
 		OnError: func(err error) { c.logf("room: %v", err) },
 	})
 	c.Tasks = &tasks.Service{DB: db, Bus: c.Bus, Redact: c.Scanner.Redact, Hooks: tasks.Hooks{
@@ -438,7 +443,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	c.Prober = providers.NewProber(c.Providers, c.Bus)
 	c.Health = providers.NewMonitor(c.Providers, c.Prober, c.Bus, providers.MonitorOptions{})
 	c.Health.Start(bg)
-	safe.Go("core.Open", func() { _ = c.Room.WatchTasks(bg) })
+	if done, err := c.Room.WatchTasks(bg); err == nil {
+		c.awaitBG("core.Open", done) // the archive of a task room that ended can still be running when Close cancels bg
+	}
 	if _, err := c.Room.Reconcile(ctx); err != nil {
 		c.logf("room reconcile: %v", err)
 	}
@@ -476,9 +483,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	c.noteRecovered(ctx, recoverHead, recoverSince, held)
 	// a run whose last owner's lease was still valid at start (killed and restarted within the lease TTL) is taken over
 	// as soon as that lease expires
-	safe.Go("core.Open#2", func() { c.Engine.WatchRecover(bg, 0) })
+	c.goBG("core.Open#2", func() { c.Engine.WatchRecover(bg, 0) })
 	if len(held) > 0 {
-		safe.Go("core.Open#3", func() { c.noteTakenOver(bg, recoverHead, recoverSince, held, heldUntil) })
+		c.goBG("core.Open#3", func() { c.noteTakenOver(bg, recoverHead, recoverSince, held, heldUntil) })
 	}
 	c.lock, locked = lock, true
 	return c, nil
@@ -491,6 +498,10 @@ func (c *Core) Close() {
 	for i := len(c.extClose) - 1; i >= 0; i-- {
 		c.extClose[i]()
 	}
+	// every context background work runs on is cancelled now (bg above, the extensions' in their hooks): wait for that work, so
+	// none of it writes to the database or the data folder once Close returns
+	c.waitBG()
+	c.Presence.Wait()
 	c.Health.Stop()
 	c.Engine.Close()
 	c.Bus.Close()
