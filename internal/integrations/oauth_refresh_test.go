@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -37,7 +38,12 @@ func linearSignIn(t *testing.T, ourl string, mod func(*integrations.Options)) (*
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the browser gets the whole page: the callback server stops only after its answer is written
+	page, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
+	if err != nil || !strings.Contains(string(page), "Signed in to Linear") {
+		t.Fatalf("callback page %q, %v", page, err)
+	}
 	if done := waitSignedIn(t, h, s.ID); done.State != "signed_in" {
 		t.Fatalf("%+v", done)
 	}
