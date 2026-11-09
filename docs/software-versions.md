@@ -21,6 +21,7 @@ the notes (below).
 | Tools the Windows download carries (osv-scanner, Opengrep, the TurboQuant llama.cpp build) | the pins of `packaging/bundle.json` (decision P77), not a copy in the notes | git tags; for the TurboQuant fork, GitHub's release listing read with the app's own picker (the newest release with the Windows build and a digest), or its release tags (`bNNNN-X.Y.Z`) when the listing cannot be read, which the item's note then says |
 | Agent CLIs not on npm (the Antigravity CLI) | the manifest's recommended version | none: no feed; the row says to check by hand |
 | Copied into Drydock: the built-in Opengrep rule sets, the Simple Icons and LobeHub logo paths | the commit in `internal/scan/builtin_rules.go`; the versions in `ui/app/ui/brand-logo.tsx` | the repository's newest commit; npm |
+| Copied into Drydock: the repo map's tag queries (`internal/repomap/queries/*-tags.scm`, each grammar's `queries/tags.scm`) | the release in each file's header | the grammar release `go.mod` compiles in, which the copy must match (a test in `internal/repomap` fails until it does) |
 | Skills the prebuilt agents name at a commit | `internal/skills/registry.yaml` | the registry repository's newest commit |
 | Container images Drydock pulls or builds on (the CI runner container, the sandbox's suggested images) | the image names in the Go code (`internal/runners/launch.go`, `internal/sandbox/config.go`) | Docker's official-images library: still published, and the newest Debian or Ubuntu release |
 | Vendor APIs and protocols (MCP revision, Linear schema, Notion-Version, X-GitHub-Api-Version, anthropic-version) | the code that sends them | MCP: the specification's dated tags; Linear: `@linear/sdk` on npm; the others publish versions only on a web page, so their rows say where to look |
@@ -92,6 +93,9 @@ A sweep of the code, CI and packaging for software Drydock uses found these, whi
 - **Services without a version**: the hosted MCP servers of `internal/mcp/catalog.yaml` (Microsoft Learn, Cloudflare docs and API,
   GitHub, Context7, Linear, Notion, Sentry), and the Sentry (`/api/0`) and Aikido (`/api/public/v1`) APIs, whose version is only
   in the path.
+- **Skills for the coding agents that work on this repository**: the Remix app skill in `.claude/skills/remix` (MIT), copied
+  unchanged from remix-run/remix at the commit its `SOURCE.md` names. It is not built into Drydock; it follows the Remix
+  release `ui/package.json` pins by reading that release's installed guides.
 - **Not part of the product**: the Phase 0 probe modules (`evidence/phase0/**/go.mod`, a record of what was verified), the
   starter template's packages (`testdata/starter-cloudflare-saas`), the trial fixtures, and Dependabot (a GitHub service).
 - **Tools for the coding agents that work on this repository**: Impeccable, the design skill in `.claude/` (skill 4.8.1, its

@@ -147,8 +147,8 @@ test('prebuilt agents: opening one shows its skills with what they do, where the
   const fd = d.locator('[data-testid="prebuilt-skill"][data-skill="frontend-design"]');
   await expect(fd).toContainText('Guidance for distinctive, intentional visual design');
   await expect(fd).toContainText('Apache-2.0');
-  await expect(fd).toContainText('pinned at dbd4588f9e10');
-  await expect(fd.getByRole('link', { name: /anthropics\/skills/ })).toHaveAttribute('href', 'https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/frontend-design');
+  await expect(fd).toContainText('pinned at 2c5958ecac7c');
+  await expect(fd.getByRole('link', { name: /anthropics\/skills/ })).toHaveAttribute('href', 'https://github.com/anthropics/skills/tree/2c5958ecac7cee2b583967a2c4981d0f4a75c579/skills/frontend-design');
   const ctx7 = d.locator('[data-testid="prebuilt-server"][data-server="ctx7"]');
   await expect(ctx7).toContainText('Context7');
   await expect(ctx7).toContainText('by Upstash');

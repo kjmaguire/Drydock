@@ -91,7 +91,8 @@ describe('Library > Skills', () => {
     expect(r.$('[data-testid="lib-skill-tile"][data-name="docx"]')!.textContent).toContain('new');
     expect(r.$('[data-testid="lib-skill-tile"][data-name="pdf"]')!.textContent).toContain('In gocalc ✓');
     // the name starts at the row's left, not where the app's button rule would centre it
-    expect(getComputedStyle(art.querySelector('button.what')!).justifyContent).toBe('flex-start');
+    // (Chromium 1254, with Playwright 1.65, reads flex-start back as flow-start; both mean the start)
+    expect(['flex-start', 'flow-start']).toContain(getComputedStyle(art.querySelector('button.what')!).justifyContent);
     await r.act(() => (art.querySelector('button.what') as HTMLButtonElement).click());
     const detail = await one(r, '[data-testid="lib-skill-tile"][data-name="algorithmic-art"] [data-testid="lib-skill-tile-detail"]');
     expect(detail.textContent).toContain('Use this when users request creating art using code');

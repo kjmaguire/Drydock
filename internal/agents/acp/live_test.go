@@ -35,19 +35,19 @@ type liveCase struct {
 }
 
 var liveCases = []liveCase{
-	{name: "gemini", env: "GEMINI", bin: "gemini", args: []string{"--acp"}, extra: []string{"GEMINI_CLI_TRUST_WORKSPACE=true", "NO_BROWSER=1"}, version: "0.65.0",
+	{name: "gemini", env: "GEMINI", bin: "gemini", args: []string{"--acp"}, extra: []string{"GEMINI_CLI_TRUST_WORKSPACE=true", "NO_BROWSER=1"}, version: "0.67.0",
 		check: func(t *testing.T, i acp.AgentInfo) {
 			if !i.LoadSession || i.Resume || i.Fork || i.List || !i.MCPHTTP || !i.MCPSSE || !i.Image {
 				t.Errorf("gemini capabilities differ from docs/phase0/agent-clis.md section 7.1: %+v", i)
 			}
 		}},
-	{name: "opencode", env: "OPENCODE", bin: "opencode", args: []string{"acp"}, version: "1.19.3",
+	{name: "opencode", env: "OPENCODE", bin: "opencode", args: []string{"acp"}, version: "1.19.5",
 		check: func(t *testing.T, i acp.AgentInfo) {
 			if !i.LoadSession || !i.Resume || !i.Fork || !i.List || !i.Close || !i.MCPHTTP || !i.MCPSSE {
 				t.Errorf("opencode capabilities differ from docs/phase0/agent-clis.md section 7.1: %+v", i)
 			}
 		}},
-	{name: "goose", env: "GOOSE", bin: "goose", args: []string{"acp"}, extra: []string{"GOOSE_MODE=approve"}, version: "1.55.0",
+	{name: "goose", env: "GOOSE", bin: "goose", args: []string{"acp"}, extra: []string{"GOOSE_MODE=approve"}, version: "1.57.0",
 		check: func(t *testing.T, i acp.AgentInfo) {
 			if !i.LoadSession || i.Resume || i.Fork || !i.List || !i.Delete || !i.Close || !i.MCPHTTP || i.MCPSSE {
 				t.Errorf("goose capabilities differ from docs/phase0/agent-clis.md section 7.1: %+v", i)
@@ -55,10 +55,10 @@ var liveCases = []liveCase{
 		}},
 	// Cline: apps/cli/src/acp/acpAgent.ts at 3.0.70 advertises loadSession and image prompts only (no resume, fork, list, or MCP
 	// transports beyond stdio). Its initialize does not need a sign-in; session/new does.
-	{name: "cline", env: "CLINE", bin: "cline", args: []string{"--acp"}, version: "3.0.73",
+	{name: "cline", env: "CLINE", bin: "cline", args: []string{"--acp"}, version: "3.0.74",
 		check: func(t *testing.T, i acp.AgentInfo) {
 			if !i.LoadSession || i.Resume || i.Fork || i.List || i.MCPHTTP || i.MCPSSE || !i.Image {
-				t.Errorf("cline capabilities differ from its 3.0.70 source (apps/cli/src/acp/acpAgent.ts), unchanged at 3.0.73: %+v", i)
+				t.Errorf("cline capabilities differ from its 3.0.70 source (apps/cli/src/acp/acpAgent.ts), unchanged at 3.0.74: %+v", i)
 			}
 			var ids []string
 			for _, m := range i.AuthMethods {

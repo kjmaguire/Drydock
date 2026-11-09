@@ -22,7 +22,7 @@ Imported by Drydock itself:
 
 | Module | Version | License | Copyright | Used for |
 |---|---|---|---|---|
-| cel.dev/cel-go | v0.32.0 | Apache-2.0, with code under BSD-3-Clause | - | Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language. |
+| cel.dev/cel-go | v0.33.2 | Apache-2.0, with code under BSD-3-Clause | - | Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language. |
 | github.com/anthropics/anthropic-sdk-go | v1.84.0 | MIT | Copyright 2023 Anthropic, PBC. | Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. |
 | github.com/aymanbagabas/go-pty | v0.2.3 | MIT | Copyright (c) 2023 Ayman Bagabas | The human's terminals in the bottom dock: ConPTY on Windows, a Unix pseudo-terminal elsewhere (internal/terminal). |
 | github.com/charmbracelet/x/ansi | v0.11.9 | MIT | Copyright (c) 2023 Charmbracelet, Inc. | Meant for reading terminal escape codes in agent and terminal output. |
@@ -30,7 +30,7 @@ Imported by Drydock itself:
 | github.com/google/jsonschema-go | v0.4.3 | MIT | Copyright (c) 2025 JSON Schema Go Project Authors | Describes the workspace tools' inputs to MCP clients as JSON Schema. |
 | github.com/ledongthuc/pdf | v0.0.0-20261020125853-5e46805f718e | BSD-3-Clause | Copyright (c) 2009 The Go Authors. All rights reserved. | Reads the text of PDF files a person gives an expert pack or a requirement, page by page (internal/docparse, decision P110). |
 | github.com/modelcontextprotocol/go-sdk | v1.8.0 | MIT and Apache-2.0 (the project is moving its code from MIT to Apache-2.0; its LICENSE holds both) | - | The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. |
-| github.com/openai/openai-go/v3 | v3.85.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
+| github.com/openai/openai-go/v3 | v3.97.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
 | github.com/pressly/goose/v3 | v3.29.0 | MIT | - | Runs the database migrations. |
 | github.com/tc-hib/winres | v0.3.1 | ISC | Copyright (c) 2021 Thomas Combeléran | Reads a built drydock.exe's resources back (icon group, version information, manifest) for the check CI runs on it (cmd/drydock-winident, internal/winident; doc... |
 | github.com/tree-sitter/go-tree-sitter | v0.25.0 | MIT | - | The repo map's parser (decision P62): tree-sitter's official Go binding, which compiles tree-sitter's C library into Drydock through CGO, so the Windows build n... |
@@ -47,7 +47,7 @@ Imported by Drydock itself:
 | golang.org/x/oauth2 | v0.37.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry... |
 | golang.org/x/sys | v0.49.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | Windows Job Objects (killing an agent's whole process tree) and other Windows calls. |
 | gopkg.in/yaml.v3 | v3.0.1 | MIT and Apache-2.0 (the library is MIT; its libyaml port is under the MIT-style license in LICENSE, and NOTICE names the Apache-2.0 files) | - | Reads YAML: agent manifests, the MCP catalog, expert packs, skills. |
-| modernc.org/sqlite | v1.61.0 | BSD-3-Clause (SQLite itself is in the public domain; code the module bundles is under the licenses listed in its LICENSE-3RD-PARTY.md) | - | The database. |
+| modernc.org/sqlite | v1.62.0 | BSD-3-Clause (SQLite itself is in the public domain; code the module bundles is under the licenses listed in its LICENSE-3RD-PARTY.md) | - | The database. |
 | mvdan.cc/sh/v3 | v3.14.1 | BSD-3-Clause | Copyright (c) 2016, Daniel Martí. All rights reserved. | Parses shell commands so permissions can be checked before an agent runs them (POSIX syntax only). |
 
 Pulled in by those, and compiled in:
@@ -111,7 +111,7 @@ Pulled in by those, and compiled in:
 | github.com/muesli/termenv | v0.16.0 | MIT | Copyright (c) 2019 Christian Muehlhaeuser | - |
 | github.com/ncruces/go-strftime | v1.1.0 | MIT | Copyright (c) 2022 Nuno Cruces | - |
 | github.com/nfnt/resize | v0.0.0-20180221191011-83c6a9932646 | ISC | - | - |
-| github.com/nwaples/rardecode/v2 | v2.4.5 | BSD-2-Clause | Copyright (c) 2015, Nicholas Waples | - |
+| github.com/nwaples/rardecode/v2 | v2.4.6 | BSD-2-Clause | Copyright (c) 2015, Nicholas Waples | - |
 | github.com/pb33f/go-yaml | v0.1.1 | Apache-2.0 | Copyright 2025 - The go-yaml Project Contributors | - |
 | github.com/pb33f/ordered-map/v2 | v2.3.2 | Apache-2.0 | - | - |
 | github.com/pelletier/go-toml/v2 | v2.4.3 | MIT | Copyright (c) 2021 - 2023 Thomas Pelletier | - |
@@ -127,18 +127,18 @@ Pulled in by those, and compiled in:
 | github.com/sorairolake/lzip-go | v0.3.8 | Apache-2.0 OR MIT (the author's choice: LICENSE-APACHE and LICENSE-MIT) | - | - |
 | github.com/spf13/afero | v1.15.0 | Apache-2.0 | - | - |
 | github.com/spf13/cast | v1.10.0 | MIT | Copyright (c) 2014 Steve Francia | - |
-| github.com/spf13/pflag | v1.0.10 | BSD-3-Clause | Copyright (c) 2012 Alex Ogier. All rights reserved. | - |
+| github.com/spf13/pflag | v1.1.0 | BSD-3-Clause | Copyright (c) 2012 Alex Ogier. All rights reserved. | - |
 | github.com/spf13/viper | v1.21.0 | MIT | Copyright (c) 2014 Steve Francia | - |
 | github.com/standard-webhooks/standard-webhooks/libraries | v0.0.1 | MIT | Copyright (c) 2023 Svix (https://www.svix.com) | - |
 | github.com/stangelandcl/ppmd | v0.1.1 | MIT | Copyright (c) 2022 Clayton Stangeland | - |
 | github.com/subosito/gotenv | v1.6.0 | MIT | Copyright (c) 2013 Alif Rachmawadi | - |
-| github.com/tidwall/gjson | v1.20.0 | MIT | Copyright (c) 2016 Josh Baker | - |
+| github.com/tidwall/gjson | v1.20.2 | MIT | Copyright (c) 2016 Josh Baker | - |
 | github.com/tidwall/match | v1.2.0 | MIT | Copyright (c) 2016 Josh Baker | - |
-| github.com/tidwall/pretty | v1.2.2 | MIT | Copyright (c) 2017 Josh Baker | - |
-| github.com/tidwall/sjson | v1.2.5 | MIT | Copyright (c) 2016 Josh Baker | - |
+| github.com/tidwall/pretty | v1.3.0 | MIT | Copyright (c) 2017 Josh Baker | - |
+| github.com/tidwall/sjson | v1.2.8 | MIT | Copyright (c) 2016 Josh Baker | - |
 | github.com/u-root/u-root | v0.16.0 | BSD-3-Clause | Copyright (c) 2012-2019, u-root Authors | - |
 | github.com/ulikunitz/xz | v0.5.17 | BSD-3-Clause | Copyright (c) 2014-2022  Ulrich Kunitz | - |
-| github.com/xo/terminfo | v1.2.0 | MIT | Copyright (c) 2016 Anmol Sethi | - |
+| github.com/xo/terminfo | v1.3.1 | MIT | Copyright (c) 2016 Anmol Sethi | - |
 | github.com/yosida95/uritemplate/v3 | v3.0.2 | BSD-3-Clause | - | - |
 | go.opentelemetry.io/auto/sdk | v1.2.1 | Apache-2.0 | - | - |
 | go.opentelemetry.io/otel | v1.47.0 | Apache-2.0, with code under BSD-3-Clause | - | - |
@@ -146,20 +146,20 @@ Pulled in by those, and compiled in:
 | go.opentelemetry.io/otel/metric | v1.47.0 | Apache-2.0, with code under BSD-3-Clause | - | - |
 | go.opentelemetry.io/otel/trace | v1.47.0 | Apache-2.0, with code under BSD-3-Clause | - | - |
 | go.uber.org/multierr | v1.11.0 | MIT | Copyright (c) 2017-2021 Uber Technologies, Inc. | - |
-| go.yaml.in/yaml/v3 | v3.0.5 | MIT and Apache-2.0 (the library is MIT; its libyaml port is under the MIT-style license in LICENSE, and NOTICE names the Apache-2.0 files) | - | - |
-| go4.org | v0.0.0-20261019143151-5b882263cdaf | Apache-2.0 | - | - |
+| go.yaml.in/yaml/v3 | v3.0.6 | MIT and Apache-2.0 (the library is MIT; its libyaml port is under the MIT-style license in LICENSE, and NOTICE names the Apache-2.0 files) | - | - |
+| go4.org | v0.0.0-20261028031214-ed6929a230fe | Apache-2.0 | - | - |
 | golang.org/x/crypto | v0.58.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
-| golang.org/x/exp | v0.0.0-20261014143641-f0251eb4aa3e | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
+| golang.org/x/exp | v0.0.0-20261106192419-47ce03d25ef0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/image | v0.47.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/mod | v0.42.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/sync | v0.24.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/text | v0.43.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/time | v0.16.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | google.golang.org/genproto | v0.0.0-20251202230838-ff82c1b0f217 | Apache-2.0 (the repository's LICENSE; this module's source is not needed to build) | - | Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use). |
-| google.golang.org/genproto/googleapis/api | v0.0.0-20261019180522-ce908d29299b | Apache-2.0 | - | - |
-| google.golang.org/genproto/googleapis/rpc | v0.0.0-20261019180522-ce908d29299b | Apache-2.0 | - | - |
+| google.golang.org/genproto/googleapis/api | v0.0.0-20261104224025-d1e00e9f33ab | Apache-2.0 | - | - |
+| google.golang.org/genproto/googleapis/rpc | v0.0.0-20261104224025-d1e00e9f33ab | Apache-2.0 | - | - |
 | google.golang.org/protobuf | v1.36.12 | BSD-3-Clause | Copyright (c) 2018 The Go Authors. All rights reserved. | - |
-| modernc.org/libc | v1.79.0 | BSD-3-Clause, with code under MIT | - | The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app. |
+| modernc.org/libc | v1.80.1 | BSD-3-Clause, with code under MIT | - | The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app. |
 | modernc.org/mathutil | v1.7.1 | BSD-3-Clause | Copyright (c) 2014 The mathutil Authors. All rights reserved. | - |
 | modernc.org/memory | v1.12.1 | BSD-3-Clause | Copyright (c) 2017 The Memory Authors. All rights reserved. | - |
 
@@ -222,11 +222,11 @@ The `tools` folder beside `drydock.exe` holds these release files exactly as eac
 `packaging/bundle.json` and checked against the SHA-256 digest GitHub recorded (`tools/bundle.json` lists each file, its address and
 its digest). Drydock installs them into its own folder at the first start; it does not change them.
 
-- osv-scanner v2.7.0 (https://github.com/google/osv-scanner): Apache-2.0.
-- Opengrep v1.31.0 (https://github.com/opengrep/opengrep): LGPL-2.1. The program is shipped unmodified, as its own executable, not
-  linked into Drydock. Its source for that release is at https://github.com/opengrep/opengrep/tree/v1.31.0; on request Drydock's
+- osv-scanner v2.7.1 (https://github.com/google/osv-scanner): Apache-2.0.
+- Opengrep v1.33.1 (https://github.com/opengrep/opengrep): LGPL-2.1. The program is shipped unmodified, as its own executable, not
+  linked into Drydock. Its source for that release is at https://github.com/opengrep/opengrep/tree/v1.33.1; on request Drydock's
   maintainers provide the same source.
-- llama.cpp, the TurboQuant fork's release `b10298-2.0.0`, its Windows Vulkan build
+- llama.cpp, the TurboQuant fork's release `b10298-2.1.0`, its Windows Vulkan build
   (https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant): MIT, as llama.cpp and ggml (copyright the ggml
   authors, as its LICENSE file states). Its archive carries the licences of what it contains; Drydock unpacks it as published.
 
@@ -237,7 +237,7 @@ The built-in Opengrep rules in `internal/scan/rules` are compiled into Drydock a
 - dgryski/semgrep-go (https://github.com/dgryski/semgrep-go), at commit db0227c03f4b3c4e71d900188d51db4c81d66932: MIT,
   Copyright (c) 2020 Damian Gryski.
 - 0xdea/semgrep-rules, the C and C++ rules (https://github.com/0xdea/semgrep-rules), at commit
-  e0121ac19d9fa259a44f3a24d3e42c95719b17c7: MIT, Copyright (c) 2022 raptor.
+  b9942606d3543e3145a95332e6543fb79a01af00: MIT, Copyright (c) 2022 raptor.
 
 ## Tools Drydock invokes but does not bundle
 
@@ -267,14 +267,14 @@ Listed in `ui/package.json` as what the UI needs to run:
 |---|---|---|---|
 | @fontsource-variable/inter | 5.3.0 | OFL-1.1 | Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1). |
 | @fontsource-variable/jetbrains-mono | 5.3.0 | OFL-1.1 | Bundles the JetBrains Mono variable font for code, task keys and numbers in the graphite UI (decision P97), so the desktop app looks the same offline (OFL-1.1). |
-| @remix-run/ui | 0.12.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
+| @remix-run/ui | 0.13.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
 | @xterm/addon-fit | 0.11.0 | MIT | Sizes a terminal to its panel. |
 | @xterm/xterm | 6.0.0 | MIT | Draws the human's terminals in the bottom dock (lazy-loaded). |
-| lucide | 1.61.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
+| lucide | 1.70.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
 | marked | 14.0.0 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
-| marked | 18.1.1 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
+| marked | 18.1.3 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
 | monaco-editor | 0.57.0 | MIT | The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported). |
-| remix | 3.0.0 | MIT | The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix... |
+| remix | 3.2.0 | MIT | The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix... |
 
 Pulled in by those:
 
@@ -286,53 +286,54 @@ Pulled in by those:
 | @oxc-project/runtime | 0.121.0 | MIT | - |
 | @oxc-project/types | 0.121.0 | MIT | - |
 | @remix-run/assert | 1.0.0 | MIT | - |
-| @remix-run/assets | 1.0.0 | MIT | - |
+| @remix-run/assets | 1.0.2 | MIT | - |
 | @remix-run/async-context-middleware | 1.0.0 | MIT | - |
-| @remix-run/auth | 1.0.0 | MIT | - |
-| @remix-run/auth-middleware | 1.0.0 | MIT | - |
-| @remix-run/cli | 1.0.0 | MIT | - |
-| @remix-run/component | 1.0.0 | MIT | - |
-| @remix-run/component-hmr | 1.0.0 | MIT | - |
-| @remix-run/compression-middleware | 1.0.0 | MIT | - |
-| @remix-run/cookie | 1.0.0 | MIT | - |
+| @remix-run/auth | 1.0.1 | MIT | - |
+| @remix-run/auth-middleware | 1.0.1 | MIT | - |
+| @remix-run/cli | 1.0.2 | MIT | - |
+| @remix-run/component | 1.2.0 | MIT | - |
+| @remix-run/component-hmr | 1.0.1 | MIT | - |
+| @remix-run/compression-middleware | 1.0.2 | MIT | - |
+| @remix-run/cookie | 1.0.2 | MIT | - |
 | @remix-run/cop-middleware | 1.0.0 | MIT | - |
-| @remix-run/cors-middleware | 1.0.0 | MIT | - |
-| @remix-run/csrf-middleware | 1.0.0 | MIT | - |
+| @remix-run/cors-middleware | 1.0.2 | MIT | - |
+| @remix-run/csp-middleware | 1.0.0 | MIT | - |
+| @remix-run/csrf-middleware | 1.0.1 | MIT | - |
 | @remix-run/data-schema | 1.0.0 | MIT | - |
 | @remix-run/data-table | 1.0.0 | MIT | - |
 | @remix-run/data-table-mysql | 1.0.0 | MIT | - |
 | @remix-run/data-table-postgres | 1.0.0 | MIT | - |
 | @remix-run/data-table-sqlite | 1.0.0 | MIT | - |
-| @remix-run/fetch-proxy | 1.0.0 | MIT | - |
+| @remix-run/fetch-proxy | 1.0.2 | MIT | - |
 | @remix-run/fetch-router | 1.0.0 | MIT | - |
-| @remix-run/file-storage | 1.0.0 | MIT | - |
-| @remix-run/file-storage-s3 | 1.0.0 | MIT | - |
-| @remix-run/form-data-middleware | 1.0.0 | MIT | - |
-| @remix-run/form-data-parser | 1.0.0 | MIT | - |
+| @remix-run/file-storage | 1.0.1 | MIT | - |
+| @remix-run/file-storage-s3 | 1.1.1 | MIT | - |
+| @remix-run/form-data-middleware | 1.1.1 | MIT | - |
+| @remix-run/form-data-parser | 1.1.1 | MIT | - |
 | @remix-run/fs | 1.0.0 | MIT | - |
-| @remix-run/headers | 1.0.0 | MIT | - |
+| @remix-run/headers | 1.1.0 | MIT | - |
 | @remix-run/html-template | 1.0.0 | MIT | - |
 | @remix-run/lazy-file | 5.0.8 | MIT | - |
 | @remix-run/logger-middleware | 1.0.0 | MIT | - |
 | @remix-run/method-override-middleware | 1.0.0 | MIT | - |
 | @remix-run/mime | 1.0.0 | MIT | - |
-| @remix-run/multipart-parser | 1.0.0 | MIT | - |
-| @remix-run/multiple-import-maps-polyfill | 1.0.0 | MIT | - |
+| @remix-run/multipart-parser | 1.1.1 | MIT | - |
+| @remix-run/multiple-import-maps-polyfill | 1.0.1 | MIT | - |
 | @remix-run/node-fetch-server | 1.0.0 | MIT | - |
 | @remix-run/node-hmr | 1.0.0 | MIT | - |
 | @remix-run/node-tsx | 1.0.0 | MIT | - |
-| @remix-run/render-middleware | 1.0.0 | MIT | - |
-| @remix-run/response | 1.0.0 | MIT | - |
+| @remix-run/render-middleware | 1.1.0 | MIT | - |
+| @remix-run/response | 1.0.2 | MIT | - |
 | @remix-run/route-pattern | 1.0.0 | MIT | - |
-| @remix-run/session | 1.0.0 | MIT | - |
-| @remix-run/session-middleware | 1.0.0 | MIT | - |
-| @remix-run/session-storage-memcache | 1.0.0 | MIT | - |
-| @remix-run/session-storage-redis | 1.0.0 | MIT | - |
-| @remix-run/spa | 1.0.0 | MIT | - |
-| @remix-run/static-middleware | 1.0.0 | MIT | - |
-| @remix-run/tar-parser | 1.0.0 | MIT | - |
+| @remix-run/session | 1.0.1 | MIT | - |
+| @remix-run/session-middleware | 1.0.2 | MIT | - |
+| @remix-run/session-storage-memcache | 1.0.1 | MIT | - |
+| @remix-run/session-storage-redis | 1.0.1 | MIT | - |
+| @remix-run/spa | 1.0.2 | MIT | - |
+| @remix-run/static-middleware | 1.0.2 | MIT | - |
+| @remix-run/tar-parser | 1.0.1 | MIT | - |
 | @remix-run/terminal | 1.0.0 | MIT | - |
-| @remix-run/test | 1.0.0 | MIT | - |
+| @remix-run/test | 1.1.0 | MIT | - |
 | @standard-schema/spec | 1.1.0 | MIT | - |
 | @types/dom-navigation | 1.0.7 | MIT | - |
 | @types/istanbul-lib-coverage | 2.0.6 | MIT | - |
@@ -360,7 +361,7 @@ Pulled in by those:
 | picomatch | 4.0.7 | MIT | - |
 | readdirp | 5.1.1 | MIT | - |
 | resolve-pkg-maps | 1.0.0 | MIT | - |
-| semver | 7.8.5 | ISC | - |
+| semver | 7.8.6 | ISC | - |
 | source-map-js | 1.2.2 | BSD-3-Clause | - |
 | supports-color | 7.2.0 | MIT | - |
 | v8-to-istanbul | 9.3.0 | ISC | - |
@@ -387,10 +388,10 @@ The marks are trademarks of their owners, shown only to say which service or CLI
 `internal/skills/registry.yaml` quotes the description from the front matter of each skill the prebuilt agents name, read at a
 pinned commit; nothing else of the skills ships (a skill's files are fetched only when a person adds it):
 
-- anthropics/skills at dbd4588f9e1033efb41dad4bef2f7947c8993d44: Apache-2.0 (each skill's `LICENSE.txt`).
-- vercel-labs/agent-skills at 063bee94c3f4df8453406c830b0a7df0f2860278: MIT.
-- cloudflare/skills at 86505e44f87d801aa1864a3c4109e9a8ae5c409f: Apache-2.0.
-- MicrosoftDocs/mcp at f8ffde185dfd232dbf5d187c22ce299eadc3d583: content CC BY 4.0, code MIT.
+- anthropics/skills at 2c5958ecac7cee2b583967a2c4981d0f4a75c579: Apache-2.0 (each skill's `LICENSE.txt`).
+- vercel-labs/agent-skills at 1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62: MIT.
+- cloudflare/skills at 6eb6c781aa9b6438e0c7307bd102788a75fe1a6d: Apache-2.0.
+- MicrosoftDocs/mcp at f0a9478a954c9b3a7c6525a5183466902ca60731: content CC BY 4.0, code MIT.
 
 ## Reused architecture and algorithms (reimplemented, not copied)
 

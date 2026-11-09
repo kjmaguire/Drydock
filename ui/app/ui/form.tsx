@@ -1,5 +1,5 @@
 import { css, on, type Handle, type RemixNode } from 'remix/component';
-import * as toggle from '@remix-run/ui/toggle';
+import { toggle } from '@remix-run/ui/toggle';
 import { t } from './tokens.ts';
 
 // one column that may shrink below its content (minmax(0, 1fr)): a dropdown's min-content is its whole choice
@@ -150,7 +150,7 @@ export function Switch(handle: Handle<{ label: RemixNode; checked: boolean; disa
     return (
       <div mix={switchRow}>
         <label for={id}>{label}</label>
-        <button id={id} mix={[switchCss, toggle.control({ checked, disabled, onCheckedChange: onChange })]} />
+        <button id={id} mix={[switchCss, toggle({ checked, disabled, onCheckedChange: onChange })]} />
       </div>
     );
   };

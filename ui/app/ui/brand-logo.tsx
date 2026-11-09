@@ -1,5 +1,5 @@
 // Brand logos for the services Drydock connects to (integrations, MCP servers, agent CLIs, model providers, the Linux of a WSL
-// distro). The paths are from Simple Icons 16.35.0 (CC0-1.0, https://simpleicons.org), copied rather than installed so only
+// distro). The paths are from Simple Icons 16.37.0 (CC0-1.0, https://simpleicons.org), copied rather than installed so only
 // these few ship; a brand Simple Icons does not carry and no other licensed set has (Groq) has no logo here and its tile shows an
 // icon instead, rather than a drawn guess. Microsoft has no Simple
 // Icons entry (its four squares are drawn here) and neither has Aikido: Aikido's mark (the bar over the chevron, #6551F3) is
@@ -7,13 +7,13 @@
 // https://github.com/AikidoSec/safe-chain (also in AikidoSec/firewall-node), scaled into the 24-unit box. The marks are
 // trademarks of their owners, shown only to say which service a card connects to.
 //
-// Four marks that Simple Icons does not carry come from LobeHub's icon set, @lobehub/icons-static-svg 1.97.0 (MIT,
+// Four marks that Simple Icons does not carry come from LobeHub's icon set, @lobehub/icons-static-svg 1.102.0 (MIT,
 // https://github.com/lobehub/lobe-icons), the monochrome icons/codex.svg, goose.svg, antigravity.svg and openai.svg, copied as
 // single paths in the same 24-unit box (Codex's and OpenAI's are drawn with the even-odd rule, as in their files): Codex and
 // OpenAI (OpenAI) and Goose (Block) in black as their marks are, Antigravity (Google) in the blue of its colour mark.
 //
 // The skill registries' publishers that had no mark until 2026-10-16 (the owner's report: OpenAI, Remix, Stripe and Vercel tiles
-// showed no logo) are Simple Icons 16.35.0 again (remix, stripe, vercel, in the colours its data file gives them), and OpenAI is
+// showed no logo) are Simple Icons 16.37.0 again (remix, stripe, vercel, in the colours its data file gives them), and OpenAI is
 // the LobeHub mark above.
 //
 // Each logo is drawn in its brand color on a light tile, so dark marks (GitHub, Notion) stay visible in the dark theme.
