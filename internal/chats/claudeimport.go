@@ -336,6 +336,30 @@ func (s *Service) importOne(ctx context.Context, t transcript, distro, dir, proj
 	if t.dropped > 0 {
 		notes = append(notes, fmt.Sprintf("The %d earlier messages of the Claude Code session were not imported; the session itself still has them.", t.dropped))
 	}
+	// every row is cut and scanned for secrets before the transaction: the scan of a long session (up to maxImportMessages, each
+	// line through gitleaks) held the one writer connection, and every other write of the app waited behind it (CI 2026-11-09)
+	type row struct {
+		role, body, tool, status string
+		at                       int64
+	}
+	prep := func(role, body, tool, status string, at int64) row {
+		body = strings.ToValidUTF8(body, "\uFFFD")
+		if len(body) > s.o.MaxBodyBytes {
+			body = cutUTF8(body, s.o.MaxBodyBytes) + "\n[cut by Drydock: the message was longer than it keeps]"
+		}
+		if at == 0 {
+			at = c.Created
+		}
+		return row{role: role, body: redact.Lines(body, s.d.Redact), tool: s.d.Redact(tool), status: status, at: at}
+	}
+	rows := make([]row, 0, len(notes)+len(t.msgs)+1)
+	for _, n := range notes {
+		rows = append(rows, prep(RoleSystem, n, "", "", c.Created))
+	}
+	for _, m := range t.msgs {
+		rows = append(rows, prep(m.role, m.body, m.tool, m.status, m.at))
+	}
+	rows = append(rows, prep(RoleSystem, "Imported from Claude Code (session "+t.sessionID+"). The next message continues that session in "+c.Cwd+".", "", "", now))
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		stored, existing = 0, ""
 		if existing = importedAs(ctx, tx, t.sessionID); existing != "" {
@@ -347,34 +371,13 @@ func (s *Service) importOne(ctx context.Context, t transcript, distro, dir, proj
 		if _, err := tx.ExecContext(ctx, `UPDATE chats SET import_source=?, import_session=? WHERE id=?`, c.ImportedFrom, c.ImportedSession, c.ID); err != nil {
 			return err
 		}
-		seq := 0
-		add := func(role, body, tool, status string, at int64) error {
-			seq++
-			body = strings.ToValidUTF8(body, "�")
-			if len(body) > s.o.MaxBodyBytes {
-				body = cutUTF8(body, s.o.MaxBodyBytes) + "\n[cut by Drydock: the message was longer than it keeps]"
-			}
-			if at == 0 {
-				at = c.Created
-			}
-			_, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_status) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-				ids.New("cmsg"), c.ID, seq, role, redact.Lines(body, s.d.Redact), s.d.Redact(tool), "", "", at, status)
-			return err
-		}
-		for _, n := range notes {
-			if err := add(RoleSystem, n, "", "", c.Created); err != nil {
-				return err
-			}
-		}
-		for _, m := range t.msgs {
-			if err := add(m.role, m.body, m.tool, m.status, m.at); err != nil {
+		for i, r := range rows {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_status) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+				ids.New("cmsg"), c.ID, i+1, r.role, r.body, r.tool, "", "", r.at, r.status); err != nil {
 				return err
 			}
 		}
 		stored = len(t.msgs)
-		if err := add(RoleSystem, "Imported from Claude Code (session "+t.sessionID+"). The next message continues that session in "+c.Cwd+".", "", "", now); err != nil {
-			return err
-		}
 		return markAllReadTx(ctx, tx, c.ID) // an imported conversation was read where it was held
 	})
 	if err != nil {
