@@ -13,15 +13,11 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/bundle"
@@ -102,35 +98,17 @@ func Build(ctx context.Context, pins Pins, api host.API, client *http.Client, ou
 	return m, os.WriteFile(filepath.Join(out, bundle.FileName), append(b, '\n'), 0o644)
 }
 
-// retryWaits are the pauses before each new try of a download that failed on GitHub's side (a 5xx answer, a dropped
-// connection): CI's download step failed twice on 2026-11-09 with HTTP 504 from GitHub's release host, on files that were there.
-var retryWaits = []time.Duration{10 * time.Second, 30 * time.Second, 60 * time.Second}
+// retryWaits are the pauses before each new try of a download that failed on GitHub's side (runners.RetryWaits).
+var retryWaits = runners.RetryWaits
 
 // download fetches one release file, checked against its digest, and tries again after a passing failure of the host. A refused
-// address, a wrong digest or a file over its size limit is never tried again.
+// address, a 404, a wrong digest or a file over its size limit is never tried again.
 func download(ctx context.Context, client *http.Client, a runners.Asset, out string, o runners.DownloadOptions) error {
-	for try := 0; ; try++ {
+	said := func(err error, wait time.Duration) { fmt.Printf("%s: %v; trying again in %s\n", a.Name, err, wait) }
+	return runners.Retrying(ctx, retryWaits, said, func() error {
 		_, err := runners.DownloadWith(ctx, client, a, out, o)
-		if err == nil || try >= len(retryWaits) || !passing(err) {
-			return err
-		}
-		fmt.Printf("%s: %v; trying again in %s\n", a.Name, err, retryWaits[try])
-		select {
-		case <-ctx.Done():
-			return err
-		case <-time.After(retryWaits[try]):
-		}
-	}
-}
-
-// passingHTTP is a 5xx answer in runners.DownloadWith's error.
-var passingHTTP = regexp.MustCompile(`: HTTP 5\d\d$`)
-
-// passing says whether a download failed on the host's side or on the way: a 5xx answer or a network error.
-func passing(err error) bool {
-	var ue *url.Error
-	var ne net.Error
-	return passingHTTP.MatchString(err.Error()) || errors.As(err, &ue) || errors.As(err, &ne)
+		return err
+	})
 }
 
 func main() {
