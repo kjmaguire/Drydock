@@ -16,7 +16,6 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/ids"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
@@ -38,11 +37,11 @@ func init() {
 		if c.cfg.ScanInstall != nil {
 			c.cfg.ScanInstall(s.inst)
 		}
-		s.forgetChoices(ctx)
-		s.seedBundled(ctx)
-		securityRegistry.Store(c, s) // the `scan` check and the agents' security_findings tool read it (ext_security_check.go)
 		wctx, stopWatch := context.WithCancel(context.Background())
-		s.stopWatch = stopWatch
+		s.stopWatch, s.life = stopWatch, wctx
+		s.forgetChoices(ctx)
+		s.seedBundled()
+		securityRegistry.Store(c, s) // the `scan` check and the agents' security_findings tool read it (ext_security_check.go)
 		s.watchUpdates(wctx)
 		s.watchSchedule(wctx) // the scans a person's rule starts: after a merge, after a sync with new commits, weekly (H5)
 		// the built-in rules (decision P77) are written once per version under the app's data; every scan runs them. A folder
@@ -194,6 +193,11 @@ type securityExt struct {
 	latest map[string]string
 	// stopWatch ends the update check and the scheduled scans' watcher
 	stopWatch context.CancelFunc
+	// life is the extension's own background work's context (the seed of the download's tools, tool installs, the scan a rule
+	// starts after another ends): close cancels it, and Close waits for that work (bgwork.go)
+	life context.Context
+	// closed is set by close (under mu): no scan or install starts after it, so none outlives the core
+	closed bool
 	// pending holds, by project id, the rule whose scan waits: an agent works in the project's folder or a scan of it runs
 	// (under mu, ext_security_schedule.go)
 	pending map[string]string
@@ -429,15 +433,28 @@ func (s *securityExt) start(ctx context.Context, p scanTarget, by string) (scan.
 
 // startAs is start with the rule that started it (scan.Report.Trigger): empty for the person's Scan; for a rule's scan by is the
 // person who set the rule (ext_security_schedule.go).
+// errClosingScan is startAs's answer once close has run: a scan started then would outlive the core.
+var errClosingScan = errors.New("Drydock is closing: the scan was not started")
+
 func (s *securityExt) startAs(ctx context.Context, p scanTarget, by, trigger string) (scan.Report, error) {
 	if !isPerson(by) {
 		return scan.Report{}, errors.New("only a person may start a security scan")
+	}
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return scan.Report{}, errClosingScan
 	}
 	t, err := s.target(ctx, p, true)
 	if err != nil {
 		return scan.Report{}, err
 	}
 	s.mu.Lock()
+	if s.closed { // close may have run since the check above
+		s.mu.Unlock()
+		return scan.Report{}, errClosingScan
+	}
 	if r, ok := s.running[t.Key]; ok {
 		s.mu.Unlock()
 		return r.Snapshot(), fmt.Errorf("a scan of this %s is already running", t.noun())
@@ -508,7 +525,7 @@ func (s *securityExt) changed(t target, rep scan.Report, engine scan.EngineID) {
 	s.publish(ctx, t, "security.scan.finished", fin)
 	if waiting && t.ProjectID != "" {
 		// a rule's scan waited for this one to end: it starts now if no agent works in the folder (else the next tick)
-		safe.Go("security.schedule.after-scan", func() { s.runScheduled(context.Background(), t.ProjectID) })
+		s.c.goBG("security.schedule.after-scan", func() { s.runScheduled(s.life, t.ProjectID) })
 	}
 }
 
@@ -745,8 +762,11 @@ func (s *securityExt) runningScans(ctx context.Context) []RunningScan {
 // close cancels the scans still running and waits for them, so no tool outlives the core.
 func (s *securityExt) close() {
 	securityRegistry.Delete(s.c)
+	s.mu.Lock()
+	s.closed = true // before life ends: work that sees it ended cannot start a scan or an install in between
+	s.mu.Unlock()
 	if s.stopWatch != nil {
-		s.stopWatch()
+		s.stopWatch() // ends s.life too: the seed, the installs and a rule's scan about to start stop
 	}
 	s.mu.Lock()
 	runs := make([]*scan.Run, 0, len(s.running))
