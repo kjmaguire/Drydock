@@ -174,6 +174,24 @@ export async function rpc<T = unknown>(page: Page, method: string, data: unknown
 }
 
 /**
+ * New chat on Chats, and the chat it made, once the page is on that chat. Chats reopens the last chat at /chats, and that chat's
+ * address matches /chats/chat_ too: a spec that waited only for such an address typed into the reopened chat while the new one
+ * was being made (CI 2026-11-09, chat-perf: its first message went to the chat chat-import left open).
+ */
+export async function newChat(page: Page): Promise<string> {
+  const before = new Set((await rpc<{ id: string }[] | null>(page, 'chat.list', { projectId: '', includeArchived: true }) ?? []).map((c) => c.id));
+  await page.getByTestId('chat-new').click();
+  let id = '';
+  await expect
+    .poll(() => {
+      id = /\/chats\/(chat_[^/?#]+)/.exec(page.url())?.[1] ?? '';
+      return id !== '' && !before.has(id);
+    })
+    .toBe(true);
+  return id;
+}
+
+/**
  * Home's New project dialog (decision P143), opened from its button; the page is loaded first when the browser is not on the
  * app yet. The old wizard's address (/project/new) opens the same dialog.
  */

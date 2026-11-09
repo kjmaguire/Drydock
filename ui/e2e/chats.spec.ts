@@ -2,7 +2,7 @@
 // speaks Claude Code's stream-json): it answers messages that carry "drydock-e2e chat", refuses a Bash call for
 // "drydock-e2e touch" in the default permission mode, and runs it once Allow and retry allows the rule and sends the retry text.
 import { expect, test, type Page } from '@playwright/test';
-import { appUrl, choose, createProject, createProjectWithoutRepo, workspaceNav } from './helpers';
+import { appUrl, choose, createProject, createProjectWithoutRepo, newChat, workspaceNav } from './helpers';
 
 /** The chat's ⋯ panel (decision P139): its CLI and state, where it runs, Allowed tools, Properties, Fork, Move to a project. */
 async function openMore(page: Page) {
@@ -20,8 +20,7 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   await expect(page.getByRole('complementary', { name: 'Chats' })).toBeVisible();
 
   // New chat opens the chat at once (decision P107): no project, Claude Code, its own folder; no dialog first
-  await page.getByTestId('chat-new').click();
-  await expect(page).toHaveURL(/\/chats\/chat_/);
+  await newChat(page);
   await expect(page.getByRole('dialog', { name: 'New chat' })).toHaveCount(0);
   await expect(page.getByTestId('chip-adapter')).toContainText('Claude Code');
   // the header names its private folder in words, not by the core's data path (decision P144)
@@ -125,8 +124,7 @@ test('Ctrl+N starts a chat without a project, and Move to a project moves it int
 test('the calm chat: a new chat is the composer; tool calls fold into one line, edits into one card; replies follow an offer; Ctrl+O shows every call', async ({ page }) => {
   await page.goto(appUrl());
   await workspaceNav(page, 'nav-chats');
-  await page.getByTestId('chat-new').click();
-  await expect(page).toHaveURL(/\/chats\/chat_/);
+  await newChat(page);
   // a new chat is just the composer, with the cursor in it: no paragraph
   const message = page.getByLabel('Message', { exact: true });
   await expect(message).toBeFocused();
