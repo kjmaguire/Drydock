@@ -62,3 +62,8 @@ dist-windows/
 # Playwright's results and report when it is run from the repository root (ui/.gitignore covers the ones under ui/)
 /test-results/
 /playwright-report/
+
+# Impeccable (the design skill in .claude/): its engine binary is fetched on demand and checked against engine-checksums.txt
+/.claude/skills/impeccable/scripts/bin/
+# personal Claude Code settings
+/.claude/settings.local.json

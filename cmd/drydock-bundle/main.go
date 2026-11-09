@@ -55,7 +55,7 @@ func Build(ctx context.Context, pins Pins, api host.API, client *http.Client, ou
 		if err != nil {
 			return m, err
 		}
-		if _, err := runners.DownloadWith(ctx, client, rel.Asset, out, runners.DownloadOptions{Prefix: src.DownloadPrefix(), MaxBytes: scan.MaxToolAsset}); err != nil {
+		if err := download(ctx, client, rel.Asset, out, runners.DownloadOptions{Prefix: src.DownloadPrefix(), MaxBytes: scan.MaxToolAsset}); err != nil {
 			return m, fmt.Errorf("%s %s: %w", p.Tool, p.Tag, err)
 		}
 		m.Scan = append(m.Scan, bundle.ScanTool{Tool: p.Tool, Tag: rel.Tag, Asset: rel.Asset})
@@ -85,7 +85,7 @@ func Build(ctx context.Context, pins Pins, api host.API, client *http.Client, ou
 		if rel.Cudart != nil {
 			return m, fmt.Errorf("%s needs a CUDA runtime beside it; the download carries a build that does not (pin vulkan or cpu)", rel.Archive.Name)
 		}
-		if _, err := runners.DownloadWith(ctx, client, rel.Archive, out, runners.DownloadOptions{Prefix: src.DownloadPrefix(), MaxBytes: localllm.MaxRuntimeArchive}); err != nil {
+		if err := download(ctx, client, rel.Archive, out, runners.DownloadOptions{Prefix: src.DownloadPrefix(), MaxBytes: localllm.MaxRuntimeArchive}); err != nil {
 			return m, fmt.Errorf("llama.cpp %s: %w", rel.Tag, err)
 		}
 		m.Llama = &bundle.LlamaBuild{Source: src.ID, Tag: rel.Tag, Backend: string(rel.Backend), Archive: rel.Archive}
@@ -96,6 +96,19 @@ func Build(ctx context.Context, pins Pins, api host.API, client *http.Client, ou
 		return m, err
 	}
 	return m, os.WriteFile(filepath.Join(out, bundle.FileName), append(b, '\n'), 0o644)
+}
+
+// retryWaits are the pauses before each new try of a download that failed on GitHub's side (runners.RetryWaits).
+var retryWaits = runners.RetryWaits
+
+// download fetches one release file, checked against its digest, and tries again after a passing failure of the host. A refused
+// address, a 404, a wrong digest or a file over its size limit is never tried again.
+func download(ctx context.Context, client *http.Client, a runners.Asset, out string, o runners.DownloadOptions) error {
+	said := func(err error, wait time.Duration) { fmt.Printf("%s: %v; trying again in %s\n", a.Name, err, wait) }
+	return runners.Retrying(ctx, retryWaits, said, func() error {
+		_, err := runners.DownloadWith(ctx, client, a, out, o)
+		return err
+	})
 }
 
 func main() {
