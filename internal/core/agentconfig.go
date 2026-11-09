@@ -12,7 +12,6 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/events"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
@@ -43,7 +42,7 @@ type AgentConfigFinding struct {
 
 func startAgentConfig(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	bg, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	safe.Go("core.startAgentConfig", func() { c.watchAgentConfigRefusals(bg) })
+	c.goBG("core.startAgentConfig", func() { c.watchAgentConfigRefusals(bg) })
 	return map[string]Method{
 		"project.agentConfig": bind(func(ctx context.Context, p idParam) (any, error) { return c.AgentConfigStatus(ctx, p.ID) }),
 		"project.trustAgentConfig": bind(func(ctx context.Context, p struct {

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/runfiles"
-	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Retention (brief s18, docs/packaging.md). Events and usage are kept indefinitely, except the streamed ones (streamedEvents):
@@ -59,7 +58,7 @@ func (r RetentionReport) acted() bool {
 func init() {
 	RegisterExtension(Extension{Name: "retention", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ctx, cancel := context.WithCancel(ctx)
-		safe.Go("core.init", func() {
+		c.goBG("core.retention", func() {
 			// the first pass waits a little, so starting the app does not begin with disk work
 			select {
 			case <-ctx.Done():

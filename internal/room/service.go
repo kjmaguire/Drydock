@@ -418,28 +418,30 @@ func (s *Service) ArchiveTaskChannel(ctx context.Context, taskID, outcome string
 		return err
 	}
 	if _, _, err := s.ExportMinutes(ctx, r.ID, ExportRequest{Scope: TaskArchiveScope, ReceiptID: taskID, By: System,
-		Title: "Minutes of " + r.Name + " (task " + outcome + ")"}); err != nil {
+		Title: "Minutes of " + r.Name + " (task " + outcome + ")"}); err != nil && ctx.Err() == nil { // cut short by a stop: not a failure
 		s.report(fmt.Errorf("task %s minutes: %w", taskID, err))
 	}
 	return s.ArchiveRoom(ctx, r.ID, System, "task "+outcome)
 }
 
-// WatchTasks archives task rooms when task.completed, task.cancelled or task.failed events arrive, until ctx ends.
-// The event names follow brief section 12; no task service publishes them yet.
-func (s *Service) WatchTasks(ctx context.Context) error {
+// WatchTasks archives task rooms when task.completed, task.cancelled or task.failed events arrive, until ctx ends. It returns
+// at once with a channel that is closed when the watcher has stopped, the archive it was making included: whoever closes the
+// database waits for it, since an archive still running would write after the close (and report that it could not).
+func (s *Service) WatchTasks(ctx context.Context) (<-chan struct{}, error) {
 	if s.bus == nil {
-		return errors.New("room: no bus")
+		return nil, errors.New("room: no bus")
 	}
 	// a watcher the bus dropped as slow replays what it missed instead of ending (audit 2026-10-16, L2)
-	events.Watch(ctx, s.bus, events.Filter{Types: []string{"task.completed", "task.cancelled", "task.failed"}}, func(e events.Event) {
+	return events.Watch(ctx, s.bus, events.Filter{Types: []string{"task.completed", "task.cancelled", "task.failed"}}, func(e events.Event) {
 		if e.TaskID == "" {
 			return
 		}
-		if err := s.ArchiveTaskChannel(ctx, e.TaskID, strings.TrimPrefix(e.Type, "task.")); err != nil && !errors.Is(err, ErrNotFound) {
+		err := s.ArchiveTaskChannel(ctx, e.TaskID, strings.TrimPrefix(e.Type, "task."))
+		// an archive cut short because the app is stopping is not a failure: the next start finds the room still open
+		if err != nil && !errors.Is(err, ErrNotFound) && ctx.Err() == nil {
 			s.report(err)
 		}
-	})
-	return nil
+	}), nil
 }
 
 // dmAgent is the agent of a DM's name "dm:human:<name>+<agent id>" (CreateDM): a human's name and an agent id hold no "+".

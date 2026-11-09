@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/pipeline"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -26,7 +25,7 @@ var (
 func init() {
 	RegisterExtension(Extension{Name: "prwaiting", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ctx, cancel := context.WithCancel(ctx)
-		safe.Go("prwaiting.loop", func() { c.prWaitingLoop(ctx) })
+		c.goBG("prwaiting.loop", func() { c.prWaitingLoop(ctx) })
 		return nil, cancel, nil
 	}})
 }

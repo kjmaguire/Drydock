@@ -10,7 +10,6 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
-	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Keeping a project's folder in step with its remote (decision P143). Sync now (repo.sync) fetches the project's origin remote
@@ -95,8 +94,8 @@ func init() {
 	RegisterExtension(Extension{Name: "reposync", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		ctx, cancel := context.WithCancel(ctx)
 		y := &repoSyncer{c: c, ctx: ctx, mem: map[string]*repoSyncMem{}}
-		safe.Go("reposync.loop", func() { y.loop(ctx) })
-		safe.Go("reposync.trust", func() { y.onTrust(ctx) })
+		c.goBG("reposync.loop", func() { y.loop(ctx) })
+		c.goBG("reposync.trust", func() { y.onTrust(ctx) })
 		m := map[string]Method{
 			"repo.syncState": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -260,11 +259,16 @@ func (y *repoSyncer) fetchLater(projectID string) {
 	}
 	m.checking = true // shown at once; fetch sets it again
 	y.mu.Unlock()
-	safe.Go("reposync.fetch", func() {
+	started := y.c.goBG("reposync.fetch", func() {
 		defer y.lock(projectID)()
 		_ = y.fetch(y.ctx, projectID)
 		y.announce(y.ctx, projectID)
 	})
+	if !started { // the app is stopping
+		y.mu.Lock()
+		m.checking = false
+		y.mu.Unlock()
+	}
 }
 
 // announce publishes the project's state (no address, no file names: counts and words only).

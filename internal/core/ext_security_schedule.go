@@ -13,7 +13,6 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/room"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
@@ -214,12 +213,13 @@ func nextWeekly(lastAt int64, now time.Time) int64 {
 
 // watchSchedule starts the watcher of merges and syncs and the tick of waiting and weekly scans; both end with ctx.
 func (s *securityExt) watchSchedule(ctx context.Context) {
-	events.Watch(ctx, s.c.Bus, events.Filter{Types: []string{"task.completed", "repo.synced"}}, func(e events.Event) {
+	watched := events.Watch(ctx, s.c.Bus, events.Filter{Types: []string{"task.completed", "repo.synced"}}, func(e events.Event) {
 		if trigger := triggerOf(e); trigger != "" && e.ProjectID != "" {
 			s.onTrigger(ctx, e, trigger)
 		}
 	})
-	safe.Go("security.schedule", func() {
+	s.c.awaitBG("security.schedule.watch", watched)
+	s.c.goBG("security.schedule", func() {
 		t := time.NewTicker(scheduleTick)
 		defer t.Stop()
 		for {

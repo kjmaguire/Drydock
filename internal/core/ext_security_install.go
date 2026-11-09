@@ -255,7 +255,7 @@ const (
 )
 
 func (s *securityExt) watchUpdates(ctx context.Context) {
-	safe.Go("core.securityExt.watchUpdates", func() {
+	s.c.goBG("core.securityExt.watchUpdates", func() {
 		select {
 		case <-ctx.Done():
 			return

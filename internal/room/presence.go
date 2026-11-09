@@ -305,6 +305,8 @@ type Tracker struct {
 	last uint64
 	dirt map[string]bool
 	subs map[chan PresenceState]struct{}
+	// run is the goroutines Start began (following the bus, publishing changes); Wait waits for them
+	run sync.WaitGroup
 }
 
 // NewTracker returns an idle Tracker; call Start.
@@ -346,11 +348,22 @@ func (t *Tracker) Start(ctx context.Context) error {
 	}
 	t.dirt = map[string]bool{} // the rebuild itself is not news
 	t.mu.Unlock()
-	safe.Go("room.Tracker.Start", func() { t.follow(ctx, ch, cancel) })
+	t.run.Add(1)
+	safe.Go("room.Tracker.Start", func() { defer t.run.Done(); t.follow(ctx, ch, cancel) })
 	if t.opt.EmitEvery > 0 {
-		safe.Go("room.Tracker.Start#2", func() { t.emitLoop(ctx) })
+		t.run.Add(1)
+		safe.Go("room.Tracker.Start#2", func() { defer t.run.Done(); t.emitLoop(ctx) })
 	}
 	return nil
+}
+
+// Wait returns once the goroutines Start began have ended, after the context given to Start ended: the last change they were
+// publishing is published (or refused) by then, so the bus and the database can close.
+func (t *Tracker) Wait() {
+	if t == nil {
+		return
+	}
+	t.run.Wait()
 }
 
 // catchUp subscribes first and then replays what rebuild selects, so no event falls in the gap; duplicates are dropped by seq. The
