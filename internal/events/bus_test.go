@@ -136,8 +136,10 @@ func TestSubscribeLiveAndSlowSubscriberIsClosedNotBlocking(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("fast subscriber starved")
 	}
-	if time.Since(start) > 5*time.Second {
-		t.Fatal("publishers were blocked by the slow subscriber")
+	// a subscriber that blocked publishing would block it for good (the slow one never reads): the bound only has to end the
+	// test. 100 commits took 16 s on a loaded Windows runner (CI 2026-11-09), past the 5 s this was.
+	if took := time.Since(start); took > time.Minute {
+		t.Fatalf("publishers were blocked by the slow subscriber (%s for 100 events)", took)
 	}
 	// the slow subscriber never read: its channel (cap 16) overflowed and was closed
 	n := 0
