@@ -4,7 +4,7 @@
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { choose, createProject, openMoreSettings, openNewAgent, optionsOf, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, newChat, openMoreSettings, openNewAgent, optionsOf, workspaceNav, projectNav } from './helpers';
 
 const distro = (): string => process.env.DRYDOCK_E2E_WSL ?? '';
 
@@ -113,8 +113,7 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   await createProject(page, 'gocalc-wsl-chat');
   await workspaceNav(page, 'nav-chats');
   // New chat opens a chat with no project at once (decision P107); its agent CLI is chosen in the chat's Properties
-  await page.getByTestId('chat-new').click();
-  await expect(page).toHaveURL(/\/chats\/chat_/);
+  await newChat(page);
   await page.getByTestId('chat-more').click();
   await page.getByRole('button', { name: 'Properties' }).click();
   const dialog = page.getByRole('dialog', { name: 'Chat properties' });

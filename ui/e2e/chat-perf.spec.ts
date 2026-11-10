@@ -11,7 +11,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { createProject, workspaceNav } from './helpers';
+import { createProject, newChat, workspaceNav } from './helpers';
 
 /** Main-thread busy time while the answer streams, as a share of the streaming time. */
 const STREAM_BUSY_SHARE = 0.35;
@@ -92,8 +92,7 @@ test('chat performance: a long answer streams over a long history without blocki
   });
   await createProject(page, 'chat-perf');
   await workspaceNav(page, 'nav-chats');
-  await page.getByTestId('chat-new').click();
-  await expect(page).toHaveURL(/\/chats\/chat_/);
+  await newChat(page);
   const message = page.getByLabel('Message', { exact: true });
   const status = page.getByTestId('chat-status');
 

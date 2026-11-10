@@ -127,13 +127,31 @@ func (s *Service) syncLibrary(ctx context.Context, reg Registry, commit string, 
 	}
 	seen := map[string]bool{}
 	now := s.now().UnixMilli()
-	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		for _, rs := range remote {
-			if count[rs.Name] != 1 || ValidateName(rs.Name) != nil {
-				continue // an ambiguous or unnameable directory is not a skill the library can hold
+	// every skill is parsed and scanned (secrets, prompt injection) before the transaction: a registry's whole scan held the one
+	// writer connection, and every other write of the app waited behind it
+	type evaluated struct {
+		rs  RemoteSkill
+		rec record
+		err error
+	}
+	var evals []evaluated
+	for _, rs := range remote {
+		if count[rs.Name] != 1 || ValidateName(rs.Name) != nil {
+			continue // an ambiguous or unnameable directory is not a skill the library can hold
+		}
+		rec, err := s.evaluateRemote(ctx, reg, commit, rs)
+		if err != nil {
+			var bad *invalidError
+			if !errors.As(err, &bad) {
+				return res, err
 			}
+		}
+		evals = append(evals, evaluated{rs, rec, err})
+	}
+	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		for _, ev := range evals {
+			rs, rec, err := ev.rs, ev.rec, ev.err
 			seen[rs.Name] = true
-			rec, err := s.evaluateRemote(ctx, reg, commit, rs)
 			var status, reason, body, desc, compat, license, hash, source string
 			var globs, roles, notes []string
 			var risk int
@@ -141,9 +159,7 @@ func (s *Service) syncLibrary(ctx context.Context, reg Registry, commit string, 
 			var scripts, ignored bool
 			if err != nil {
 				var bad *invalidError
-				if !errors.As(err, &bad) {
-					return err
-				}
+				errors.As(err, &bad) // the only error kept: any other ended the sync above
 				status, reason = LibraryBlocked, bad.Error()
 				hash = packs.HashHex(string(rs.SkillMD))
 				source, scripts = rs.Dir, rs.HasScripts
