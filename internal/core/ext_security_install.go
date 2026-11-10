@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/bundle"
-	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
@@ -83,15 +82,27 @@ func (s *securityExt) installTool(ctx context.Context, projectID, tool, by strin
 // did. by is who asked: a person, or Drydock itself (drydock:auto for a missing tool, drydock:update-check for a newer release).
 func (s *securityExt) startInstall(projectID string, src scan.ToolSource, by string) bool {
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return false
+	}
 	if j, ok := s.jobs[src.Tool]; ok && j.job.State == "running" {
 		s.mu.Unlock()
 		return false
 	}
-	jctx, cancel := context.WithCancel(context.Background())
+	// close cancels the install (s.life and the job's own cancel) and Close waits for it: nothing is placed after Close
+	jctx, cancel := context.WithCancel(s.life)
 	s.jobs[src.Tool] = &toolJob{job: scan.ToolJob{State: "running", Phase: "looking up the newest release", Started: time.Now().UTC()}, cancel: cancel}
 	s.mu.Unlock()
 	s.announce(context.Background(), projectID, src.Tool, "running", by)
-	safe.Go("core.securityExt.installTool", func() { s.runInstall(jctx, projectID, src, by) })
+	if !s.c.goBG("core.securityExt.installTool", func() { s.runInstall(jctx, projectID, src, by) }) {
+		cancel() // Close is already waiting: the install does not start
+		s.mu.Lock()
+		j := s.jobs[src.Tool]
+		j.job.State, j.job.Error, j.job.Ended, j.cancel = "cancelled", "cancelled", time.Now().UTC(), nil
+		s.mu.Unlock()
+		return false
+	}
 	return true
 }
 
@@ -194,7 +205,7 @@ func (s *securityExt) cancelInstall(ctx context.Context, projectID, tool string)
 // the dependencies installed"). Each is put in place only when the tool has no release here or an earlier bundled one; a
 // newer release installed from GitHub is left as it is (scan.Installer.SeedFromBundle). A seed that fails, or a tools folder
 // that cannot be read, is logged; with AutoSetup the tool is then downloaded instead (installMissing).
-func (s *securityExt) seedBundled(ctx context.Context) {
+func (s *securityExt) seedBundled() {
 	m, err := bundle.Read(s.c.cfg.BundleDir)
 	if err != nil {
 		s.c.logf("security: the download's tools: %v", err)
@@ -206,9 +217,13 @@ func (s *securityExt) seedBundled(ctx context.Context) {
 		return
 	}
 	dir := s.c.cfg.BundleDir
-	safe.Go("core.securityExt.seedBundled", func() {
+	// the seed copies into the app's data: Close stops it (s.life) and waits for it, so no copy is placed after Close
+	s.c.goBG("core.securityExt.seedBundled", func() {
 		defer s.installMissing() // a tool the download did not carry, or whose copy failed its check
 		for _, b := range m.Scan {
+			if s.life.Err() != nil {
+				return // closing: the next start seeds what is left
+			}
 			// the seed is an install job like a person's: the page shows it, and an Install pressed meanwhile waits for it
 			s.mu.Lock()
 			if j, ok := s.jobs[b.Tool]; ok && j.job.State == "running" {
@@ -218,10 +233,13 @@ func (s *securityExt) seedBundled(ctx context.Context) {
 			job := &toolJob{job: scan.ToolJob{State: "running", Phase: "installing " + b.Tag + " from the download", Tag: b.Tag, Started: time.Now().UTC()}}
 			s.jobs[b.Tool] = job
 			s.mu.Unlock()
-			in, did, err := s.inst.SeedFromBundle(context.Background(), dir, b)
+			in, did, err := s.inst.SeedFromBundle(s.life, dir, b)
 			s.mu.Lock()
 			job.job.Ended = time.Now().UTC()
+			stopped := err != nil && s.life.Err() != nil // Close stopped it: not a failure, the next start seeds it
 			switch {
+			case stopped:
+				job.job.State, job.job.Error = "cancelled", "cancelled"
 			case err != nil:
 				job.job.State, job.job.Error = "failed", "from the download: "+err.Error()
 			case did:
@@ -231,6 +249,8 @@ func (s *securityExt) seedBundled(ctx context.Context) {
 			}
 			s.mu.Unlock()
 			switch {
+			case stopped:
+				return
 			case err != nil:
 				s.c.logf("security: %s from the download: %v", b.Tool, err)
 				s.announce(context.Background(), "", b.Tool, "failed", "drydock:bundle")
