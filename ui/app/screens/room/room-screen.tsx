@@ -14,7 +14,7 @@ import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
-import { Page, actionsEnd } from '../../ui/layout.tsx';
+import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { askableAgents, askAgainOf, newestHumanMessage, outcomeWords } from './asks.ts';
@@ -75,7 +75,8 @@ const roomHead = css({
 });
 const titleIcon = css({ display: 'grid', placeItems: 'center', flex: 'none', width: '38px', height: '38px', borderRadius: '12px', background: t.bgActive, color: t.textMuted });
 const topicCss = css({ minWidth: '0', color: t.textMuted, fontSize: t.textSm, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
-const actionsCss = actionsEnd;
+// the header's actions shrink and wrap before they push the room past its column (they ran under the Details panel at 1280 px)
+const actionsCss = css({ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: t.s2, marginLeft: 'auto', flex: '0 1 auto', minWidth: '0' });
 const modeBtn = css({
   height: '30px',
   padding: '0 10px',

@@ -27,12 +27,16 @@ interface Pending {
   data: Uint8Array;
 }
 
-export const composerWrap = css({ display: 'grid', gap: t.s2, padding: `0 ${t.s5} ${t.s4}`, flex: 'none' });
+// minmax(0, 1fr): the composer takes the column's width and no more; an auto track kept the box at its content's width, wider than
+// a room beside the Details panel at 1280 px, its Send button under the panel (critique follow-up, 2026-11-13)
+export const composerWrap = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: t.s2, padding: `0 ${t.s5} ${t.s4}`, flex: 'none', minWidth: '0' });
 
 /** The raised box itself (also used by the thread reply form). */
 export const composerBox = css({
   position: 'relative',
   display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  minWidth: '0',
   border: `1px solid ${t.borderStrong}`,
   borderRadius: t.rXl,
   background: t.bgRaised,
@@ -43,6 +47,8 @@ export const composerBox = css({
   '&[data-disabled="true"]': { opacity: '0.7' },
   '& textarea': {
     display: 'block',
+    width: '100%',
+    minWidth: '0',
     minHeight: '44px',
     maxHeight: '40vh',
     padding: '12px 14px 4px',
@@ -57,7 +63,7 @@ export const composerBox = css({
   '& textarea:focus-visible': { boxShadow: 'none' },
 });
 
-export const composerBar = css({ display: 'flex', alignItems: 'center', gap: t.s1, padding: `4px ${t.s2} ${t.s2} ${t.s2}` });
+export const composerBar = css({ display: 'flex', alignItems: 'center', gap: t.s1, minWidth: '0', padding: `4px ${t.s2} ${t.s2} ${t.s2}` });
 const hintCss = css({
   flex: '1',
   minWidth: '0',
