@@ -13,6 +13,9 @@ test('the dock: Monaco diff, logs and a terminal in the task worktree', async ({
   // the task page shows the change in Monaco's diff editor, both sides
   const diff = page.getByTestId('diff-viewer').first();
   await expect(diff.getByRole('list', { name: 'Changed files' }).getByRole('button', { name: /calc\.go/ })).toBeVisible();
+  // the viewer settles on the recorded diff once the run waits for the person (X21); until then a read can still say the run is
+  // active, and the switch from Live to Recorded draws the file pane again, closing a menu opened in it (CI 2026-11-13, twice)
+  await expect(diff.getByRole('button', { name: 'Recorded' })).toHaveAttribute('aria-pressed', 'true');
   // the file in the worktree, outside Drydock (X26): Explorer, the editor the harness's stand-in PATH has, Copy path
   await diff.getByTestId('diff-file-open').click();
   await expect(page.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeVisible();
