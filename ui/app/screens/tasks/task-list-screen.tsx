@@ -170,7 +170,9 @@ const columnCss = css({
   flexDirection: 'column',
   gap: '10px',
   minWidth: '0',
-  '& > h2, & > h3': { display: 'flex', alignItems: 'center', gap: t.s2, padding: '0 4px', fontSize: t.textMd, fontWeight: '500' },
+  // a column's name outweighs the cards' titles under it (the detector's flat hierarchy, critique 2026-11-13): the app's dense
+  // scale keeps the size, the weight makes the step
+  '& > h2, & > h3': { display: 'flex', alignItems: 'center', gap: t.s2, padding: '0 4px', fontSize: t.textMd, fontWeight: '600' },
   '& > h2 .n, & > h3 .n': { color: t.textFaint, fontWeight: '400' },
   '& > h3': { marginTop: t.s3, color: t.textMuted },
   '& > ul': { display: 'flex', flexDirection: 'column', gap: '10px', margin: '0', padding: '0', listStyle: 'none' },

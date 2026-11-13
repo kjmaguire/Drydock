@@ -50,8 +50,12 @@ export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose
   const titleId = `dlg-${handle.id}-title`;
   const sync = () => {
     if (!node) return;
-    if (handle.props.open && !node.open) node.showModal();
-    else if (!handle.props.open && node.open) node.close();
+    if (handle.props.open && !node.open) {
+      node.showModal();
+      // the field a dialog marks data-autofocus takes the focus: showModal alone gave it to the first control, the close button
+      // (critique 2026-11-13: New project opened on ✕, not on its name)
+      node.querySelector<HTMLElement>('[data-autofocus]')?.focus();
+    } else if (!handle.props.open && node.open) node.close();
   };
   return () => {
     handle.queueTask(sync);

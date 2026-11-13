@@ -70,7 +70,8 @@ const roomHead = css({
   padding: `${t.s3} ${t.s6} ${t.s3} ${t.s5}`,
   borderBottom: `1px solid ${t.border}`,
   '& h1': { margin: '0', fontSize: t.textXl, fontWeight: '600', lineHeight: '24px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  '& .title': { display: 'grid', minWidth: '0', gap: '1px' },
+  // the name and topic take the room the actions leave: the topic was cut ("Project-wid…") with half the bar empty (critique 2026-11-13)
+  '& .title': { display: 'grid', flex: '1 1 auto', minWidth: '0', gap: '1px' },
   '& .title .line': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
 });
 const titleIcon = css({ display: 'grid', placeItems: 'center', flex: 'none', width: '38px', height: '38px', borderRadius: '12px', background: t.bgActive, color: t.textMuted });

@@ -421,8 +421,9 @@ describe('RunScreen', () => {
     const vp = () => r.$('[data-testid="wf-viewport"]')!.getAttribute('transform')!;
     const zoom = () => r.$('[data-testid="wf-zoom"]')!.textContent!;
     const canvas = r.$('[data-testid="wf-canvas"]') as HTMLElement;
-    // it opens readable (UI review P1-7): at 70 % or more, not the whole graph squeezed small; Fit to view shows it all
-    expect(parseInt(zoom(), 10)).toBeGreaterThan(69);
+    // it opens readable (UI review P1-7): at 100 % or more, where the nodes' text is at the 12 px floor (critique 2026-11-13), not
+    // the whole graph squeezed small; Fit to view shows it all
+    expect(parseInt(zoom(), 10)).toBeGreaterThan(99);
     expect(byText(r.container, 'button', 'Fit to view').getAttribute('aria-pressed')).toBe('false');
     await r.act(() => byText(r.container, 'button', 'Fit to view').click());
     expect(byText(r.container, 'button', 'Fit to view').getAttribute('aria-pressed')).toBe('true');

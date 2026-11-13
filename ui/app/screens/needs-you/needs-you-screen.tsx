@@ -204,7 +204,8 @@ const actionsCss = css({
   padding: '16px 24px 16px 16px',
   borderTop: `1px solid ${t.border}`,
   '& kbd': { marginLeft: '2px' },
-  '& [data-variant="primary"] kbd': { background: 'transparent', borderColor: 'currentColor', color: 'inherit', opacity: '0.7' },
+  // the key inside the primary button: its text at full strength on the accent (at 0.7 opacity it read 3.8:1), the outline quieter
+  '& [data-variant="primary"] kbd': { background: 'transparent', borderColor: 'color-mix(in oklab, currentColor 55%, transparent)', color: 'inherit' },
   '& .end': { marginLeft: 'auto' },
 });
 const openRow = css({ display: 'flex', margin: '0 0 0 -10px' });
@@ -851,7 +852,7 @@ function NeedsDetail(
     const openLink = (
       <a
         href={needsTarget(it)}
-        mix={[...buttonStyle(answerHere ? 'ghost' : 'primary', answerHere ? 'sm' : 'md'), on('click', (e) => (e.preventDefault(), onOpen()))]}
+        mix={[...buttonStyle(answerHere ? 'secondary' : 'primary', answerHere ? 'sm' : 'md'), on('click', (e) => (e.preventDefault(), onOpen()))]}
         data-testid="detail-open"
       >
         {openLabel}

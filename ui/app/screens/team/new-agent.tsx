@@ -31,6 +31,8 @@ export type NewAgentTab = 'describe' | 'configure' | 'template';
 const panelCss = css({ paddingTop: t.s4 });
 const dividerCss = css({ height: '1px', background: t.border });
 
+const draftEmptyCss = css({ margin: '0', padding: t.s4, border: `1px dashed ${t.border}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, lineHeight: '1.5' });
+
 const describeCss = css({
   display: 'grid',
   gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.2fr)',
@@ -256,6 +258,13 @@ export function DescribeAgent(
         <div style={{ display: 'grid', gap: '12px', minWidth: '0' }}>
           <ErrorNote error={failure} what={act.busy === 'create' || d ? 'Agent not created' : 'Could not draft the agent'} />
           <ReadOnlyNote />
+          {/* before a draft, the column says what comes into it (critique 2026-11-13: half the dialog stood empty) */}
+          {!d && !failure ? (
+            <p mix={draftEmptyCss} data-testid="draft-empty">
+              The drafted agent appears here: its name, the CLI it runs on, its model and what it may do without asking. Change any of it
+              before you create it.
+            </p>
+          ) : null}
           {d ? (
             <section mix={draftCss} aria-label="Drafted agent" data-testid="agent-draft" data-source={d.source}>
               <div class="head">

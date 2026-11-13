@@ -244,8 +244,11 @@ export function fitView(b: Bounds, w: number, h: number, pad = 40): View {
   return { x: r1((w - bw * k) / 2 - b.minX * k), y: r1((h - bh * k) / 2 - b.minY * k), k };
 }
 
-/** The least zoom the graph opens at, where a node's text reads (UI review P1-7: a long graph fitted whole opened at 27 %). */
-export const READABLE_ZOOM = 0.7;
+/**
+ * The least zoom the graph opens at, where a node's text reads (UI review P1-7: a long graph fitted whole opened at 27 %). 1: the
+ * nodes' text is set at the app's 12 px floor, and at 0.7 it drew at about 8 px (critique 2026-11-13).
+ */
+export const READABLE_ZOOM = 1;
 
 /**
  * The view a graph opens at: all of it when that fits at READABLE_ZOOM or more, else READABLE_ZOOM with the focus point (the
@@ -546,5 +549,7 @@ export function leaseWords(x: RunExplanation): string | undefined {
   if (!r || !l || ['COMPLETED', 'FAILED', 'CANCELLED'].includes(r.status)) return undefined;
   if (l.driving || (l.held && l.mine)) return 'This Drydock';
   if (l.held) return 'Another Drydock';
-  return r.status === 'RUNNING' || r.status === 'RECOVERING' ? 'Nobody: it stopped when Drydock did' : 'Nobody (nothing to run now)';
+  if (r.status === 'RUNNING' || r.status === 'RECOVERING') return 'Nobody: it stopped when Drydock did';
+  // why nobody drives it, in the run's own terms (critique 2026-11-13: "Nobody (nothing to run now)" on a run that waited for you)
+  return r.status === 'WAITING_HUMAN' ? 'Nobody: it waits for you' : 'Nobody: nothing runs now';
 }

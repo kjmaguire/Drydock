@@ -247,6 +247,8 @@ describe('Skills helpers', () => {
     expect(registryTileText(status({ skills: 20, blocked: 3 }))).toEqual({ text: '20 skills · 3 blocked', tone: 'ok' });
     expect(registryTileText(status({ skills: 20, added: [{ name: 'a', description: '' }, { name: 'b', description: '' }] }))).toEqual({ text: '20 skills · 2 new', tone: 'warn' });
     expect(registryTileText(status({ skills: 1 })).text).toBe('1 skill');
+    // an empty registry's count is muted, not the success tone (critique 2026-11-13)
+    expect(registryTileText(status({ skills: 0 }))).toEqual({ text: '0 skills', tone: '' });
     expect(registryTileText(status({ lastError: 'resolve MicrosoftDocs/Agent-Skills@HEAD: page exceeds crawl.max_page_bytes' }))).toEqual({ text: 'Sync failed', tone: 'bad' });
     expect(registryTileText(status({ checkedAt: undefined }))).toEqual({ text: 'Not synced yet', tone: 'warn' });
     expect(registryTileText(status({}), false)).toEqual({ text: 'Disabled', tone: '' });

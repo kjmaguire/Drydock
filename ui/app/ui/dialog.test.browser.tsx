@@ -52,3 +52,17 @@ describe('closing a Dialog by its backdrop (L41)', () => {
     expect(closed).toEqual([]);
   });
 });
+
+describe('opening a Dialog (critique 2026-11-13)', () => {
+  it('puts the focus on the field marked data-autofocus, not on the close button', async () => {
+    const r = renderPlain(
+      <Dialog open title="New project" onClose={() => {}}>
+        <input aria-label="Project name" data-autofocus />
+      </Dialog>,
+    );
+    await waitFor(() => {
+      if (!r.container.querySelector('dialog')!.open) throw new Error('not open yet');
+    }, r);
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Project name'), r);
+  });
+});

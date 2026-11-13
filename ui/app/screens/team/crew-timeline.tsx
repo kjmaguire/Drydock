@@ -11,7 +11,8 @@ import { laneBlocks, timelineTicks, type BlockKind, type TimeWindow } from './cr
 export const BLOCK_FILL: Record<BlockKind, string> = {
   working: t.accent,
   finished: `color-mix(in srgb, ${t.accent} 32%, ${t.bgSurface})`,
-  failed: `color-mix(in srgb, ${t.dangerSolid} 40%, ${t.bgSurface})`,
+  // a failed run stands apart from a finished one in both themes: at 40 % it was a dim brown beside the accent (critique 2026-11-13)
+  failed: `color-mix(in srgb, ${t.dangerSolid} 75%, ${t.bgSurface})`,
   cancelled: t.borderStrong,
   waiting: t.warning,
   waited: `color-mix(in srgb, ${t.warning} 35%, ${t.bgSurface})`,
