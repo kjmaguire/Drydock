@@ -112,7 +112,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await page.getByRole('button', { name: 'Save check settings' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved.' }).first()).toBeVisible();
   await page.getByLabel('Maximum parallel agent turns').fill('2');
-  await page.getByLabel('Agents answer in channels and direct messages').check();
+  await page.getByLabel('Agents answer in rooms and direct messages').check();
   const workerChecks = page.getByLabel(/Let Claude workers run this project's own checks/);
   await expect(workerChecks).not.toBeChecked(); // off until the human says so
   await workerChecks.check();
@@ -174,11 +174,13 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await page.getByLabel('Task title').fill('Build checkout');
   await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: /Build checkout/ })).toBeVisible();
+  // the task is named by its identifier on every page (GOC-1, critique 2026-11-13), as its own page names it
+  const buildKey = ((await page.getByTestId('task-key').first().textContent()) ?? '').trim();
   await projectNav(page, 'nav-requirements');
   await page.getByTestId('requirement').filter({ hasText: 'Checkout' }).getByRole('button', { name: 'Open' }).click();
-  await choose(page.getByLabel('Task to link'), { label: '#1 Build checkout' });
+  await choose(page.getByLabel('Task to link'), { label: `${buildKey} Build checkout` });
   await page.getByLabel(/^Criteria \(one per line/).fill('Given a paid cart, when the order is placed, then an order record exists');
-  await page.getByRole('button', { name: 'Link 1 criterion of #1' }).click();
+  await page.getByRole('button', { name: `Link 1 criterion of ${buildKey}` }).click();
   await expect(page.getByTestId('req-link')).toContainText('Given a paid cart');
   await expect(page.getByTestId('trace-task')).toContainText('Build checkout');
   await expect(page.getByTestId('trace-task')).toContainText('no test evidence');
@@ -191,7 +193,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   const ms = page.locator('[data-testid=milestone][data-title=Beta]');
   await expect(ms).toBeVisible();
   await ms.getByRole('button', { name: 'Add tasks…' }).click();
-  await ms.getByLabel('#1 Build checkout').check();
+  await ms.getByLabel(`${buildKey} Build checkout`).check();
   await ms.getByRole('button', { name: 'Add 1 task' }).click();
   await expect(ms).toContainText('0 of 1 completed');
 
@@ -402,7 +404,7 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   await projectNav(page, 'nav-project');
-  await page.getByLabel('Agents answer in channels and direct messages').check();
+  await page.getByLabel('Agents answer in rooms and direct messages').check();
   await page.getByRole('button', { name: 'Save development settings' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved.' }).first()).toBeVisible();
 

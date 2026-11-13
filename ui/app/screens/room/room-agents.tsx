@@ -477,7 +477,7 @@ export function RoomTab(handle: Handle<{ roomId: string }>) {
   return () => {
     const r = room.data?.id === handle.props.roomId ? room.data : undefined;
     if (!r) return room.error ? <ErrorNote error={room.error} retry={room.reload} what="Could not load the room" /> : <Loading label="Loading the room..." />;
-    if (r.archived) return <p style={{ margin: '0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>This channel is archived: its members and mode cannot change.</p>;
+    if (r.archived) return <p style={{ margin: '0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>This room is archived: its members and mode cannot change.</p>;
     return (
       <>
         <ErrorNote error={members.error} retry={members.reload} what="Could not load the members" />

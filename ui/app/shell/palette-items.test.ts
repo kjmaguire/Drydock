@@ -15,7 +15,8 @@ describe('command palette items', () => {
   it('offers rooms (not archived ones), screens, tasks, agents and harmless actions', () => {
     const items = buildItems(rooms, tasks, agents);
     const labels = items.map((i) => i.label);
-    expect(labels).toContain('#general');
+    // a room by its name, with the hint room: '#' is what the palette types for tasks (critique 2026-11-13)
+    expect(items.find((i) => i.label === 'general')).toMatchObject({ hint: 'room', href: '/room/r1' });
     expect(labels).toContain('Direct message Ada');
     expect(labels.some((l) => l.includes('old'))).toBe(false);
     expect(labels).toContain('Crew');
@@ -26,7 +27,7 @@ describe('command palette items', () => {
     expect(items.find((i) => i.label === "Open Ada's page")).toMatchObject({ group: 'Agents', hint: 'backend', href: '/team/a1' });
     expect(filterItems(items, 'ada').map((i) => i.label)).toContain("Open Ada's page");
     // nothing that approves, merges, deletes or stops
-    // (the Guide's topics are reading, and are named after what they explain: "Approvals and Needs you")
+    // (the Guide's topics are reading, and are named after what they explain: "Approvals and the Inbox")
     expect(labels.filter((l) => !l.startsWith('Guide')).some((l) => /approve|merge|delete|stop|cancel/i.test(l))).toBe(false);
     // every option says what it does
     expect(items.filter((i) => !i.what)).toEqual([]);

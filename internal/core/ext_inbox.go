@@ -452,7 +452,13 @@ FROM approvals WHERE id=?`, id).Scan(&d.ID, &d.RunID, &d.Kind, &d.ActionKind, &d
 		}
 		d.Agent = ag
 	}
-	d.Description = approvalDescription(d, t)
+	key := ""
+	if t != nil {
+		if p, err := c.GetProject(ctx, t.ProjectID); err == nil {
+			key = p.Key
+		}
+	}
+	d.Description = approvalDescription(d, t, key)
 	return d, nil
 }
 
@@ -475,8 +481,9 @@ func permissionEditable(a security.ActionDescriptor) bool {
 	return strings.HasPrefix(a.Tool, "claude:") && !a.Shortened && !strings.Contains(a.Command, "[REDACTED")
 }
 
-// approvalDescription says in plain words what a request asks the person to decide.
-func approvalDescription(d ApprovalDetail, t *tasks.Task) string {
+// approvalDescription says in plain words what a request asks the person to decide. The task is named by its identifier as
+// the board writes it ("GOC-1 (Add Pow)") when its project's key is known, so the Inbox names it as every page does.
+func approvalDescription(d ApprovalDetail, t *tasks.Task, key string) string {
 	who := "An agent"
 	if d.Agent != nil && d.Agent.Name != "" {
 		who = d.Agent.Name
@@ -484,6 +491,9 @@ func approvalDescription(d ApprovalDetail, t *tasks.Task) string {
 	task := "the task"
 	if t != nil {
 		task = fmt.Sprintf("task %d (%s)", t.Seq, t.Title)
+		if key != "" {
+			task = fmt.Sprintf("%s-%d (%s)", key, t.Seq, t.Title)
+		}
 	}
 	firstLine := func(s string) string {
 		line, _, _ := strings.Cut(s, "\n")

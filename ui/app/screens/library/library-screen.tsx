@@ -296,7 +296,7 @@ export function LibraryScreen(handle: Handle<{ tab?: LibraryTab; onNavigate?: (h
         icon={tab === 'starters' ? Bot : Users}
         wide
         guide="crew"
-        subtitle={tab === 'mine' && templates.data ? `${tpls.length} agent${tpls.length === 1 ? '' : 's'}` : undefined}
+        subtitle={tab === 'mine' && templates.data ? `${tpls.length} saved agent${tpls.length === 1 ? '' : 's'}, for any project. A project's own agents are on its Crew.` : undefined}
         actions={
           <>
             <a href={routes.integrations.href()} mix={buttonStyle('ghost', 'sm')} data-testid="library-servers-link">

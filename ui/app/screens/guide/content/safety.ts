@@ -64,9 +64,9 @@ export const SAFETY: readonly Topic[] = [
           rows: [
             ['The GitHub CLI is not installed', 'Install `gh` from [cli.github.com](https://cli.github.com), then press **Sign in** on [GitHub](/github).'],
             ['An agent CLI is not listed, or is not usable', '[Agents](/agents): install and sign in to the CLI, accept every notice on it, then **Test connection**. See [Connect an agent CLI](guide:connect-cli).'],
-            ['A task waits and nothing seems wrong', 'Open **Needs you** (the bell). A limit, an approval or a question may be waiting for you.'],
+            ['A task waits and nothing seems wrong', 'Open the **Inbox**. A limit, an approval or a question may be waiting for you.'],
             ['Agents stopped answering', 'A budget reached 100%. Raise it in [Budgets](/budgets). See [Budgets and cost](guide:budgets).'],
-            ['No CI reported on a pull request', 'Your decision in Needs you: check again, merge without CI this time, or stop. A repository without CI can be declared so in [Project settings](/project).'],
+            ['No CI reported on a pull request', 'Your decision in the Inbox: check again, merge without CI this time, or stop. A repository without CI can be declared so in [Project settings](/project).'],
             ['“The repository’s git configuration changed”', 'Drydock does not run git there until you review it: a hook, filter or command planted there would run in Drydock’s own git calls. Trust it only if you made or expect the change.'],
             ['Drydock is read-only', 'The license is not valid. Backups, verify and restore, and importing a license still work. See [License](/license).'],
             ['The Code scan is skipped', 'Opengrep has no rules. Choose a folder of rules on [Security scan](/security-scan). See [Scan a repository](guide:scan).'],

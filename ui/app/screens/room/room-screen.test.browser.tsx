@@ -292,14 +292,14 @@ describe('Conversation', () => {
     await waitFor(() => expect(messagesOf(r)).toHaveLength(100), r);
     expect(messagesOf(r)[0]!.textContent).toContain('line 51');
     expect(messagesOf(r)[99]!.textContent).toContain('line 150');
-    expect(r.container.textContent).not.toContain('This is the start of the general channel.');
+    expect(r.container.textContent).not.toContain('This is the start of the general room.');
     // the live region did not announce the first page; it announces what comes after
     const log = q(r, '[role="log"]')!;
     await waitFor(() => expect(log.getAttribute('aria-live')).toBe('polite'), r);
     await r.act(() => byText(r.container, 'button', 'Load older messages').click());
     await waitFor(() => expect(messagesOf(r)).toHaveLength(150), r);
     expect(messagesOf(r)[0]!.textContent).toContain('line 1');
-    expect(r.container.textContent).toContain('This is the start of the general channel.');
+    expect(r.container.textContent).toContain('This is the start of the general room.');
     // the newest page in one read, then the page before the oldest shown (one more than a page asks whether older exist)
     expect(reads.calls).toEqual([
       ['latest', 101],
@@ -373,7 +373,7 @@ describe('Conversation', () => {
       most = Math.max(most, rows().length);
     }
     expect(reads.calls.filter((c) => c[0] === 'before')).toHaveLength(19);
-    expect(r.container.textContent).toContain('This is the start of the general channel.');
+    expect(r.container.textContent).toContain('This is the start of the general room.');
     // 2,000 messages and their day dividers loaded; only a window of them was ever in the DOM
     expect(most).toBeLessThanOrEqual(bound());
     expect(most).toBeLessThan(100);
@@ -444,7 +444,7 @@ describe('Conversation', () => {
   it('says so when a room has no messages, and when they cannot be read', async () => {
     const r = mount(<Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />, servicesWith({}));
     await waitFor(() => expect(r.container.textContent).toContain('No messages yet.'), r);
-    expect(r.container.textContent).toContain('This is the start of the general channel.');
+    expect(r.container.textContent).toContain('This is the start of the general room.');
     const bad = mount(
       <Conversation room={{ ...taskRoom, kind: 'channel', name: 'general' }} />,
       servicesWith({
@@ -480,7 +480,7 @@ describe('RoomScreen', () => {
       },
     });
     const r = mount(<RoomScreen id="zzz" />, s);
-    await waitFor(() => expect(r.container.textContent).toContain('Channel not found'), r);
+    await waitFor(() => expect(r.container.textContent).toContain('Room not found'), r);
     await waitFor(() => expect(q(r, '[role="alert"]')!.textContent).toContain('room not found: zzz'), r);
   });
 });

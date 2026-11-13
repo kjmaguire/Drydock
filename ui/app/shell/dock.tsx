@@ -96,7 +96,7 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
     const view = (id: string) => (what === 'diff' ? <DiffViewer key={id} taskId={id} /> : <LogsPanel key={id} taskId={id} />);
     if (taskId) return view(taskId);
     const running = s.project.taskList.filter((x) => isRunningStatus(x.status));
-    if (!running.length) return <p mix={needCss}>Open a task (or its channel) to see its {what}.</p>;
+    if (!running.length) return <p mix={needCss}>Open a task (or its room) to see its {what}.</p>;
     const chosen: Task | undefined = running.length === 1 ? running[0] : running.find((x) => x.id === picked);
     const key = (x: Task) => taskKey(x.seq, s.workspace.projectKey(projectId) || undefined);
     return (

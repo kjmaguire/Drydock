@@ -93,7 +93,7 @@ export function suggest(tok: Token, ctx: { members: MentionTarget[]; rooms: { na
       }
       break;
     case '#':
-      out = ctx.rooms.map((r) => ({ label: `#${r.name}`, detail: r.kind === 'task' ? 'task channel' : 'channel', insert: `#${r.name} `, r: rank(r.name) }));
+      out = ctx.rooms.map((r) => ({ label: `#${r.name}`, detail: r.kind === 'task' ? 'task room' : 'room', insert: `#${r.name} `, r: rank(r.name) }));
       break;
     case '/':
       out = SLASH_COMMANDS.map((c) => ({ label: `/${c.name}${c.args ? ' ' + c.args : ''}`, detail: c.help, insert: `/${c.name} `, r: rank(c.name) }));

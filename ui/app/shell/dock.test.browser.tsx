@@ -66,7 +66,7 @@ describe('the dock without a task in context (X29)', () => {
     const s = svc([task({ id: 't8', status: 'READY' })]);
     s.ui.setDock({ open: true, tab: 'diff' });
     const r = mount(<Dock projectId="p1" taskId={undefined} />, s);
-    await waitFor(() => expect(r.container.textContent).toContain('Open a task (or its channel) to see its diff.'), r);
+    await waitFor(() => expect(r.container.textContent).toContain('Open a task (or its room) to see its diff.'), r);
     expect(r.$('[data-testid="dock-task-line"], [data-testid="dock-task-pick"]')).toBe(null);
   });
 });

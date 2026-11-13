@@ -27,6 +27,8 @@ import { onTeam, shortDescription } from '../skills/skills.ts';
 import { AddSkills, AgentSkillList, agentSkills, rowCss, rowSpace } from './agent-skills.tsx';
 import { TaskDecisions } from '../shared/explain.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
+import { skipsApprovals } from '../../lib/permission.ts';
+import { modeWords } from '../chats/chats.ts';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { UsageTable } from '../shared/usage.tsx';
 import { RemoveAgent } from './agent-forms.tsx';
@@ -223,8 +225,8 @@ function heroTint(id: string): string {
 }
 
 /** The chip of what an agent is on: its presence, with the task's number when it is on one. */
-export function nowChip(p: PresenceState | undefined, task: Task | undefined): string {
-  if (task) return p ? `${presenceWords(p)} on #${task.seq}` : `On #${task.seq}`;
+export function nowChip(p: PresenceState | undefined, task: Task | undefined, key = ''): string {
+  if (task) return p ? `${presenceWords(p)} on ${key || `#${task.seq}`}` : `On ${key || `#${task.seq}`}`;
   return doing(p);
 }
 
@@ -469,7 +471,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
           {task ? (
             <>
               <a href={routes.task.href({ id: task.id })} class="task" data-testid="agent-now-task">
-                #{task.seq} {task.title}
+                {s.workspace.keyOf(task)} {task.title}
               </a>
               <div class="steps" aria-hidden="true">
                 {TASK_STEPS.map((st, i) => {
@@ -626,7 +628,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             {mine.map((x) => (
               <li key={x.id}>
                 <a href={routes.task.href({ id: x.id })} mix={taskRow} data-testid="agent-task">
-                  <span class="seq">#{x.seq}</span>
+                  <span class="seq">{s.workspace.keyOf(x)}</span>
                   <span class="title">{x.title}</span>
                   <span class="as">{x.assignee === id ? 'worker' : 'reviewer'}</span>
                   <StatusChip status={x.status} />
@@ -707,7 +709,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                         {task ? (
                           <a href={routes.task.href({ id: task.id })} mix={chipCss} data-live={p ? 'true' : undefined} data-testid="agent-chip">
                             <i aria-hidden="true" />
-                            {nowChip(p, task)}
+                            {nowChip(p, task, s.workspace.keyOf(task))}
                           </a>
                         ) : (
                           <span mix={chipCss} data-live={p && /^(working|thinking)/i.test(p.presence) ? 'true' : undefined} data-testid="agent-chip">
@@ -729,6 +731,13 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                           </span>
                         ) : null}
                         <SkipsBadge mode={a.permissionMode} />
+                        {/* the permission in the Crew card's words, beside how far the agent is held in (critique 2026-11-13: the page
+                            said "guarded" where Crew said "Edits freely", two different things with one shown) */}
+                        {skipsApprovals(a.permissionMode) ? null : (
+                          <span mix={chipCss} data-testid="agent-chip" data-permission={a.permissionMode || 'default'}>
+                            {modeWords(a.permissionMode ?? '')}
+                          </span>
+                        )}
                         {iso ? (
                           <span mix={chipCss} data-testid="agent-chip" data-isolation={iso.level} title={iso.summary}>
                             <Icon icon={iso.level === 'guarded' ? ShieldCheck : ShieldAlert} size={13} />

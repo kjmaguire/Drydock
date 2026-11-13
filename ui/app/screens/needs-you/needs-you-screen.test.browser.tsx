@@ -484,7 +484,7 @@ describe('the Inbox', () => {
     await r.act(() => (r.$('[data-row-key="needs:join:jr1"]') as HTMLButtonElement).click());
     expect(r.$('[data-testid="detail-description"]')!.textContent).toBe('Why: I record security decisions');
     expect(r.$('[data-testid="needs-hint"]')!.textContent).toContain('Let it in as an observer');
-    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the channel');
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the room');
     expect(r.$('[data-testid="detail-done"]')).toBeNull();
     await r.act(() => press('e'));
     expect(calls.ack).toEqual([]);

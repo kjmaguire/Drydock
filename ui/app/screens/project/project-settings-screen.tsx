@@ -75,7 +75,7 @@ export function DeleteProject(handle: Handle<{ project: Project; onNavigate?: (h
           <div mix={deleteBody}>
             <p>Deleting {p.name} removes, from Drydock only:</p>
             <ul>
-              <li>its channels, direct messages and their messages</li>
+              <li>its rooms, direct messages and their messages</li>
               <li>its tasks, their runs and the worktrees Drydock made for them</li>
               <li>its agents, memory, skills, requirements, milestones, budgets and settings</li>
             </ul>

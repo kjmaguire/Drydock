@@ -147,7 +147,7 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
 
   // the archived task channel still opens (room.get) and its composer is disabled
-  await page.getByRole('link', { name: 'Open task channel' }).click();
+  await page.getByRole('link', { name: 'Open task room' }).click();
   await expect(page.getByText('archived', { exact: true })).toBeVisible();
   await openChecks(page);
   await expect(page.locator('[data-testid=check-card][data-tool=Tests]').first()).toBeVisible();

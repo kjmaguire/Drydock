@@ -20,11 +20,11 @@ export function RoomsScreen(handle: Handle) {
       sent = true;
       handle.queueTask(() => void navigate(routes.room.href({ id: first.id }), { history: 'replace' }));
     }
-    if (first || (!rooms.data && rooms.loading)) return <Loading label="Opening the project channel..." />;
+    if (first || (!rooms.data && rooms.loading)) return <Loading label="Opening the project room..." />;
     return (
       <Page title="Rooms" icon={MessagesSquare} subtitle="Where you and the crew talk">
         <Empty title="No rooms yet" icon={MessagesSquare}>
-          <p>A project gets its channels (general, decisions, alerts, reviews) when it is created; each task opens a room of its own.</p>
+          <p>A project gets its rooms (general, decisions, alerts, reviews) when it is created; each task opens a room of its own.</p>
         </Empty>
       </Page>
     );

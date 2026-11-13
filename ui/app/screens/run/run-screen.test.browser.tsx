@@ -176,6 +176,7 @@ describe('RunScreen', () => {
     });
     const r = mount(<RunScreen taskId="t1" />, s);
     await ready(r);
+    // a project without a key yet: the number alone
     await waitFor(() => expect(r.$('h1')!.textContent).toContain('Run of #3 Subtract'), r);
     expect(r.$('[data-testid="run-id"]')!.textContent).toBe('run_1');
     // the status is said once, in words, in the header
@@ -870,5 +871,16 @@ describe("RunScreen: the worktree's files back, and an ended task run again (P12
     const off = await waitFor(() => byText(r2.$('[data-testid="run-actions"]')!, 'button', 'Run again as a new task') as HTMLButtonElement, r2);
     expect(off.disabled).toBe(true);
     expect(r2.$('[data-testid="run-actions-why"]')!.textContent).toContain('its work was merged');
+  });
+});
+
+describe('the run page names its task as every page does (critique 2026-11-13)', () => {
+  it('by its project key and number: GOC-3, not #3', async () => {
+    const s = setup({
+      projectList: async () => [{ id: 'p1', name: 'gocalc', key: 'GOC' } as never],
+      taskGet: async () => ({ task: { id: 't1', seq: 3, title: 'Subtract', projectId: 'p1' } }) as never,
+    });
+    const r = mount(<RunScreen taskId="t1" />, s);
+    await waitFor(() => expect(r.$('h1')!.textContent).toContain('Run of GOC-3 Subtract'), r);
   });
 });

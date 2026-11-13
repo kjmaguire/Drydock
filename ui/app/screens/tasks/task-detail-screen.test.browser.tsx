@@ -76,7 +76,7 @@ describe('Task view: header, properties and content', () => {
     await waitFor(() => expect(r.$('[data-testid="task-key"]')!.textContent).toBe('GOC-43'), r);
     expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Building · run 3');
     expect(r.$('[data-testid="task-status"]')!.getAttribute('data-tone')).toBe('accent');
-    expect(byText(bar, 'a', 'Open task channel').getAttribute('href')).toBe('/room/room_9');
+    expect(byText(bar, 'a', 'Open task room').getAttribute('href')).toBe('/room/room_9');
     // description as Markdown, the criteria with their state in words
     expect(r.$('.md strong')!.textContent).toBe('Multiply');
     // (an older core sends only acceptanceState: passing reads as met by the test check, failing as not met)

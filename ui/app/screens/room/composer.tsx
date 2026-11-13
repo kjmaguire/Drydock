@@ -173,7 +173,7 @@ const noteCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
 function suggestionGroup(s: Suggestion | undefined): string {
   if (!s) return '';
   if (s.insert.startsWith('/')) return 'Commands';
-  if (s.insert.startsWith('#')) return 'Channels';
+  if (s.insert.startsWith('#')) return 'Rooms';
   return 'Members';
 }
 
@@ -459,7 +459,7 @@ export function Composer(handle: Handle<ComposerProps>) {
                 </li>
               ))}
             </ul>
-            <p>Type @ to mention someone in the room, @role: for everyone with a role, # for a channel. Markers: [DECISION] [TODO] [STATUS] [RESULT] at the start of a line.</p>
+            <p>Type @ to mention someone in the room, @role: for everyone with a role, # for another room. Markers: [DECISION] [TODO] [STATUS] [RESULT] at the start of a line.</p>
           </div>
         ) : null}
         <div mix={composerBox} data-drag={drag ? 'true' : undefined} data-disabled={disabled ? 'true' : undefined}>
@@ -536,7 +536,7 @@ export function Composer(handle: Handle<ComposerProps>) {
           <textarea
             id={id}
             rows={1}
-            placeholder={disabled ? 'This channel is archived' : `Message ${room.kind === 'dm' ? '' : '#'}${label}`}
+            placeholder={disabled ? 'This room is archived' : `Message ${room.kind === 'dm' ? '' : '#'}${label}`}
             disabled={disabled}
             aria-haspopup="listbox"
             aria-controls={open ? listId : undefined}

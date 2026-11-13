@@ -107,6 +107,15 @@ export class Workspace extends Model {
     return this.runningTasks.length + this.runningScans.length;
   }
 
+  /**
+   * A task's identifier as the board and the Inbox write it ("GOC-12"): its project's key and its number. "#12" only while the
+   * project is not known yet. One identifier on every page (critique 2026-11-13: the same task was GOC-1, #1 and "Task 1").
+   */
+  keyOf(t: { seq: number; projectId?: string }): string {
+    const k = this.projectKey(t.projectId ?? this.projectId);
+    return k ? `${k}-${t.seq}` : `#${t.seq}`;
+  }
+
   /** A project's key ("GOC") by its id; empty when unknown. */
   projectKey(id: string | undefined): string {
     return (id && this.projectList.find((p) => p.id === id)?.key) || '';

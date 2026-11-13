@@ -44,7 +44,7 @@ export const HOWTO: readonly Topic[] = [
       {
         ul: [
           'Pushes a task’s branch and opens its pull request, in a project whose delivery mode is pull request.',
-          'Waits for CI on the pushed commit and hands a failing job’s log back to the worker, which fixes it and pushes again. No CI reported is a question for you in Needs you, never a pass.',
+          'Waits for CI on the pushed commit and hands a failing job’s log back to the worker, which fixes it and pushes again. No CI reported is a question for you in the Inbox, never a pass.',
           'Reads the review on the pull request and feeds a collaborator’s requested changes back to the task.',
           'Merges only after you approve, through GitHub, with the project’s merge method, and only while the pull request’s head is still the commit you reviewed.',
           'Imports a repository’s issues as tasks once you assign the GitHub connection to a project (on the project’s Integrations page).',
