@@ -1,7 +1,7 @@
 // The step bar of a task's page (Crew HQ, decision P64): Spec → Code → Checks → Review → You, read off the task's status,
 // its evidence, the reviewer verdicts and what is pending. Pure: no DOM and no client here.
 
-import type { Evidence, PendingRequest, ReviewRecord, Task } from '../../api/types.ts';
+import type { Evidence, PendingRequest, ReviewRecord, SummaryCheck, Task } from '../../api/types.ts';
 import { evidenceResult, specPayload } from './tasks.ts';
 
 export type StepName = 'spec' | 'code' | 'checks' | 'review' | 'you';
@@ -79,6 +79,8 @@ export function stepsFor(
   evidence: readonly Pick<Evidence, 'kind' | 'passed' | 'attempt'>[],
   reviews: readonly Pick<ReviewRecord, 'verdict' | 'attempt' | 'created'>[],
   pending: readonly PendingRequest[] = [],
+  /** The task's checks as its summary has them, when the page has them: the Checks note then counts what the decision card counts. */
+  summaryChecks?: readonly Pick<SummaryCheck, 'status'>[],
 ): Step[] {
   const status = task.status;
   const specGate = pending.some((p) => !!specPayload(p));
@@ -109,7 +111,13 @@ export function stepsFor(
   else if (code.state !== 'todo' && (task.started || task.iteration > 0)) code.note = `attempt ${task.iteration + 1}`;
 
   // Checks
-  if (checks.length > 0) {
+  // one count of the checks on the page (critique 2026-11-13: the rail said 1 of 1 beside the card's 4 of 4): the summary's
+  // newest pass, as checksFact counts it, when the page has it; the run's own evidence otherwise
+  const ran = (summaryChecks ?? []).filter((c) => c.status !== 'not_run');
+  if (ran.length > 0) {
+    chk.note = `${ran.filter((c) => c.status === 'passed').length} of ${ran.length}`;
+    if (ran.some((c) => c.status === 'failed') && p <= 2) chk.state = 'failed';
+  } else if (checks.length > 0) {
     chk.note = `${passed} of ${latest.length}`;
     if (failedChecks > 0 && p <= 2) chk.state = 'failed';
   } else if (chk.state === 'done') chk.note = 'none recorded';

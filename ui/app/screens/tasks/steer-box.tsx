@@ -10,7 +10,7 @@ import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
-import { isRunActive, isTerminal } from './tasks.ts';
+import { isRunActive, isTerminal, waitsOnYou } from './tasks.ts';
 
 const wrapCss = css({
   position: 'sticky',
@@ -74,8 +74,9 @@ export function SteerBox(handle: Handle<{ detail: TaskDetail; agentName: string;
     const task = detail.task;
     // a closed task has no run to steer: the box goes, so the page does not end on a dead control (critique 2026-11-08)
     if (isTerminal(task.status)) return null;
-    const going = isRunActive(detail.run);
-    const off = !going ? 'Start the task to steer its agent.' : '';
+    const waiting = waitsOnYou(detail);
+    const going = isRunActive(detail.run) && !waiting;
+    const off = waiting ? 'The run waits for your answer above: steering and Pause come back once it goes on.' : !going ? 'Start the task to steer its agent.' : '';
     const busy = act.busy !== '';
     const paused = !!detail.paused;
     return (

@@ -431,6 +431,14 @@ export const isTerminal = (status: string): boolean => CLOSED.includes(status);
 /** A run still in flight: assignment and start are hidden while it runs; only cancel stays. */
 export const isRunActive = (run: { status: string } | undefined): boolean => !!run && !CLOSED.includes(run.status);
 
+/**
+ * The task's run waits for the person: a request is open (a review, a gate, a permission) or the task says it waits for them.
+ * Nothing is running then, so nothing steers or pauses it; every surface reads it from here (critique 2026-11-13: the task page
+ * said "Awaiting your approval" over an active Pause).
+ */
+export const waitsOnYou = (d: { task: Pick<Task, 'status'>; pending?: readonly unknown[]; paused?: unknown }): boolean =>
+  !d.paused && !isTerminal(d.task.status) && ((d.pending?.length ?? 0) > 0 || d.task.status === 'WAITING_HUMAN' || d.task.status === 'VERIFICATION');
+
 /** A BLOCKED task waiting for an earlier task can be let go on by the human. */
 export const isWaitingForTask = (t: Pick<Task, 'status' | 'blockedReason'>): boolean => t.status === 'BLOCKED' && !!t.blockedReason?.startsWith('waiting for');
 

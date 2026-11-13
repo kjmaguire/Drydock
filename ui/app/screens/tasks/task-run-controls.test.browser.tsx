@@ -70,6 +70,14 @@ describe('steering the running agent', () => {
     await waitFor(() => expect(done.$('[data-testid="task-key"]')).toBeTruthy(), done);
     expect(done.$('[data-testid="steer"]')).toBeNull();
   });
+
+  it('is off while the run waits for the person: nothing runs to steer or pause (critique 2026-11-13)', async () => {
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => running({}, { status: 'WAITING_HUMAN' }) }));
+    const input = await waitFor(() => steerInput(r.container), r);
+    expect(input.disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.$('[data-testid="steer"]')!, 'button', 'Pause').disabled).toBe(true);
+    expect(r.$('[data-testid="steer"]')!.textContent).toContain('The run waits for your answer above: steering and Pause come back once it goes on.');
+  });
 });
 
 describe('pausing and resuming', () => {

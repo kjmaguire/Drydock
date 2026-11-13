@@ -21,6 +21,7 @@ import { starts } from '../../state/live.ts';
 import { action, query, retryFor, services, watch } from '../../state/services.tsx';
 import type { InboxTab } from '../../state/ui.ts';
 import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Field } from '../../ui/form.tsx';
 import { supportFor } from '../support/support.ts';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -89,7 +90,10 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
 /** The most keys one needsyou.ackMany call takes (MaxAckKeys in internal/core/ext_inbox.go). */
 export const ACK_CHUNK = 200;
+/** How long a first A keeps a merge armed: a second A within it merges. */
+export const MERGE_ARM_MS = 4000;
 
+const armedCss = css({ margin: `0 0 ${t.s2}`, color: tone.warn.fg, fontSize: t.textSm });
 const frameCss = css({ height: '100%', minHeight: '0', containerType: 'inline-size' });
 const gridCss = css({
   display: 'grid',
@@ -511,13 +515,16 @@ export function NeedsYouScreen(
       }
       const x = r.summary;
       const key = keyOfTask(x.projectId, x.seq) || (x.projectKey ? `${x.projectKey}-${x.seq}` : '');
-      const doing = doingWords(x.doing);
-      const started = msOf(x.startedAt);
+      // a task with an item on Needs you waits for the person: its row says so, and no clock runs for it (critique 2026-11-13:
+      // the same task read "Needs you" on one tab and "Running for 1:37" on the next)
+      const waiting = needs.some((n) => n.taskId === x.taskId);
+      const doing = waiting ? 'waiting for you' : doingWords(x.doing);
+      const started = waiting ? 0 : msOf(x.startedAt);
       return (
-        <li key={r.key} data-testid="running-item" data-task={x.taskId}>
+        <li key={r.key} data-testid="running-item" data-task={x.taskId} data-waiting={waiting ? 'true' : undefined}>
           <button type="button" mix={[runRowCss, on('click', () => selectRow(r.key))]} data-row-key={r.key} aria-current={isSel ? 'true' : undefined}>
             <span class="what">
-              <span mix={dotCss} aria-hidden="true" style={{ background: t.accent }} />
+              <span mix={dotCss} aria-hidden="true" style={{ background: waiting ? t.warning : t.accent }} />
               <span class="line">
                 {key ? <span mix={keyCss}>{key}</span> : null}
                 {visible(x.title)}
@@ -727,6 +734,18 @@ function NeedsDetail(
   });
   const act = action(handle);
   let sent = false;
+  // a merge changes the project's main branch and cannot be taken back here: its key asks twice (WCAG 2.1.4, critique
+  // 2026-11-13: one stray A merged), the button stays one deliberate click
+  let armed = '';
+  let armTimer: ReturnType<typeof setTimeout> | undefined;
+  const disarm = () => {
+    armed = '';
+    clearTimeout(armTimer);
+  };
+  handle.signal.addEventListener('abort', disarm);
+  // Request changes on a merge, as on the task page: the worker gets these words and the task goes back to it
+  let changes = false;
+  let feedback = '';
 
   const ask = () => {
     const c = chatAskOf(handle.props.item);
@@ -792,6 +811,19 @@ function NeedsDetail(
       const k = e.key.toLowerCase();
       if (k === 'a') {
         e.preventDefault();
+        const id = detail.data?.id ?? '';
+        if (answer().kind === 'merge' && armed !== id) {
+          if (!id || readOnly() || act.busy || sent || changes) return;
+          disarm();
+          armed = id;
+          armTimer = setTimeout(() => {
+            armed = '';
+            void handle.update();
+          }, MERGE_ARM_MS);
+          void handle.update();
+          return;
+        }
+        disarm();
         approve();
       } else if (k === 'd') {
         e.preventDefault();
@@ -1034,7 +1066,53 @@ function NeedsDetail(
             />
           </div>
         ) : null}
+        {a.kind === 'merge' && d && changes ? (
+          <div data-testid="detail-changes">
+            <Field label="Feedback for the worker">
+              {(id) => (
+                <textarea
+                  id={id}
+                  rows={4}
+                  value={feedback}
+                  disabled={busy}
+                  style={{ width: '100%', resize: 'vertical' }}
+                  mix={[on('input', (e) => ((feedback = e.currentTarget.value), void handle.update()))]}
+                  data-testid="detail-feedback"
+                />
+              )}
+            </Field>
+          </div>
+        ) : null}
+        {a.kind === 'merge' && d && armed === d.id ? (
+          <p role="status" mix={armedCss} data-testid="detail-armed">
+            Press <kbd>A</kbd> again to merge into the project's main branch.
+          </p>
+        ) : null}
         <div mix={actionsCss} data-testid="detail-actions">
+          {a.kind === 'merge' && d && changes ? (
+            <>
+              <Button
+                variant="primary"
+                data-variant="primary"
+                disabled={busy || ro}
+                mix={[on('click', () => respond('send-back', () => s.client.runRespond(a.runId, d.id, 'rejected', { feedback: feedback.trim() })))]}
+                data-testid="detail-send-changes"
+              >
+                {feedback.trim() ? 'Send back with these points' : 'Send back without comment'}
+              </Button>
+              <Button
+                disabled={busy}
+                mix={[
+                  on('click', () => {
+                    changes = false;
+                    void handle.update();
+                  }),
+                ]}
+              >
+                Back
+              </Button>
+            </>
+          ) : null}
           {a.kind === 'permission' || a.kind === 'approval' ? (
             <>
               <Button variant="primary" data-variant="primary" disabled={busy || ro} mix={[on('click', () => approve())]} data-testid="detail-approve">
@@ -1059,9 +1137,28 @@ function NeedsDetail(
             >
               Send back with the GitHub review
             </Button>
-          ) : a.kind === 'spec' || a.kind === 'merge' ? (
+          ) : a.kind === 'merge' && d && !changes ? (
+            <>
+              <Button variant="primary" data-variant="primary" icon={GitMerge} disabled={busy || ro} mix={[on('click', () => (disarm(), approve()))]} data-testid="detail-approve">
+                Merge <kbd>A</kbd>
+              </Button>
+              <Button
+                disabled={busy || ro}
+                mix={[
+                  on('click', () => {
+                    disarm();
+                    changes = true;
+                    void handle.update();
+                  }),
+                ]}
+                data-testid="detail-request-changes"
+              >
+                Request changes
+              </Button>
+            </>
+          ) : a.kind === 'spec' ? (
             <Button variant="primary" data-variant="primary" disabled={busy || ro} mix={[on('click', () => approve())]} data-testid="detail-approve">
-              {a.kind === 'spec' ? 'Accept spec' : 'Merge'} <kbd>A</kbd>
+              Accept spec <kbd>A</kbd>
             </Button>
           ) : null}
           {join ? (

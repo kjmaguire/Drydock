@@ -9,7 +9,7 @@ import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
-import { formatDateTime, formatUsd, isStopped, presenceFor, presenceWords } from '../../lib/format.ts';
+import { agentStatus, formatDateTime, formatUsd, isStopped, presenceFor, presenceWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { proposalsOf, proposalsText } from '../memory/memory.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -705,12 +705,12 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                       )}
                       <div class="chips" data-testid="agent-chips">
                         {task ? (
-                          <a href={routes.task.href({ id: task.id })} mix={chipCss} data-live={p ? 'true' : undefined} data-testid="agent-chip">
+                          <a href={routes.task.href({ id: task.id })} mix={chipCss} data-live={agentStatus(p) === 'working' ? 'true' : undefined} data-testid="agent-chip">
                             <i aria-hidden="true" />
                             {nowChip(p, task)}
                           </a>
                         ) : (
-                          <span mix={chipCss} data-live={p && /^(working|thinking)/i.test(p.presence) ? 'true' : undefined} data-testid="agent-chip">
+                          <span mix={chipCss} data-live={agentStatus(p) === 'working' ? 'true' : undefined} data-testid="agent-chip">
                             <i aria-hidden="true" />
                             {nowChip(p, undefined)}
                           </span>

@@ -211,6 +211,44 @@ describe('the Inbox', () => {
     await waitFor(() => expect(calls.respond).toEqual([['run9', 'apr9', 'rejected', { feedback: '> from kyle:\n> Please handle negative numbers.' }]]), r);
   });
 
+  it('a merge takes A twice, says so after the first, and can be sent back with Request changes (critique 2026-11-13)', async () => {
+    const item: NeedsYouItem = { key: 'approval:apr8', kind: 'approval', severity: 1, title: 'Review and merge: Add Divide', detail: '', projectId: 'p1', approvalId: 'apr8', taskId: 't8', phase: 'merge', createdAt: new Date(NOW - 60_000).toISOString() } as NeedsYouItem;
+    const mergeDetail: ApprovalDetail = {
+      id: 'apr8', kind: 'review', phase: 'merge', title: 'Review and merge: Add Divide', description: 'Merge it.', shell: false, targets: [], shortened: false, editable: false,
+      projectId: 'p1', runId: 'run8', createdAt: NOW, status: 'REQUESTED', approveForTask: false, rules: [],
+    };
+    const { r, calls } = await open({ approvalGet: async () => mergeDetail }, [item]);
+    await waitFor(() => expect(r.$('[data-testid="detail-approve"]')).not.toBeNull(), r);
+    expect(r.$('[data-testid="detail-approve"]')!.textContent).toBe('Merge A');
+    // the first A only arms the merge, and says what the second one does
+    await r.act(() => press('a'));
+    await waitFor(() => expect(r.$('[data-testid="detail-armed"]')?.textContent).toBe("Press A again to merge into the project's main branch."), r);
+    expect(r.$('[data-testid="detail-armed"]')!.getAttribute('role')).toBe('status');
+    expect(calls.respond).toEqual([]);
+    await r.act(() => press('a'));
+    await waitFor(() => expect(calls.respond).toEqual([['run8', 'apr8', 'approved']]), r);
+    expect(r.$('[data-testid="detail-armed"]')).toBeNull();
+    cleanup();
+
+    // Request changes: the worker gets the words, the A key does nothing while they are written
+    const two = await open({ approvalGet: async () => mergeDetail }, [item]);
+    await waitFor(() => expect(two.r.$('[data-testid="detail-request-changes"]')).not.toBeNull(), two.r);
+    await two.r.act(() => (two.r.$('[data-testid="detail-request-changes"]') as HTMLButtonElement).click());
+    const box = two.r.$('[data-testid="detail-feedback"]') as HTMLTextAreaElement;
+    expect(two.r.$('[data-testid="detail-approve"]')).toBeNull();
+    expect(two.r.$('[data-testid="detail-send-changes"]')!.textContent).toBe('Send back without comment');
+    await two.r.act(() => {
+      box.value = 'Handle negative numbers.';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(two.r.$('[data-testid="detail-send-changes"]')!.textContent).toBe('Send back with these points');
+    await two.r.act(() => press('a'));
+    await two.r.act(() => press('a'));
+    expect(two.calls.respond).toEqual([]);
+    await two.r.act(() => (two.r.$('[data-testid="detail-send-changes"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(two.calls.respond).toEqual([['run8', 'apr8', 'rejected', { feedback: 'Handle negative numbers.' }]]), two.r);
+  });
+
   it('J and K move the selection; the spec gate shows its criteria and A accepts the spec as written', async () => {
     const { r, calls } = await open();
     await r.act(() => press('j'));
@@ -317,6 +355,11 @@ describe('the Inbox', () => {
     await r.act(() => (r.$('[data-testid="inbox-tab-running"]') as HTMLButtonElement).click());
     expect(r.$$('[data-testid="running-item"]').length).toBe(1);
     expect(r.$('[data-testid="inbox-tab-running"] [data-testid="tab-count"]')!.textContent).toBe('2');
+    // there it says it waits for the person, and no clock runs for it (critique 2026-11-13)
+    const row = r.$('[data-testid="running-item"]')!;
+    expect(row.getAttribute('data-waiting')).toBe('true');
+    expect(row.querySelector('.line')!.textContent).toBe('SHP-12Rate limit the checkout API · waiting for you');
+    expect(row.querySelector('.time')!.textContent).toBe('');
     cleanup();
     // when every running thing has its item, the Needs you tab shows no Running group at all
     const { s: s2 } = servicesWith({ securityScanRunning: async () => [] }, [review]);
