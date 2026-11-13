@@ -45,6 +45,9 @@ import { isWaitingForTask } from './tasks.ts';
 
 // the page: the work and the properties side by side, each column scrolling on its own (the bar stays on top of the work and the
 // steer box at its foot); on a narrower window the properties go under the work and the page scrolls as one.
+/** The height the sticky steer box takes at the foot of the page (its box and its note), kept clear when something scrolls into view. */
+const STEER_CLEARANCE = '112px';
+
 const pageCss = css({
   display: 'flex',
   flexWrap: 'wrap',
@@ -54,12 +57,14 @@ const pageCss = css({
   overflowY: 'auto',
   overflowX: 'hidden',
   background: t.bgApp,
-  '@media (min-width: 1200px)': { flexWrap: 'nowrap', overflowY: 'hidden', '& > article, & > aside': { overflowY: 'auto', minHeight: '0' } },
+  // what is scrolled into view (Evidence, a focused field) stops above the sticky steer box, not under it
+  scrollPaddingBottom: STEER_CLEARANCE,
+  '@media (min-width: 1200px)': { flexWrap: 'nowrap', overflowY: 'hidden', '& > article, & > aside': { overflowY: 'auto', minHeight: '0', scrollPaddingBottom: STEER_CLEARANCE } },
 });
 
 // inside a project's Work view (decision P141) the page is a column between the list and the crew: the properties go under the
 // work at any window width, and the page scrolls as one
-const embeddedCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden', background: t.bgApp });
+const embeddedCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden', background: t.bgApp, scrollPaddingBottom: STEER_CLEARANCE });
 
 const workCss = css({
   flex: '3 1 560px',

@@ -125,7 +125,8 @@
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    overflow: hidden;
+    /* clip: the page itself never scrolls, not even by code (scrollIntoView); each pane scrolls on its own */
+    overflow: clip;
   }
 
   #root {

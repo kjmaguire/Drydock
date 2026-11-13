@@ -46,8 +46,10 @@ import {
   permissionLabel,
   planStart,
   recall,
+  recallPlace,
   recallDraft,
   remember,
+  rememberPlace,
   runJustChat,
   runStart,
   startCli,
@@ -206,6 +208,10 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
   // a description left unsent here before (B10); the box on a project's Work page starts empty (Home keeps its own draft)
   let text = fixed ? '' : recallDraft(store);
   let where: Where = fixed ? { kind: 'project', projectId: fixed } : { kind: 'new', path: '' };
+  /** Whether the place is settled: chosen here, fixed by the page, or the remembered project applied once the projects are read. */
+  let placeChosen = !!fixed;
+  /** The project Home last started in (recallPlace): Home opens there while it still exists. */
+  const lastProject = fixed ? '' : recallPlace(store);
   /** The new folder as the person typed it; undefined: it follows the description. */
   let newPath: string | undefined;
   let crew: Crew = { kind: 'solo', templates: [], drafted: [] };
@@ -257,6 +263,8 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
 
   const choose = (w: Where) =>
     set(() => {
+      placeChosen = true;
+      rememberPlace(store, w);
       where = w;
       menu = '';
       error = '';
@@ -531,6 +539,12 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void; p
   );
 
   return () => {
+    // the remembered project, once the projects are read and while it still exists (recallPlace)
+    if (!placeChosen && lastProject && s.workspace.projectList.some((p) => p.id === lastProject)) {
+      placeChosen = true;
+      where = { kind: 'project', projectId: lastProject };
+      applyRemembered(where);
+    }
     const busy = !!act.busy;
     const w = effectiveWhere();
     const tu = tuned();

@@ -630,6 +630,31 @@ export function remember(store: Store | undefined, keys: readonly string[], r: R
   }
 }
 
+/**
+ * The project the person last started in from Home, so Home opens there next time instead of a new empty folder (critique
+ * 2026-11-13: a description typed into the box made a new folder while that project waited). A new place, a folder or a
+ * repository forgets it: Home then starts in a new folder, as on the first visit.
+ */
+export const PLACE_KEY = 'drydock.start.place';
+
+/** The project Home last started in, or ''. */
+export function recallPlace(store: Store | undefined): string {
+  try {
+    return store?.getItem(PLACE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** Keeps the place chosen: a project's id, or nothing for any other place. */
+export function rememberPlace(store: Store | undefined, w: Where): void {
+  try {
+    store?.setItem(PLACE_KEY, w.kind === 'project' ? w.projectId : '');
+  } catch {
+    /* a convenience only */
+  }
+}
+
 /** This browser's storage, or nothing where it cannot be reached. */
 export function browserStore(): Store | undefined {
   try {

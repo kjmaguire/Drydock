@@ -41,7 +41,9 @@ const paneAction = css({ marginLeft: 'auto', display: 'inline-flex', flex: 'none
 const rawCss = css({ flex: '1', minHeight: '0', overflow: 'auto', padding: t.s3 });
 const totalsCss = css({ marginLeft: 'auto', display: 'inline-flex', gap: t.s2, alignItems: 'center', color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs });
 const hostWrap = css({ position: 'relative', flex: '1', minHeight: '300px', display: 'flex', ':is(#dock-panel) &': { minHeight: '0' } });
-const hostCss = css({ flex: '1', minWidth: '0', minHeight: '0' });
+// isolate: Monaco's own layers (the minimap, its scrollbars, z-index up to 1004) stay inside the editor, so the task page's sticky
+// steer box is drawn over the diff instead of the minimap over the box (critique 2026-11-13)
+const hostCss = css({ flex: '1', minWidth: '0', minHeight: '0', isolation: 'isolate' });
 const hostLoading = css({ position: 'absolute', inset: '0', margin: '0', padding: t.s3, color: t.textMuted, fontSize: t.textMd, pointerEvents: 'none' });
 const hostError = css({ pointerEvents: 'auto' });
 const largeCss = css({ display: 'flex', alignItems: 'center', gap: t.s3, flexWrap: 'wrap', margin: '0', padding: t.s3, fontSize: t.textMd });

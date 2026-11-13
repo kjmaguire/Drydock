@@ -249,7 +249,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
               <input
                 type="search"
                 value={search}
-                placeholder="Search this project"
+                placeholder="Search"
                 aria-label="Search this project"
                 data-testid="work-search"
                 mix={on('input', (e) => {

@@ -32,11 +32,13 @@ import { chatOrder, focusRegion, neighbour, REGION_OF, roomOrder } from './regio
 import { Sidebar } from './sidebar.tsx';
 import { Toasts } from './toasts-host.tsx';
 
-const rootCss = css({ display: 'flex', height: '100vh', overflow: 'hidden', background: t.bgApp });
+// clip, not hidden: a box with overflow hidden can still be scrolled by code, and scrollIntoView on the task page's Evidence (or a
+// focus move) scrolled the whole shell up, the top bar off the screen and a band under it (critique 2026-11-13)
+const rootCss = css({ display: 'flex', height: '100vh', overflow: 'clip', background: t.bgApp });
 const columnCss = css({ display: 'flex', flexDirection: 'column', flex: '1', minWidth: '0', minHeight: '0' });
 const appCss = css({ position: 'relative', display: 'flex', flex: '1', minHeight: '0', minWidth: '0' });
 const centerCss = css({ display: 'flex', flexDirection: 'column', flex: '1', minWidth: '0', minHeight: '0', background: t.bgApp });
-const mainCss = css({ flex: '1', minHeight: '0', overflow: 'hidden', outline: 'none', '& > *': { height: '100%' } });
+const mainCss = css({ flex: '1', minHeight: '0', overflow: 'clip', outline: 'none', '& > *': { height: '100%' } });
 const skipCss = css({
   position: 'absolute',
   left: '-9999px',
