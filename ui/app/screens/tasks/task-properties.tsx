@@ -486,7 +486,7 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
 
         <div class="group">
           <h2>Steps</h2>
-          <StepList steps={stepsFor(task, d.evidence, d.reviews, d.pending)} />
+          <StepList steps={stepsFor(task, d.evidence, d.reviews, d.pending, checks)} />
         </div>
 
         <div class="group">

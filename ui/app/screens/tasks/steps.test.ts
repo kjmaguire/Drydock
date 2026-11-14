@@ -61,6 +61,19 @@ describe('the step bar', () => {
     expect(stepsFor(task('REVIEW'), [ev('test', false)], [])[2]!.state).toBe('done');
   });
 
+  it("counts the summary's checks when the page has them, as the decision card does (critique 2026-11-13)", () => {
+    const pending: PendingRequest[] = [{ id: 'r', nodeId: 'n', step: 3, spec: { kind: 'review', title: 'Review and merge' } }];
+    const evidence = [ev('test', true), ev('diff')];
+    const summary = [{ status: 'passed' }, { status: 'passed' }, { status: 'passed' }, { status: 'passed' }, { status: 'not_run' }];
+    expect(stepsFor(task('WAITING_HUMAN'), evidence, [review('SHIP')], pending)[2]!.note).toBe('1 of 1');
+    expect(stepsFor(task('WAITING_HUMAN'), evidence, [review('SHIP')], pending, summary)[2]!.note).toBe('4 of 4');
+    // a failing one in the summary fails the step while the worker is at it
+    const failing = stepsFor(task('IN_PROGRESS', { iteration: 1 }), evidence, [], [], [{ status: 'passed' }, { status: 'failed' }]);
+    expect([failing[2]!.note, failing[2]!.state]).toEqual(['1 of 2', 'failed']);
+    // no summary checks ran: the evidence still counts
+    expect(stepsFor(task('WAITING_HUMAN'), evidence, [review('SHIP')], pending, [{ status: 'not_run' }])[2]!.note).toBe('1 of 1');
+  });
+
   it('in review the Review step is current; the latest verdict wins', () => {
     const s = stepsFor(task('REVIEW'), [ev('diff')], [review('REVISE', 1, 1), review('SHIP', 2, 2)]);
     expect(states(s)).toEqual(['done', 'done', 'done', 'current', 'todo']);

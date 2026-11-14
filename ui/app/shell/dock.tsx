@@ -103,11 +103,12 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
       <div mix={pickedCss}>
         {running.length === 1 ? (
           <p mix={pickLineCss} data-testid="dock-task-line">
-            The one running task: <span class="key">{key(chosen!)}</span> {chosen!.title}
+            The one task in progress: <span class="key">{key(chosen!)}</span> {chosen!.title}
+            {chosen!.status === 'VERIFICATION' || chosen!.status === 'WAITING_HUMAN' ? ' · waits for you' : ''}
           </p>
         ) : (
           <div mix={pickLineCss}>
-            <span>{running.length} tasks are running:</span>
+            <span>{running.length} tasks are in progress:</span>
             <Select
               size="sm"
               label="Running task"

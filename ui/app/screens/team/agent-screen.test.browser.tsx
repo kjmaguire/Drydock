@@ -327,6 +327,8 @@ describe("an agent's page", () => {
     const { r } = show('agt_1', { presenceList: async () => [stopped] });
     await hero(r);
     await waitFor(() => expect(chips(r)[0]).toContain('Stopped'), r);
+    // a stopped agent is not shown in the live (success) colour, on its task or not (critique 2026-11-13)
+    expect(r.$('[data-testid="agent-chip"][data-live="true"]')).toBeNull();
     const block = r.$('[data-testid="agent-activity"]')!.textContent!;
     expect(block.includes('●')).toBe(false);
     expect(block).toContain('· started');

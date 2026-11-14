@@ -47,8 +47,16 @@ describe('the dock without a task in context (X29)', () => {
     s.ui.setDock({ open: true, tab: 'logs' });
     const r = mount(<Dock projectId="p1" taskId={undefined} />, s);
     const line = await waitFor(() => need(r, '[data-testid="dock-task-line"]'), r);
-    expect(line.textContent).toBe('The one running task: GOC-7 Add Multiply');
+    expect(line.textContent).toBe('The one task in progress: GOC-7 Add Multiply');
     await waitFor(() => expect(s.logsFor).toEqual(['t7']), r);
+  });
+
+  it('says when that task waits for the person instead of calling it running (critique 2026-11-13)', async () => {
+    const s = svc([task({ id: 't7', seq: 7, title: 'Add Multiply', status: 'VERIFICATION' })]);
+    s.ui.setDock({ open: true, tab: 'logs' });
+    const r = mount(<Dock projectId="p1" taskId={undefined} />, s);
+    const line = await waitFor(() => need(r, '[data-testid="dock-task-line"]'), r);
+    expect(line.textContent).toBe('The one task in progress: GOC-7 Add Multiply · waits for you');
   });
 
   it('offers the running tasks in a one-line pick when there are several', async () => {
@@ -56,7 +64,7 @@ describe('the dock without a task in context (X29)', () => {
     s.ui.setDock({ open: true, tab: 'logs' });
     const r = mount(<Dock projectId="p1" taskId={undefined} />, s);
     const pick = await waitFor(() => need(r, '[data-testid="dock-task-pick"]'), r);
-    expect(r.container.textContent).toContain('2 tasks are running:');
+    expect(r.container.textContent).toContain('2 tasks are in progress:');
     expect(s.logsFor).toEqual([]);
     await r.act(() => choose(pick, 't9'));
     await waitFor(() => expect(s.logsFor).toEqual(['t9']), r);
