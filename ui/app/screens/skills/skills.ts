@@ -248,7 +248,8 @@ export function registryTileText(st: SkillRegistryStatus | undefined, enabled = 
   const parts = [`${st.skills} skill${st.skills === 1 ? '' : 's'}`];
   if (st.blocked > 0) parts.push(`${st.blocked} blocked`);
   if (fresh > 0) parts.push(`${fresh} new`);
-  return { text: parts.join(' · '), tone: fresh > 0 ? 'warn' : 'ok' };
+  // an empty registry is not good news: its 0 is muted, not the success tone (critique 2026-11-13: nine teal "0 skills")
+  return { text: parts.join(' · '), tone: fresh > 0 ? 'warn' : st.skills > 0 ? 'ok' : '' };
 }
 
 /** The first sentence of a description, at most max characters: what a row shows before it is opened. */

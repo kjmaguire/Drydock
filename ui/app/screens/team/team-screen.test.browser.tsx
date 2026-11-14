@@ -983,6 +983,8 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     // it opens on Describe (decision P138)
     const form = await waitFor(() => must(r.$('dialog[open] [data-testid="describe-agent"]'), 'no form'), r);
     expect(form.closest('dialog')!.textContent).toContain('New agent');
+    // before a draft, its column says what comes into it (critique 2026-11-13: half the dialog stood empty)
+    expect(form.querySelector('[data-testid="draft-empty"]')!.textContent).toContain('The drafted agent appears here');
   });
 
   it('Describe offers first the starters of the roles the crew lacks (E6)', async () => {

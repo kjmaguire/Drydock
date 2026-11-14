@@ -36,6 +36,17 @@ function svc(over: Partial<Client> = {}) {
 const links = (r: { $$: (s: string) => NodeListOf<Element> }) => Array.from(r.$$('nav[aria-label="Main"] a[data-testid]')).map((e) => e.getAttribute('data-testid'));
 
 describe('the sidebar', () => {
+  it("reads the open project's task count to a screen reader as the link's description, its name staying the project's (critique 2026-11-13)", async () => {
+    const r = mount(<Sidebar route={{ name: 'tasks' }} />, svc({ taskCount: async () => ({ total: 7 }) as never }));
+    const link = await waitFor(() => {
+      const a = r.$('[data-testid="nav-project-item"][aria-expanded="true"]');
+      if (!a?.getAttribute('aria-describedby')) throw new Error('not yet');
+      return a;
+    }, r);
+    expect(link.getAttribute('aria-label')).toBe('gocalc');
+    expect(document.getElementById(link.getAttribute('aria-describedby')!)!.textContent).toBe('7 tasks');
+  });
+
   it("on a project's page: six places (decision P140): New, Home, Inbox with its count, Chats, the projects (one line each, P141), then Agents and Settings", async () => {
     const r = mount(<Sidebar route={{ name: 'tasks' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="nav-project-item"]')?.getAttribute('aria-expanded')).toBe('true'), r);

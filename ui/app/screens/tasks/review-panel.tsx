@@ -48,18 +48,18 @@ const panelCss = css({
   '& > h2 svg': { color: t.warning },
 });
 
+// a request inside the decide card is its content, not a second card in the card (critique 2026-11-13, nested cards): requests
+// after the first are set apart by a rule
 const cardCss = css({
   display: 'grid',
   gap: t.s3,
-  padding: t.s4,
-  borderRadius: t.rMd,
-  border: `1px solid ${t.border}`,
-  background: t.bgSurface,
   minWidth: '0',
+  '& + &': { borderTop: `1px solid ${t.mentionBorder}`, paddingTop: t.s4 },
   '& > h3': { fontSize: t.textMd, fontWeight: '600', overflowWrap: 'anywhere' },
   '& .meta': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, color: t.textMuted, fontSize: t.textSm },
   '& .meta svg': { color: t.textFaint },
-  '& details ul': { margin: `${t.s2} 0 0`, paddingLeft: '20px', fontSize: t.textSm },
+  // the changed files: paths, one a line, in the mono face code is set in, no bullet
+  '& details ul': { display: 'grid', gap: '2px', margin: `${t.s2} 0 0`, padding: '0', listStyle: 'none', fontFamily: t.mono, fontSize: t.textSm, overflowWrap: 'anywhere' },
   '& summary': { cursor: 'pointer', fontSize: t.textSm, color: t.textMuted },
 });
 

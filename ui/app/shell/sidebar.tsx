@@ -423,6 +423,9 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                     })]}
                     title={named.label}
                     aria-label={named.label}
+                    // the label names the project; the open project's task count is read as its description (the label hid it from
+                    // screen readers, critique 2026-11-13)
+                    aria-describedby={open && s.project.taskTotal ? `nav-project-tasks-${p.id}` : undefined}
                     data-nav=""
                     data-testid="nav-project-item"
                     data-project={p.id}
@@ -439,6 +442,9 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                     {open && s.project.taskTotal ? (
                       <span class="count" mix={countCss} title={`${s.project.taskTotal} ${s.project.taskTotal === 1 ? 'task' : 'tasks'}`} data-testid="nav-project-tasks">
                         {s.project.taskTotal}
+                        <span id={`nav-project-tasks-${p.id}`} class="sr-only">
+                          {s.project.taskTotal === 1 ? '1 task' : `${s.project.taskTotal} tasks`}
+                        </span>
                       </span>
                     ) : null}
                   </a>
