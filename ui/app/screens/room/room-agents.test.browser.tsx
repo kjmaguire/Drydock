@@ -50,7 +50,7 @@ describe('RoomAgentsPanel', () => {
     cleanup();
     archived = true;
     const r2 = mount(<RoomTab roomId="room_1" />, s);
-    await waitFor(() => expect(r2.container.textContent).toContain('This channel is archived'), r2);
+    await waitFor(() => expect(r2.container.textContent).toContain('This room is archived'), r2);
     expect(r2.container.querySelector('[data-testid="room-agents"]')).toBeNull();
   });
 

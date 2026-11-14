@@ -214,7 +214,7 @@ export function Interventions(handle: Handle<{ projectId: string; taskId?: strin
                     <span>on {TRIGGER_LABEL[x.trigger] ?? x.trigger}</span>
                     {x.targetAgent ? <span>to {agentName(x.targetAgent, agents) || x.targetAgent}</span> : null}
                     {!taskId && x.taskId ? (
-                      <a href={routes.task.href({ id: x.taskId })}>{task ? `#${task.seq} ${task.title}` : 'the task'}</a>
+                      <a href={routes.task.href({ id: x.taskId })}>{task ? `${s.workspace.keyOf(task)} ${task.title}` : 'the task'}</a>
                     ) : null}
                     {x.invalid ? (
                       <Badge tone="err" title="The lead's answer could not be applied as given; it was recorded, not acted on">
@@ -233,7 +233,7 @@ export function Interventions(handle: Handle<{ projectId: string; taskId?: strin
                         return (
                           <span key={id}>
                             {i > 0 ? ', ' : ''}
-                            <a href={routes.task.href({ id })}>{tk ? `#${tk.seq} ${tk.title}` : id}</a>
+                            <a href={routes.task.href({ id })}>{tk ? `${s.workspace.keyOf(tk)} ${tk.title}` : id}</a>
                           </span>
                         );
                       })}

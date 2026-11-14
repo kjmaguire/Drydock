@@ -244,7 +244,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
                       id={id}
                       label="Task"
                       value={taskId ?? ''}
-                      options={list.map((x) => ({ value: x.id, label: `#${x.seq} ${x.title} (${x.prRef})` }))}
+                      options={list.map((x) => ({ value: x.id, label: `${s.workspace.keyOf(x)} ${x.title} (${x.prRef})` }))}
                       onChange={(v) => {
                         selected = v;
                         void handle.update();

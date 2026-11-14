@@ -16,7 +16,7 @@ import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { allDoneOf, dueISO, matchesFilter, progressText, segments, taskGroups, taskLabel, unfinishedOf, zeroTime } from './milestones.ts';
+import { allDoneOf, dueISO, matchesFilter, progressText, segments, taskGroups, unfinishedOf, zeroTime } from './milestones.ts';
 
 const gridCss = css({
   display: 'grid',
@@ -187,7 +187,7 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; plans: Plan
               const tk = tasks.find((x) => x.id === id);
               return (
                 <li key={id}>
-                  <a href={routes.task.href({ id })}>{tk ? `#${tk.seq} ${tk.title}` : id}</a>
+                  <a href={routes.task.href({ id })}>{tk ? `${s.workspace.keyOf(tk)} ${tk.title}` : id}</a>
                   {tk ? <StatusChip status={tk.status} /> : null}
                   {tk ? <OriginBadge origin={tk.origin} /> : null}
                   <Button
@@ -243,7 +243,7 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; plans: Plan
                         }),
                       )}
                     />
-                    <span>{taskLabel(x)}</span>
+                    <span>{`${s.workspace.keyOf(x)} ${x.title}`}</span>
                   </label>
                 </li>
               ))}

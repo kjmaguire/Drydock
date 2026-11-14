@@ -329,7 +329,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                   {d.roomId ? (
                     <a href={routes.room.href({ id: d.roomId })} mix={buttonStyle('ghost', 'sm')}>
                       <Icon icon={MessagesSquare} size={14} />
-                      Open task channel
+                      Open task room
                     </a>
                   ) : null}
                   {/* the minutes the task's room kept when the task closed (X19) */}

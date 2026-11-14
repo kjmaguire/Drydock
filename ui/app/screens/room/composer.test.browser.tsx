@@ -144,7 +144,7 @@ describe('the composer', () => {
   it('is disabled for an archived room', () => {
     const { r, box } = setup({}, { disabled: true });
     expect(box.disabled).toBe(true);
-    expect(box.placeholder).toBe('This channel is archived');
+    expect(box.placeholder).toBe('This room is archived');
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Send').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Attach').disabled).toBe(true);
   });

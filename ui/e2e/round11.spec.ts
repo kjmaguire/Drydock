@@ -12,7 +12,7 @@ test('workflow graph, checkpoint timeline and the explanation of every turn', as
   await expect(page.getByTestId('review-panel')).toBeVisible({ timeout: 90_000 });
 
   await page.getByRole('link', { name: 'Workflow and explanation' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: /Run of #\d+ Implement Subtract/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Run of [A-Z0-9]+-\d+ Implement Subtract/ })).toBeVisible();
   const graph = page.getByTestId('workflow-graph');
   await expect(graph.locator('[data-testid=wf-node][data-node=work]')).toHaveAttribute('data-status', 'done');
   await expect(graph.locator('[data-testid=wf-node][data-node=work]')).toContainText('Worker One');

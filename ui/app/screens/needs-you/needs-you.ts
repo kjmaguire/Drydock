@@ -81,7 +81,7 @@ export function needsHint(it: NeedsYouItem): string {
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return "An agent wants to call a tool that is not marked read-only. Open the project's Integrations page to see the exact call and approve or reject it.";
   if (it.kind === 'approval' && /^Permission request: /.test(it.title))
     return "A worker asks to use a tool its rules do not allow, and its turn waits. Open the task to see the exact tool and input; allow it once or refuse.";
-  if (it.kind === 'join_request') return 'Let it in as an observer: it reads the channel and answers only when mentioned. Or decline; it never joins by itself.';
+  if (it.kind === 'join_request') return 'Let it in as an observer: it reads the room and answers only when mentioned. Or decline; it never joins by itself.';
   if (it.kind === 'chat_permission') return "A chat's agent asks to use a tool its rules do not allow, and its turn waits. Open the chat to see the exact call; allow it once or refuse. Nobody answering refuses it after 30 minutes.";
   if (it.kind === 'approval' && !it.taskId && !it.roomId) return "An outbound write to a connected service. Open the project's Integrations page to read the exact text and approve or decline.";
   return '';

@@ -490,7 +490,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                           size="sm"
                           icon={Link2}
                           disabled={busy}
-                          aria-label={`Link #${sg.seq} ${sg.title}`}
+                          aria-label={`Link ${s.workspace.keyOf(sg)} ${sg.title}`}
                           mix={on('click', async () => {
                             const x = await act.run('link', () => s.client.requirementLink(r.id, sg.taskId, own));
                             if (x) (done(), suggestions.reload());
@@ -499,14 +499,14 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                           Link
                         </Button>
                       ) : (
-                        <Button size="sm" disabled={busy} aria-label={`Choose #${sg.seq} ${sg.title} to write its criteria`} mix={on('click', () => set(() => choose(sg.taskId)))}>
+                        <Button size="sm" disabled={busy} aria-label={`Choose ${s.workspace.keyOf(sg)} ${sg.title} to write its criteria`} mix={on('click', () => set(() => choose(sg.taskId)))}>
                           Choose
                         </Button>
                       )}
                       <Button
                         size="sm"
                         variant="ghost"
-                        aria-label={`Dismiss #${sg.seq} ${sg.title}`}
+                        aria-label={`Dismiss ${s.workspace.keyOf(sg)} ${sg.title}`}
                         mix={on('click', () => {
                           set(() => (dismissed = dismissSuggestion(r.id, sg.taskId)));
                           suggestions.reload();
@@ -539,7 +539,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                     id={fid}
                     label="Task to link"
                     value={taskId}
-                    options={[{ value: '', label: 'Choose a task' }, ...tasks.map((tk) => ({ value: tk.id, label: `#${tk.seq} ${tk.title}` }))]}
+                    options={[{ value: '', label: 'Choose a task' }, ...tasks.map((tk) => ({ value: tk.id, label: `${s.workspace.keyOf(tk)} ${tk.title}` }))]}
                     onChange={(v) => set(() => choose(v))}
                   />
                 )}
@@ -594,7 +594,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
               ) : null}
               <div mix={formActions}>
                 <Button type="submit" icon={Link2} disabled={!canLink}>
-                  {linkLabel(plan.criteria.length, chosen?.seq)}
+                  {linkLabel(plan.criteria.length, chosen ? s.workspace.keyOf(chosen) : undefined)}
                 </Button>
               </div>
             </form>

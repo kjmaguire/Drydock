@@ -19,7 +19,7 @@ export const REFERENCE: readonly Topic[] = [
             ['Claimed', 'An agent has taken it and is about to begin.'],
             ['In progress', 'The worker is writing the change.'],
             ['Blocked', 'It cannot go on until something else is done.'],
-            ['Waiting for you', 'A run needs a decision from you (see Needs you).'],
+            ['Waiting for you', 'A run needs a decision from you (see the Inbox).'],
             ['In review', 'The reviewer is reading the change.'],
             ['Awaiting your approval', 'Checks passed and the review is done; the final decision is yours.'],
             ['Completed', 'You approved it and it was delivered.'],
@@ -33,7 +33,7 @@ export const REFERENCE: readonly Topic[] = [
           head: ['Shown as', 'Means'],
           rows: [
             ['Working', 'The agent is on a turn: writing, thinking or using a tool.'],
-            ['Waiting for you', 'The agent is held until a person answers: a permission request, an approval, or something it stopped on. Needs you lists it.'],
+            ['Waiting for you', 'The agent is held until a person answers: a permission request, an approval, or something it stopped on. The Inbox lists it.'],
             ['Waiting', 'The agent waits on something other than you, such as another agent.'],
             ['Starting', 'The agent’s program is starting.'],
             ['Idle', 'The agent is not on a turn; its last turn finished.'],
@@ -111,7 +111,7 @@ export const REFERENCE: readonly Topic[] = [
           rows: [
             ['`task.*`', '`task.evidence`', 'A task changed or collected evidence (a check result, a review request).'],
             ['`workflow.*`', '`workflow.node_completed`, `workflow.step_completed`, `workflow.checkpoint_written`, `workflow.paused`, `workflow.request_raised`', 'A run moved through its graph; each completed step writes a checkpoint.'],
-            ['`approval.*`, `permission.*`', '`approval.requested`, `permission.decided`', 'Something is waiting for a decision (see Needs you), or a permission request was answered: by a person, by a rule, or by nobody in time.'],
+            ['`approval.*`, `permission.*`', '`approval.requested`, `permission.decided`', 'Something is waiting for a decision (see the Inbox), or a permission request was answered: by a person, by a rule, or by nobody in time.'],
             ['`room.*`', '`room.presence_changed`, `room.message_posted`', 'A conversation changed.'],
             ['`agent.*`', '`agent.created`, `agent.started`, `agent.output`, `agent.completed`', 'An agent was added or changed, a process started, streamed what it did (text, reasoning, tool calls and results), or ended a turn. The task page\'s Activity is read from these.'],
           ],

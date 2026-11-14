@@ -89,7 +89,7 @@ describe('Agents > My agents (decision P140)', () => {
     expect(r.container.textContent).not.toContain('Web thing');
     expect(() => byText(r.container, 'button', 'Connect an MCP server')).toThrow();
     expect(r.$('[data-testid="library-servers-link"]')!.getAttribute('href')).toBe('/integrations');
-    expect(r.$('header')!.textContent).toContain('2 agents');
+    expect(r.$('header')!.textContent).toContain("2 saved agents, for any project. A project's own agents are on its Crew.");
   });
 
   it('clicking a template tile opens its panel below the grid, another tile switches it, the same tile closes it', async () => {

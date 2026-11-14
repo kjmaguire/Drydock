@@ -127,7 +127,7 @@ describe("an agent's page", () => {
     expect(r.$('[data-testid="agent-page-purpose"]')!.textContent).toContain('Owns webhooks and invoices');
     await waitFor(() => expect(chips(r)).toContain('Working on #12'), r);
     await waitFor(() => expect(chips(r)).toContain('guarded'), r);
-    expect(chips(r)).toEqual(['Working on #12', 'Claude Code · sonnet', 'effort: high', 'runs in WSL', 'guarded']);
+    expect(chips(r)).toEqual(['Working on #12', 'Claude Code · sonnet', 'effort: high', 'runs in WSL', 'Edits freely', 'guarded']);
     expect(r.$('[data-testid="agent-chip"][data-live="true"]')!.getAttribute('href')).toBe('/task/t12');
     expect(r.$('[data-testid="agent-chip"][data-isolation="guarded"]')!.getAttribute('title')).toContain('acceptEdits');
   });
@@ -340,7 +340,7 @@ describe("an agent's page", () => {
     await hero(r);
     expect(r.$('h1')!.textContent).toBe('Rex');
     expect(r.container.textContent).toContain('No standing instructions');
-    expect(chips(r)).toEqual(['Stopped', 'Claude Code · sonnet', 'effort: high']);
+    expect(chips(r)).toEqual(['Stopped', 'Claude Code · sonnet', 'effort: high', 'Edits freely']);
     expect(r.$('[data-testid="agent-now"]')!.textContent).toContain('Not on a task right now');
     expect(r.$('[data-testid="agent-activity"]')!.textContent).toContain('No run yet');
     // "Stopped" is said once, in the hero's chip: not again beside Right now (UI audit 2026-10-26)

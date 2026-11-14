@@ -466,7 +466,7 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
               <dd>
                 {deps.map((x) => (
                   <a key={x.id} href={routes.task.href({ id: x.id })}>
-                    {x.seq ? `#${x.seq} ${x.title}` : x.title}
+                    {x.seq ? `${s.workspace.keyOf(x)} ${x.title}` : x.title}
                   </a>
                 ))}
               </dd>

@@ -181,7 +181,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                 Workers may type only the exact check commands. They run the project's own code, which the worker can change in the same turn, so in practice a worker can run any program with your user's rights. There is no operating-system sandbox. Turn this on only where you accept that.
 </p>
             ) : null}
-            <ToggleRow label="Agents answer in channels and direct messages" checked={d.respond} onChange={(v) => patch({ respond: v })} />
+            <ToggleRow label="Agents answer in rooms and direct messages" checked={d.respond} onChange={(v) => patch({ respond: v })} />
             <SettingRow
               label="Team lead: minutes without progress before it checks a task"
               for={stallId}

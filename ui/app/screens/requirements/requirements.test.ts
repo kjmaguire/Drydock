@@ -56,9 +56,9 @@ describe('linking criteria (X42)', () => {
     const own = ['Given a, when b, then c', 'Given d, when e, then f'];
     expect(linkCriteria(own, new Set([0, 1]), '')).toEqual({ criteria: own, refused: [] });
     expect(linkCriteria(own, new Set([1]), 'given  D, when e, then F\nfast')).toEqual({ criteria: ['Given d, when e, then f', 'fast'], refused: ['fast'] });
-    expect(linkLabel(3, 12)).toBe('Link 3 criteria of #12');
-    expect(linkLabel(1, 12)).toBe('Link 1 criterion of #12');
-    expect(linkLabel(0, 12)).toBe('Link');
+    expect(linkLabel(3, 'GOC-12')).toBe('Link 3 criteria of GOC-12');
+    expect(linkLabel(1, 'GOC-12')).toBe('Link 1 criterion of GOC-12');
+    expect(linkLabel(0, 'GOC-12')).toBe('Link');
   });
 });
 

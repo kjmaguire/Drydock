@@ -288,7 +288,7 @@ export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agent
   for (const r of rooms.filter((r) => !r.archived)) {
     const dm = r.kind === 'dm';
     const name = dm ? (agents.find((a) => a.id === r.name.slice(r.name.lastIndexOf('+') + 1))?.name ?? r.name) : r.name;
-    out.push({ id: `room:${r.id}`, group: 'Navigate', label: dm ? `Direct message ${name}` : `#${name}`, hint: dm ? 'direct message' : r.kind, href: routes.room.href({ id: r.id }), what: dm ? `Opens your direct messages with ${name}.` : `Opens the room ${name}.` });
+    out.push({ id: `room:${r.id}`, group: 'Navigate', label: dm ? `Direct message ${name}` : name, hint: dm ? 'direct message' : r.kind === 'task' ? 'task room' : 'room', href: routes.room.href({ id: r.id }), what: dm ? `Opens your direct messages with ${name}.` : `Opens the room ${name}.` });
   }
   for (const [href, label, keywords] of SCREENS) {
     const keys = chordOf(href);

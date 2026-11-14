@@ -43,14 +43,14 @@ export function RoomScreen(handle: Handle<{ id: string }>) {
     if (room) return <Conversation key={room.id} room={room} />;
     if (loadingRooms() || fetched.loading) {
       return (
-        <Page title="Channel" icon={MessageSquare}>
+        <Page title="Room" icon={MessageSquare}>
           <Loading />
         </Page>
       );
     }
     return (
-      <Page title="Channel" icon={MessageSquare}>
-        <Empty title="Channel not found" icon={MessagesSquare}>
+      <Page title="Room" icon={MessageSquare}>
+        <Empty title="Room not found" icon={MessagesSquare}>
           <p>It may belong to another project, or it was never created.</p>
           <ErrorNote error={fetched.error} retry={fetched.reload} />
         </Empty>
@@ -364,7 +364,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             <div class="line">
               <h1>{label}</h1>
               {room.archived ? (
-                <Badge tone="muted" title="This channel is archived: it can be read, not written">
+                <Badge tone="muted" title="This room is archived: it can be read, not written">
                   archived
                 </Badge>
               ) : null}
@@ -468,8 +468,8 @@ export function Conversation(handle: Handle<{ room: Room }>) {
                   {room.kind === 'dm'
                     ? `This is the beginning of your direct messages with ${label}.`
                     : room.kind === 'task'
-                      ? `This channel follows the task: the agents' reports, check results and reviews land here.`
-                      : `This is the start of the ${label} channel.`}
+                      ? `This room follows the task: the agents' reports, check results and reviews land here.`
+                      : `This is the start of the ${label} room.`}
                   {room.topic ? ` ${room.topic}` : ''}
                 </p>
               </div>

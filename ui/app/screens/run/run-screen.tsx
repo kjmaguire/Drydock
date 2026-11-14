@@ -292,7 +292,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
     const { taskId } = handle.props;
     const x: RunExplanation | undefined = q.data;
     const tk = task.data?.task;
-    const title = tk ? `Run of #${tk.seq} ${tk.title}` : 'Run';
+    const title = tk ? `Run of ${s.workspace.keyOf(tk)} ${tk.title}` : 'Run';
     const agents = s.project.agentList;
     const r = x?.run;
     const cp = x?.checkpoints.find((c) => c.id === asOf);

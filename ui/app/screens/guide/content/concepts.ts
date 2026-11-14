@@ -32,7 +32,8 @@ export const CONCEPTS: readonly Topic[] = [
     body: [
       { p: 'A **task** has a title, a description and acceptance criteria written as Given, When, Then. It works in a branch named `drydock/task_…` in a separate worktree of your repository.' },
       { h: 'The board' },
-      { table: { head: ['Column', 'What is in it'], rows: [['Up next', 'Backlog, ready and claimed tasks'], ['Crew working', 'In progress, in review, awaiting your approval, blocked'], ['Needs you', 'Waiting for you, or a run that waits for your decision'], ['Merged / Done', 'Completed, failed or cancelled']] } },
+      { table: { head: ['Column', 'What is in it'], rows: [['Spec', 'Tasks not started yet, and those whose spec waits to be written or accepted'], ['Building', 'The worker is writing the change'], ['Checks', 'Build, test, lint and your own checks are running'], ['Review', 'The reviewer reads the change, or it waits for your decision'], ['Merged', 'Completed: the change is in the main branch']] } },
+      { p: 'In every column what waits for you comes first. Failed and cancelled tasks are listed under the board, not in a column.' },
       { h: 'Evidence' },
       { p: 'Build, test and lint always run on a task. The checks you add in Project settings run too. Each result is stored as evidence with its output and duration. A check whose tool is missing is reported as **skipped**, never as passed.' },
       { h: 'The scheduler' },
@@ -43,11 +44,11 @@ export const CONCEPTS: readonly Topic[] = [
   {
     id: 'rooms',
     section: 'concepts',
-    title: 'Rooms and channels',
-    summary: 'Where you and the crew talk: the project room, a channel for each task, and direct messages.',
+    title: 'Rooms',
+    summary: 'Where you and the crew talk: the project rooms, a room for each task, and direct messages.',
     keywords: ['chat', 'channel', 'message', 'mention', 'dm', 'room'],
     body: [
-      { p: 'A **room** is a conversation with the crew. The general room belongs to the project, each task has a channel of its own, and you can message one agent directly.' },
+      { p: 'A **room** is a conversation with the crew. The general room belongs to the project, each task has a room of its own, and you can message one agent directly.' },
       { h: 'Who answers' },
       { p: 'In **Auto** mode simple rules decide who answers a message: an explicit mention first, then the task’s assignee, then a role. `@name` mentions an agent, `@role:` a role, `#` a task, and `/` opens the commands.' },
       { p: '**Chats** (the Home tab) are separate: a chat is one agent CLI in a folder, with or without a project, and it is not counted against a project’s budget.' },
@@ -66,7 +67,7 @@ export const CONCEPTS: readonly Topic[] = [
         ul: [
           'After every step Drydock writes a **checkpoint**, so a run that pauses (for you, or because a limit was reached) continues from where it stopped.',
           'A step can **loop**: when checks fail, the worker tries again up to the loop limit (shown on the node, for example “loop ≤ 5”).',
-          'A run waits in the status **waiting for you** when it needs a decision. The request is in Needs you.',
+          'A run waits in the status **waiting for you** when it needs a decision. The request is in the Inbox.',
         ],
       },
       { p: 'The Activity page lists the events behind a run, see [Events](guide:events).' },
@@ -76,11 +77,11 @@ export const CONCEPTS: readonly Topic[] = [
   {
     id: 'approvals',
     section: 'concepts',
-    title: 'Approvals and Needs you',
+    title: 'Approvals and the Inbox',
     summary: 'Everything that needs a person arrives in one inbox, and only you can decide it.',
     keywords: ['needs you', 'approve', 'approval', 'review and merge', 'escalation', 'inbox', 'bell'],
     body: [
-      { p: '**Needs you** (the bell in the top bar) collects what the crew cannot decide: the final “Review and merge” of a task, a tool call that writes through an MCP server, a limit reached, a question from an agent, and a stuck task the lead escalates. Each item opens where you decide it.' },
+      { p: 'The **Inbox** (in the sidebar; its **Needs you** tab) collects what the crew cannot decide: the final “Review and merge” of a task, a tool call that writes through an MCP server, a limit reached, a question from an agent, and a stuck task the lead escalates. Each item opens where you decide it.' },
       {
         ul: [
           '**Approve** lets the step continue. **Request changes** sends your note back to the worker.',
@@ -144,7 +145,7 @@ export const CONCEPTS: readonly Topic[] = [
       {
         ul: [
           'A budget **warns** at its warning percentage (80% by default).',
-          'At **100%** no new agent turn starts. A task’s run waits for you in Needs you, where you can raise the limit or approve one more turn. Agents stop answering in the room and in direct messages until the limit is raised.',
+          'At **100%** no new agent turn starts. A task’s run waits for you in the Inbox, where you can raise the limit or approve one more turn. Agents stop answering in the room and in direct messages until the limit is raised.',
           'Your own chats are not counted. Only you can change a budget.',
         ],
       },

@@ -13,7 +13,7 @@ async function snapshot(page: Page) {
 }
 
 async function openTaskChannel(page: Page) {
-  await page.getByRole('link', { name: 'Open task channel' }).click();
+  await page.getByRole('link', { name: 'Open task room' }).click();
   await expect(page.getByRole('log')).toBeVisible();
 }
 

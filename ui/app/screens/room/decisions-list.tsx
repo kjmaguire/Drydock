@@ -69,7 +69,7 @@ export function RoomDecisions(handle: Handle<{ room: Room }>) {
                   <span class="row">
                     {task ? (
                       <a href={routes.task.href({ id: task.id })} data-testid="room-decision-task">
-                        ADR task {task.seq ? `#${task.seq}` : ''} made
+                        ADR task {task.seq ? s.workspace.keyOf(task) : ''} made
                       </a>
                     ) : (
                       <Button

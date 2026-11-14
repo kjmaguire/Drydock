@@ -70,7 +70,7 @@ export function linkCriteria(taskCriteria: readonly string[], ticked: ReadonlySe
 }
 
 /** The Link button: "Link 3 criteria of #12". */
-export const linkLabel = (n: number, seq?: number): string => (seq === undefined || n === 0 ? 'Link' : `Link ${n} ${n === 1 ? 'criterion' : 'criteria'} of #${seq}`);
+export const linkLabel = (n: number, key?: string): string => (!key || n === 0 ? 'Link' : `Link ${n} ${n === 1 ? 'criterion' : 'criteria'} of ${key}`);
 
 /** Why a task is suggested for a requirement (X43): the part of the task whose words all occur in a passage, and the passage. */
 export function suggestionWhy(sg: Pick<LinkSuggestion, 'matched' | 'heading'>): string {

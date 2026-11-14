@@ -26,9 +26,6 @@ export function segments(p: Milestone['progress']): { key: 'completed' | 'inProg
   return (['completed', 'inProgress', 'blocked', 'failed'] as const).map((key) => ({ key, pct: pct(p[key]) })).filter((x) => x.pct > 0);
 }
 
-/** A task row as the Add tasks list shows it. */
-export const taskLabel = (x: { seq: number; title: string }): string => `#${x.seq} ${x.title}`;
-
 /** Whether a task matches the Add tasks filter: its number, title or one of its labels, ignoring case. */
 export function matchesFilter(x: { seq: number; title: string; labels?: string[] }, q: string): boolean {
   const s = q.trim().toLowerCase().replace(/^#/, '');

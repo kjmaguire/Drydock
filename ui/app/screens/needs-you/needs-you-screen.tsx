@@ -872,7 +872,7 @@ function NeedsDetail(
             : it.kind === 'connection'
               ? 'Open on the Agents page'
               : join
-                ? 'Open the channel'
+                ? 'Open the room'
                 : review
           ? 'Open to review'
           : a.kind === 'open' && d
