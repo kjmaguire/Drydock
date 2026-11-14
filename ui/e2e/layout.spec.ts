@@ -74,3 +74,63 @@ test('every screen reads at a laptop size: text of 12 px or more, nothing wider 
   await expect(page).toHaveURL(/\/team$/);
   await details().toBeGreaterThan(200);
 });
+
+// The shell does not move and the board does not hide a column (critique 2026-11-13): scrollIntoView on the task page scrolled
+// the whole shell up (the top bar off the screen, a band under it), and at 800 px the board cut its Review column off.
+test('the shell stays put when the task page scrolls to its foot, and a narrow board shows all five columns', async ({ page }) => {
+  await createProject(page, 'gocalc-layout-shift');
+  await projectNav(page, 'nav-tasks');
+  await page.getByRole('link', { name: 'New task' }).click();
+  await page.getByLabel('Task title').fill('Hold the shell still');
+  await page.getByRole('button', { name: /^Create (task|only)$/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: /Hold the shell still/ })).toBeVisible();
+  const steer = page.getByTestId('steer');
+  await expect(steer).toBeVisible();
+  // the boxes from the main region up to the document cannot be scrolled, even by code: scrollIntoView (the Evidence link, a
+  // focus move) scrolled them when they were overflow hidden, which clips but still scrolls. Each is asked to move 48 px.
+  const moved = await page.evaluate(() => {
+    const out: string[] = [];
+    const boxes: Element[] = [];
+    for (let el: Element | null = document.getElementById('main'); el; el = el.parentElement) boxes.push(el);
+    for (const el of boxes) {
+      if (el === document.scrollingElement) continue; // the document itself has nothing to scroll
+      // taller content than the box, as when a page or a banner grows past it: only then can a box be scrolled at all
+      const tall = document.createElement('div');
+      tall.style.height = '3000px';
+      el.appendChild(tall);
+      el.scrollTop = 48;
+      if (el.scrollTop !== 0) out.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''} moved ${el.scrollTop}px`);
+      el.scrollTop = 0;
+      tall.remove();
+    }
+    return out;
+  });
+  expect(moved).toEqual([]);
+
+  await page.setViewportSize({ width: 800, height: 900 });
+  await projectNav(page, 'nav-tasks');
+  const review = page.getByRole('heading', { name: /^Review/ }).first();
+  await expect(review).toBeVisible();
+  const box = await review.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(800);
+  expect((await measure(page)).overflowX).toBe(false);
+});
+
+// Work's left column scrolls as a whole when its fixed parts are taller than the window (CI 2026-11-13: Sync now sat under the
+// window's foot once the shell stopped scrolling by code, and nothing could bring it back).
+test("Work's left column keeps its foot within reach in a short window", async ({ page }) => {
+  await createProject(page, 'gocalc-short-window');
+  await page.setViewportSize({ width: 1280, height: 300 });
+  // the links at the column's foot (Board, Pull requests, Rooms) sit under the lines Sync now is among; a tall block before them
+  // stands for the setup notes and lines that grew past the window on CI
+  const foot = page.getByRole('navigation', { name: 'More of this project' });
+  await foot.evaluate((nav) => {
+    const tall = document.createElement('div');
+    tall.style.cssText = 'flex: none; height: 900px';
+    nav.before(tall);
+  });
+  const rooms = foot.getByTestId('nav-rooms');
+  await rooms.scrollIntoViewIfNeeded();
+  await expect(rooms).toBeInViewport();
+  await rooms.click({ trial: true });
+});

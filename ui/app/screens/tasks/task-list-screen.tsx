@@ -163,6 +163,9 @@ const boardCss = css({
   gap: '14px',
   alignItems: 'start',
   minWidth: '1056px',
+  // a window too narrow for five columns beside the sidebar stacks them: Review, often the one card that matters, was cut off
+  // behind a sideways scroll nothing showed (critique 2026-11-13, at 800 px)
+  '@media (max-width: 1180px)': { gridTemplateColumns: 'minmax(0, 1fr)', minWidth: '0', gap: t.s5 },
 });
 
 const columnCss = css({

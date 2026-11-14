@@ -6,7 +6,7 @@
 // runs resumed or not), one dismissible line says so under the lead (start-report.tsx, X511).
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { ArrowRight, Plus } from 'lucide';
+import { ArrowRight, CircleAlert, Plus } from 'lucide';
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
@@ -34,6 +34,19 @@ const wrapCss = css({
   '& .top button': { marginLeft: 'auto' },
   '& h1': { margin: '0', fontSize: t.text2xl, fontWeight: '600', letterSpacing: '-0.01em' },
   '& .lead': { margin: '-8px 0 0', color: t.textMuted, fontSize: t.textMd },
+  // what waits for the person, above the box: the Inbox is one click away before anything new is started (critique 2026-11-13)
+  '& .needs': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: t.s2,
+    justifySelf: 'start',
+    minHeight: '28px',
+    color: t.warning,
+    fontSize: t.textSm,
+    fontWeight: '500',
+    textDecoration: 'none',
+    '&:hover': { textDecoration: 'underline', textUnderlineOffset: '3px' },
+  },
 });
 const pickCss = css({
   display: 'grid',
@@ -158,6 +171,12 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
             </div>
             <p class="lead">Describe it; change the place or the crew below.</p>
             <StartReportLine />
+            {ws.needsCount > 0 ? (
+              <a class="needs" href={routes.needsYou.href()} data-testid="home-needs">
+                <Icon icon={CircleAlert} size={14} />
+                {ws.needsCount === 1 ? '1 thing waits for you' : `${ws.needsCount} things wait for you`} · Open the Inbox
+              </a>
+            ) : null}
             <StartBox onNavigate={handle.props.onNavigate} />
             <ErrorNote error={ws.projects.error} retry={retryFor(ws.projects)} what="Projects" />
             {items.length ? (

@@ -64,6 +64,8 @@ test('Work says how far behind its remote the folder is; Sync now leaves local c
     expect(existsSync(join(folder, 'NEWS.md'))).toBe(true);
     expect(git(folder, 'rev-parse', 'HEAD')).toBe(git(upstream, 'rev-parse', 'HEAD'));
   } finally {
-    rmSync(base, { recursive: true, force: true });
+    // the folder is still a project of the running core (its git fetch, its watch): on Windows a file in it can be held a moment
+    // after the test ends, and the removal answered EPERM (CI 2026-11-13); Node tries again, as it does for exactly that
+    rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

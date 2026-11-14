@@ -7,13 +7,14 @@ import type { Connection, Project, SetupRequest, TaskSummary } from '../../api/t
 import { byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
 import { SETUP_NOTES_KEY } from '../../lib/setup-notes.ts';
-import { DRAFT_KEY, START_KEY } from './start.ts';
+import { DRAFT_KEY, PLACE_KEY, START_KEY } from './start.ts';
 import { WorkspaceHomeScreen } from './workspace-home.tsx';
 
 afterEach(() => {
   cleanup();
   try {
     localStorage.removeItem(START_KEY);
+    localStorage.removeItem(PLACE_KEY);
     localStorage.removeItem(DRAFT_KEY);
     localStorage.removeItem(SETUP_NOTES_KEY);
   } catch {
@@ -79,6 +80,32 @@ describe('Home is the start screen (P142)', () => {
     expect(Array.from(r.$$('[data-testid="start-or"] button')).map((b) => b.textContent!.trim())).toEqual(['Just chat']);
     // no way to the old wizard any more: a project without work is New project (P143)
     expect(r.$('[data-testid="start-more"]')).toBe(null);
+  });
+
+  it('says above the box what waits for the person, with the way to the Inbox (critique 2026-11-13)', async () => {
+    const { r } = show();
+    await waitFor(() => expect(r.$('[data-testid="home-needs"]')?.textContent).toBe('1 thing waits for you · Open the Inbox'), r);
+    expect(r.$('[data-testid="home-needs"]')!.getAttribute('href')).toBe('/needs-you');
+    cleanup();
+    const calm = show({ needsYouList: async () => [] });
+    await waitFor(() => expect(box(calm.r)).not.toBeNull(), calm.r);
+    expect(calm.r.$('[data-testid="home-needs"]')).toBeNull();
+  });
+
+  it('opens in the project it last started in, while it exists; a new folder forgets it (critique 2026-11-13)', async () => {
+    localStorage.setItem(PLACE_KEY, 'p2');
+    const { r } = show();
+    await waitFor(() => expect(chipText(r, 'start-where')).toBe('marketing-site'), r);
+    await r.act(() => click(r, '[data-testid="start-where"]'));
+    await r.act(() => click(r, '[data-testid="where-new"]'));
+    expect(localStorage.getItem(PLACE_KEY)).toBe('');
+    await waitFor(() => expect(chipText(r, 'start-where')).toBe('New folder: new-project'), r);
+    cleanup();
+    // a project that is gone is not opened: a new folder, as on the first visit
+    localStorage.setItem(PLACE_KEY, 'p9');
+    const gone = show();
+    await waitFor(() => expect(chipText(gone.r, 'start-model')).toBe('Sonnet · medium'), gone.r);
+    expect(chipText(gone.r, 'start-where')).toBe('New folder: new-project');
   });
 
   it('picks up the three most recently active projects, with what runs or needs you; All projects shows the rest', async () => {
