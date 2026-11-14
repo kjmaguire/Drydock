@@ -48,7 +48,9 @@ const layoutCss = css({
   '@media (max-width: 1180px)': { gridTemplateColumns: '264px minmax(0, 1fr)' },
   '@media (max-width: 760px)': { gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 40%) minmax(0, 1fr)' },
 });
-const leftCss = css({ display: 'flex', flexDirection: 'column', minHeight: '0', borderRight: `1px solid ${t.border}`, background: t.bgSidebar });
+// the column scrolls as a whole when its fixed parts (the setup notes, the lines under the list, the links) are taller than the
+// window: they were pushed under its foot, Sync now out of reach (CI 2026-11-13, once the shell stopped scrolling by code)
+const leftCss = css({ display: 'flex', flexDirection: 'column', minHeight: '0', overflowY: 'auto', borderRight: `1px solid ${t.border}`, background: t.bgSidebar });
 const searchRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, flex: 'none', padding: `${t.s3} ${t.s3} ${t.s2}` });
 const searchBox = css({
   display: 'flex',

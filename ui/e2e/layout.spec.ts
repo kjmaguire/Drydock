@@ -115,3 +115,22 @@ test('the shell stays put when the task page scrolls to its foot, and a narrow b
   expect(box!.x + box!.width).toBeLessThanOrEqual(800);
   expect((await measure(page)).overflowX).toBe(false);
 });
+
+// Work's left column scrolls as a whole when its fixed parts are taller than the window (CI 2026-11-13: Sync now sat under the
+// window's foot once the shell stopped scrolling by code, and nothing could bring it back).
+test("Work's left column keeps its foot within reach in a short window", async ({ page }) => {
+  await createProject(page, 'gocalc-short-window');
+  await page.setViewportSize({ width: 1280, height: 300 });
+  // the links at the column's foot (Board, Pull requests, Rooms) sit under the lines Sync now is among; a tall block before them
+  // stands for the setup notes and lines that grew past the window on CI
+  const foot = page.getByRole('navigation', { name: 'More of this project' });
+  await foot.evaluate((nav) => {
+    const tall = document.createElement('div');
+    tall.style.cssText = 'flex: none; height: 900px';
+    nav.before(tall);
+  });
+  const rooms = foot.getByTestId('nav-rooms');
+  await rooms.scrollIntoViewIfNeeded();
+  await expect(rooms).toBeInViewport();
+  await rooms.click({ trial: true });
+});
